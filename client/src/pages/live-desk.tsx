@@ -74,7 +74,7 @@ export default function LiveDesk() {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [sharedReport, setSharedReport] = useState<{ report: ReportData; session: any } | null>(null);
 
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoContainerRef = useRef<HTMLDivElement>(null);
   const roomRef = useRef<Room | null>(null);
   const avatarSessionTokenRef = useRef<string | null>(null);
   const avatarSessionIdRef = useRef<string | null>(null);
@@ -193,25 +193,51 @@ export default function LiveDesk() {
       },
     });
 
-    const mediaStream = new MediaStream();
-
     room.on(RoomEvent.TrackSubscribed, (track, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
+      console.log("Track subscribed:", track.kind, "from:", participant.identity, "sid:", track.sid);
+
       if (track.kind === Track.Kind.Video) {
-        const videoTrack = track.attach();
-        if (videoRef.current) {
-          videoRef.current.srcObject = new MediaStream([track.mediaStreamTrack]);
-          videoRef.current.play().catch(() => {});
+        const container = videoContainerRef.current;
+        if (container) {
+          const existingVideos = container.querySelectorAll("video");
+          existingVideos.forEach(v => v.remove());
+
+          const videoElement = track.attach();
+          videoElement.style.width = "100%";
+          videoElement.style.height = "100%";
+          videoElement.style.objectFit = "cover";
+          videoElement.style.position = "absolute";
+          videoElement.style.top = "0";
+          videoElement.style.left = "0";
+          videoElement.style.zIndex = "1";
+          videoElement.setAttribute("data-testid", "video-avatar");
+          videoElement.setAttribute("autoplay", "true");
+          videoElement.setAttribute("playsinline", "true");
+          container.appendChild(videoElement);
+          console.log("Video track attached to container");
         }
         setAvatarReady(true);
       }
+
       if (track.kind === Track.Kind.Audio) {
         const audioElement = track.attach();
+        audioElement.style.display = "none";
         document.body.appendChild(audioElement);
+        console.log("Audio track attached");
       }
     });
 
     room.on(RoomEvent.TrackUnsubscribed, (track) => {
+      console.log("Track unsubscribed:", track.kind);
       track.detach().forEach((el) => el.remove());
+    });
+
+    room.on(RoomEvent.ParticipantConnected, (participant) => {
+      console.log("Participant connected:", participant.identity);
+    });
+
+    room.on(RoomEvent.Connected, () => {
+      console.log("Room connected successfully");
     });
 
     room.on(RoomEvent.DataReceived, (data, participant, kind, topic) => {
@@ -606,12 +632,10 @@ export default function LiveDesk() {
     <div className="h-screen w-screen bg-black flex flex-col relative overflow-hidden" data-testid="live-desk-active">
       <title>Live Session | American Iron US</title>
 
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        className="absolute inset-0 w-full h-full object-cover"
-        data-testid="video-avatar"
+      <div
+        ref={videoContainerRef}
+        className="absolute inset-0 w-full h-full bg-black"
+        data-testid="video-avatar-container"
       />
 
       {!avatarReady && (
