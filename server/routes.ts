@@ -437,10 +437,15 @@ export async function registerRoutes(
     }
   });
 
+  app.use("/static", (await import("express")).default.static(path.join(process.cwd(), "attached_assets")));
+
   app.post("/api/avatar/session", async (req, res) => {
     try {
       const { agentType } = req.body;
-      const result = await createAvatarSession(agentType || "admin");
+      const protocol = req.headers["x-forwarded-proto"] || "https";
+      const host = req.get("host");
+      const backgroundUrl = `${protocol}://${host}/static/shop_background.png`;
+      const result = await createAvatarSession(agentType || "admin", backgroundUrl);
       res.json(result);
     } catch (error: any) {
       console.error("Avatar session creation error:", error);

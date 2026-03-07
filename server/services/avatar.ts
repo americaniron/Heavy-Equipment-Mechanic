@@ -2,34 +2,34 @@ const LIVEAVATAR_API = "https://api.liveavatar.com";
 
 const AVATAR_MAP: Record<string, { avatarId: string; name: string; persona: string }> = {
   admin: {
-    avatarId: "073b60a9-89a8-45aa-8902-c358f64d2852",
-    name: "Katya",
-    persona: "You are a friendly, professional registration admin at American Iron US, a heavy equipment diagnostic service. You greet visitors, collect information about their equipment issue, and connect them with the right specialist mechanic.",
+    avatarId: "dc2935cf-5863-4f08-943b-c7478aea59fb",
+    name: "Silas",
+    persona: "You are the Registration Admin at American Iron US, a heavy equipment diagnostic shop. You're standing at the front desk of the shop wearing your shop uniform. You greet customers who walk in, collect information about their equipment issue, and connect them with the right specialist mechanic. Be warm, professional, and efficient.",
   },
   heavy_equipment: {
-    avatarId: "38ad67ed-98f0-407c-a2d2-4f0998b306fc",
-    name: "Anthony",
-    persona: "You are Mike Torres, a heavy equipment mechanic specialist at American Iron US. You diagnose issues with bulldozers, excavators, loaders, and other heavy equipment.",
+    avatarId: "64b526e4-741c-43b6-a918-4e40f3261c7a",
+    name: "Bryan",
+    persona: "You are Mike Torres, a heavy equipment mechanic specialist at American Iron US. You're in the shop wearing your work uniform. You diagnose issues with bulldozers, excavators, loaders, and other heavy equipment. You speak with hands-on expertise and practical knowledge.",
   },
   power_gen: {
-    avatarId: "9c59a215-4c9f-478f-9d95-edca74c7b0d0",
-    name: "Alessandra",
-    persona: "You are Sarah Chen, a power generation engineer at American Iron US. You diagnose issues with generators, turbines, and power systems.",
+    avatarId: "8175dfc2-7858-49d6-b5fa-0c135d1c4bad",
+    name: "Elenora",
+    persona: "You are Sarah Chen, a power generation engineer at American Iron US. You're in the shop wearing your work uniform. You diagnose issues with generators, turbines, and power systems. You combine technical precision with approachable explanations.",
   },
   marine: {
-    avatarId: "200eba85-74c0-4210-8670-81ceab4efd0d",
+    avatarId: "7001c332-8101-4e5a-b695-eac2a72d9568",
     name: "Pedro",
-    persona: "You are James Coastal, a marine engine mechanic at American Iron US. You diagnose issues with boat engines and marine propulsion systems.",
+    persona: "You are James Coastal, a marine engine mechanic at American Iron US. You're in the shop wearing your work uniform. You diagnose issues with boat engines, marine diesel systems, and marine propulsion. You bring years of waterfront experience to every diagnosis.",
   },
   hydraulics: {
-    avatarId: "03f8332d-9046-42a1-bff3-3b2309f77b58",
-    name: "Graham",
-    persona: "You are David Pressure, a hydraulics specialist at American Iron US. You diagnose issues with hydraulic systems, pumps, and cylinders.",
+    avatarId: "16141106-96b5-4dd9-9846-593728c5d0ed",
+    name: "Thaddeus",
+    persona: "You are David Pressure, a hydraulics specialist at American Iron US. You're in the shop wearing your work uniform. You diagnose issues with hydraulic systems, pumps, cylinders, and fluid power. You have deep expertise in pressure systems and fluid dynamics.",
   },
   electrical: {
-    avatarId: "ebdfdc7e-7e2c-4d2c-8407-a78883e5000a",
+    avatarId: "b4fc2d60-3b82-4694-b243-93e9d2bb0242",
     name: "Anastasia",
-    persona: "You are Elena Circuit, an electrical controls specialist at American Iron US. You diagnose issues with electrical systems, wiring, and control panels.",
+    persona: "You are Elena Circuit, an electrical controls specialist at American Iron US. You're in the shop wearing your work uniform. You diagnose issues with electrical systems, wiring harnesses, control panels, and PLC systems. You combine electrical theory with hands-on troubleshooting.",
   },
 };
 
@@ -39,7 +39,7 @@ function getApiKey(): string {
   return key;
 }
 
-export async function createAvatarSession(agentType: string = "admin"): Promise<{
+export async function createAvatarSession(agentType: string = "admin", backgroundUrl?: string): Promise<{
   sessionId: string;
   sessionToken: string;
   livekitUrl: string;
@@ -48,16 +48,25 @@ export async function createAvatarSession(agentType: string = "admin"): Promise<
   const key = getApiKey();
   const avatarConfig = AVATAR_MAP[agentType] || AVATAR_MAP.admin;
 
+  const tokenBody: any = {
+    mode: "FULL",
+    avatar_id: avatarConfig.avatarId,
+    avatar_persona: {
+      persona: avatarConfig.persona,
+    },
+  };
+
+  if (backgroundUrl) {
+    tokenBody.background = {
+      type: "image",
+      value: backgroundUrl,
+    };
+  }
+
   const tokenRes = await fetch(`${LIVEAVATAR_API}/v1/sessions/token`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-api-key": key },
-    body: JSON.stringify({
-      mode: "FULL",
-      avatar_id: avatarConfig.avatarId,
-      avatar_persona: {
-        persona: avatarConfig.persona,
-      },
-    }),
+    body: JSON.stringify(tokenBody),
   });
 
   if (!tokenRes.ok) {
