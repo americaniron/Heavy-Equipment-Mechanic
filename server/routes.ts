@@ -11,7 +11,7 @@ import {
   generateQuickAdviceReport, generateProReport,
   type ConversationMessage,
 } from "./services/ai-engine";
-import { createStreamingToken } from "./services/avatar";
+import { createTalkingVideo, getTalkStatus, waitForTalk, getPresenterPhoto, checkCredits } from "./services/avatar";
 import { getUncachableStripeClient, getStripePublishableKey } from "./services/stripe-client";
 import { speechToText, ensureCompatibleFormat } from "./replit_integrations/audio/client";
 
@@ -437,12 +437,59 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/avatar/token", async (_req, res) => {
+  app.post("/api/avatar/talk", async (req, res) => {
     try {
-      const token = await createStreamingToken();
-      res.json({ token });
+      const { text, agentType } = req.body;
+      if (!text) {
+        return res.status(400).json({ error: "text is required" });
+      }
+      const { talkId } = await createTalkingVideo(text, agentType || "admin");
+      res.json({ talkId });
     } catch (error: any) {
-      console.error("Avatar token error:", error);
+      console.error("Avatar talk creation error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/avatar/talk/:talkId", async (req, res) => {
+    try {
+      const result = await getTalkStatus(req.params.talkId);
+      res.json(result);
+    } catch (error: any) {
+      console.error("Avatar talk status error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/avatar/talk-and-wait", async (req, res) => {
+    try {
+      const { text, agentType } = req.body;
+      if (!text) {
+        return res.status(400).json({ error: "text is required" });
+      }
+      const { talkId } = await createTalkingVideo(text, agentType || "admin");
+      const result = await waitForTalk(talkId);
+      res.json({ talkId, ...result });
+    } catch (error: any) {
+      console.error("Avatar talk-and-wait error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/avatar/photo/:agentType", async (req, res) => {
+    try {
+      const photoUrl = await getPresenterPhoto(req.params.agentType);
+      res.json({ photoUrl });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/avatar/credits", async (_req, res) => {
+    try {
+      const remaining = await checkCredits();
+      res.json({ remaining });
+    } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
   });
