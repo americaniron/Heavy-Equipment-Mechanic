@@ -12,7 +12,8 @@ import {
   type ConversationMessage,
 } from "./services/ai-engine";
 import { createAvatarSession, stopAvatarSession, getAvatarInfo } from "./services/avatar";
-import { getUncachableStripeClient, getStripePublishableKey } from "./services/stripe-client";
+// Stripe temporarily disabled — will re-enable when live keys are connected
+// import { getUncachableStripeClient, getStripePublishableKey } from "./services/stripe-client";
 import { speechToText, ensureCompatibleFormat } from "./replit_integrations/audio/client";
 
 const uploadDir = path.join(process.cwd(), "uploads");
@@ -360,47 +361,8 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/sessions/:id/checkout", async (req, res) => {
-    try {
-      const sessionId = parseInt(req.params.id);
-      const session = await storage.getSession(sessionId);
-      if (!session) return res.status(404).json({ error: "Session not found" });
-
-      const stripe = await getUncachableStripeClient();
-      const host = req.get("host");
-      const protocol = req.protocol;
-
-      const checkoutSession = await stripe.checkout.sessions.create({
-        payment_method_types: ["card"],
-        line_items: [{
-          price_data: {
-            currency: "usd",
-            product_data: {
-              name: "Pro Diagnostic Report",
-              description: `Comprehensive diagnostic report for ${session.equipmentType || "equipment"} - ${session.make || ""} ${session.model || ""}`,
-            },
-            unit_amount: 14900,
-          },
-          quantity: 1,
-        }],
-        mode: "payment",
-        success_url: `${protocol}://${host}/live-desk?session=${sessionId}&payment=success`,
-        cancel_url: `${protocol}://${host}/live-desk?session=${sessionId}&payment=cancel`,
-        metadata: {
-          sessionId: sessionId.toString(),
-        },
-      });
-
-      await storage.updateSession(sessionId, {
-        stripeSessionId: checkoutSession.id,
-        paymentStatus: "pending",
-      });
-
-      res.json({ url: checkoutSession.url });
-    } catch (error: any) {
-      console.error("Checkout error:", error);
-      res.status(500).json({ error: error.message });
-    }
+  app.post("/api/sessions/:id/checkout", async (_req, res) => {
+    res.status(503).json({ error: "Stripe payments are temporarily unavailable. Pro reports will be available soon." });
   });
 
   app.get("/api/sessions/:id/payment-status", async (req, res) => {
@@ -408,20 +370,6 @@ export async function registerRoutes(
       const sessionId = parseInt(req.params.id);
       const session = await storage.getSession(sessionId);
       if (!session) return res.status(404).json({ error: "Session not found" });
-
-      if (session.stripeSessionId && session.paymentStatus === "pending") {
-        try {
-          const stripe = await getUncachableStripeClient();
-          const checkoutSession = await stripe.checkout.sessions.retrieve(session.stripeSessionId);
-          if (checkoutSession.payment_status === "paid") {
-            await storage.updateSession(sessionId, { paymentStatus: "paid" });
-            return res.json({ status: "paid" });
-          }
-        } catch (stripeErr) {
-          console.error("Stripe check error:", stripeErr);
-        }
-      }
-
       res.json({ status: session.paymentStatus || "none" });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -429,12 +377,7 @@ export async function registerRoutes(
   });
 
   app.get("/api/stripe/publishable-key", async (_req, res) => {
-    try {
-      const key = await getStripePublishableKey();
-      res.json({ key });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
+    res.json({ key: null });
   });
 
   app.use("/static", (await import("express")).default.static(path.join(process.cwd(), "attached_assets")));
