@@ -1,26 +1,23 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import StreamingAvatar, {
+  AvatarQuality,
+  StreamingEvents,
+  TaskType,
+  TaskMode,
+  type StartAvatarResponse,
+} from "@heygen/streaming-avatar";
 import {
-  Mic, MicOff, Send, Upload, Download, Share2, FileText,
-  Video, Phone, AlertTriangle, Shield, Loader2, X,
-  Wrench, Zap, Anchor, Droplets, Cpu, User, ChevronRight
+  Mic, MicOff, Send, Upload, FileText, Phone, Shield,
+  Loader2, Wrench, Zap, Anchor, Droplets, Cpu, User,
+  ChevronRight, X, Download, Share2, AlertTriangle, Volume2, VolumeX, Keyboard
 } from "lucide-react";
-
-interface SessionMessage {
-  id: number;
-  role: string;
-  content: string;
-  agentType: string;
-  createdAt: string;
-}
 
 interface SessionData {
   id: number;
@@ -34,8 +31,7 @@ interface SessionData {
   equipmentType: string | null;
   make: string | null;
   model: string | null;
-  messages: SessionMessage[];
-  files: any[];
+  accessToken?: string;
 }
 
 interface ReportData {
@@ -46,62 +42,86 @@ interface ReportData {
   shareToken: string | null;
 }
 
-const MECHANIC_INFO: Record<string, { name: string; title: string; icon: any }> = {
-  heavy_equipment: { name: "Mike Torres", title: "Heavy Equipment Mechanic", icon: Wrench },
-  power_gen: { name: "Sarah Chen", title: "Power Generation Engineer", icon: Zap },
-  marine: { name: "James Coastal", title: "Marine Engine Mechanic", icon: Anchor },
-  hydraulics: { name: "David Pressure", title: "Hydraulics Specialist", icon: Droplets },
-  electrical: { name: "Elena Circuit", title: "Electrical Controls Specialist", icon: Cpu },
+const MECHANIC_INFO: Record<string, { name: string; title: string; icon: any; avatarName: string }> = {
+  heavy_equipment: { name: "Mike Torres", title: "Heavy Equipment Mechanic", icon: Wrench, avatarName: "Wayne_20240711" },
+  power_gen: { name: "Sarah Chen", title: "Power Generation Engineer", icon: Zap, avatarName: "Susan_public_2_20240328" },
+  marine: { name: "James Coastal", title: "Marine Engine Mechanic", icon: Anchor, avatarName: "josh_lite3_20230714" },
+  hydraulics: { name: "David Pressure", title: "Hydraulics Specialist", icon: Droplets, avatarName: "Wayne_20240711" },
+  electrical: { name: "Elena Circuit", title: "Electrical Controls Specialist", icon: Cpu, avatarName: "Susan_public_2_20240328" },
 };
+
+const ADMIN_AVATAR = "Anna_public_3_20240108";
+const ADMIN_VOICE = "1bd001e7e50f421d891986aad5571571";
 
 export default function LiveDesk() {
   const { toast } = useToast();
   const [sessionData, setSessionData] = useState<SessionData | null>(null);
-  const [messages, setMessages] = useState<SessionMessage[]>([]);
-  const [inputText, setInputText] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [streamingText, setStreamingText] = useState("");
   const [consentGiven, setConsentGiven] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [avatarReady, setAvatarReady] = useState(false);
+  const [isTalking, setIsTalking] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [inputText, setInputText] = useState("");
+  const [showTextInput, setShowTextInput] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [currentAgent, setCurrentAgent] = useState<"admin" | "mechanic">("admin");
+  const [mechanicType, setMechanicType] = useState<string | null>(null);
+  const [handoffInProgress, setHandoffInProgress] = useState(false);
+  const [subtitleText, setSubtitleText] = useState("");
+  const [userTranscript, setUserTranscript] = useState("");
   const [showPaywall, setShowPaywall] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const [report, setReport] = useState<ReportData | null>(null);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [currentAgent, setCurrentAgent] = useState<"admin" | "mechanic">("admin");
-  const [mechanicType, setMechanicType] = useState<string | null>(null);
-  const [handoffInProgress, setHandoffInProgress] = useState(false);
-  const [avatarConnected, setAvatarConnected] = useState(false);
-  const [avatarSessionId, setAvatarSessionId] = useState<string | null>(null);
+  const [showActions, setShowActions] = useState(false);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [sharedReport, setSharedReport] = useState<{ report: ReportData; session: any } | null>(null);
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, streamingText]);
+  const avatarRef = useRef<StreamingAvatar | null>(null);
+  const sessionInfoRef = useRef<StartAvatarResponse | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const conversationRef = useRef<Array<{ role: string; content: string }>>([]);
+  const [usingFallback, setUsingFallback] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const shared = params.get("shared");
     const sessionId = params.get("session");
     const payment = params.get("payment");
-    const shared = params.get("shared");
 
     if (shared) {
       loadSharedReport(shared);
-      window.history.replaceState({}, "", "/live-desk");
+      window.history.replaceState({}, "", "/");
     } else if (sessionId && payment === "success") {
       const storedToken = sessionStorage.getItem(`session_token_${sessionId}`);
       if (storedToken) setAccessToken(storedToken);
-      loadSession(parseInt(sessionId), storedToken);
-      toast({ title: "Payment successful", description: "Your Pro Diagnostic Report is being generated." });
-      window.history.replaceState({}, "", "/live-desk");
+      toast({ title: "Payment successful", description: "Your Pro Diagnostic Report is ready to generate." });
+      window.history.replaceState({}, "", "/");
+    }
+
+    return () => {
+      if (avatarRef.current) {
+        avatarRef.current.stopAvatar().catch(() => {});
+      }
+    };
+  }, []);
+
+  const speakWithBrowser = useCallback((text: string) => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+      utterance.onstart = () => setIsTalking(true);
+      utterance.onend = () => {
+        setIsTalking(false);
+        setTimeout(() => setSubtitleText(""), 2000);
+      };
+      const voices = window.speechSynthesis.getVoices();
+      const preferred = voices.find(v => v.name.includes("Google") && v.lang.startsWith("en")) || voices.find(v => v.lang.startsWith("en"));
+      if (preferred) utterance.voice = preferred;
+      window.speechSynthesis.speak(utterance);
     }
   }, []);
 
@@ -109,42 +129,94 @@ export default function LiveDesk() {
     try {
       const res = await fetch(`/api/shared/${token}`);
       if (!res.ok) {
-        toast({ title: "Report not found", description: "This share link may have expired.", variant: "destructive" });
+        toast({ title: "Report not found", variant: "destructive" });
         return;
       }
-      const data = await res.json();
-      setSharedReport(data);
-    } catch (err) {
-      toast({ title: "Error loading report", description: "Could not load the shared report.", variant: "destructive" });
+      setSharedReport(await res.json());
+    } catch {
+      toast({ title: "Error loading report", variant: "destructive" });
     }
   };
 
-  const loadSession = async (sessionId: number, token?: string | null) => {
+  const initializeAvatar = async (avatarName: string) => {
     try {
-      const tkn = token || accessToken;
-      const res = await fetch(`/api/sessions/${sessionId}`, {
-        headers: tkn ? { "x-session-token": tkn } : {},
+      const tokenRes = await fetch("/api/avatar/token");
+      if (!tokenRes.ok) throw new Error("Failed to get avatar token");
+      const { token } = await tokenRes.json();
+
+      const avatar = new StreamingAvatar({ token });
+      avatarRef.current = avatar;
+
+      avatar.on(StreamingEvents.STREAM_READY, (event: any) => {
+        if (videoRef.current && event.detail) {
+          videoRef.current.srcObject = event.detail;
+          videoRef.current.play().catch(() => {});
+        }
+        setAvatarReady(true);
       });
-      if (!res.ok) return;
-      const data = await res.json();
-      setSessionData(data);
-      setMessages(data.messages || []);
-      if (data.status === "diagnosing" || data.status === "completed") {
-        setCurrentAgent("mechanic");
-        setMechanicType(data.mechanicType);
-      }
-    } catch (err) {
-      console.error("Failed to load session:", err);
+
+      avatar.on(StreamingEvents.AVATAR_START_TALKING, () => {
+        setIsTalking(true);
+      });
+
+      avatar.on(StreamingEvents.AVATAR_STOP_TALKING, () => {
+        setIsTalking(false);
+        setTimeout(() => setSubtitleText(""), 2000);
+      });
+
+      avatar.on(StreamingEvents.AVATAR_TALKING_MESSAGE, (event: any) => {
+        if (event.detail?.message) {
+          setSubtitleText(event.detail.message);
+        }
+      });
+
+      avatar.on(StreamingEvents.USER_TALKING_MESSAGE, (event: any) => {
+        if (event.detail?.message) {
+          setUserTranscript(event.detail.message);
+        }
+      });
+
+      avatar.on(StreamingEvents.USER_END_MESSAGE, (event: any) => {
+        if (event.detail?.message) {
+          const userMsg = event.detail.message;
+          setUserTranscript("");
+          handleUserMessage(userMsg);
+        }
+      });
+
+      avatar.on(StreamingEvents.STREAM_DISCONNECTED, () => {
+        setAvatarReady(false);
+        toast({ title: "Connection lost", description: "Avatar stream disconnected.", variant: "destructive" });
+      });
+
+      const sessionInfo = await avatar.createStartAvatar({
+        quality: AvatarQuality.Medium,
+        avatarName,
+        voice: { voiceId: ADMIN_VOICE, rate: 1.0 },
+        language: "en",
+      });
+
+      sessionInfoRef.current = sessionInfo;
+
+      await avatar.startAvatar(
+        { quality: AvatarQuality.Medium, avatarName, voice: { voiceId: ADMIN_VOICE }, language: "en" },
+        sessionInfo
+      );
+
+      return avatar;
+    } catch (error: any) {
+      console.error("Avatar initialization error:", error);
+      throw error;
     }
   };
 
   const startSession = async () => {
     if (!consentGiven) {
-      toast({ title: "Consent required", description: "Please accept the consent checkbox to begin.", variant: "destructive" });
+      toast({ title: "Consent required", description: "Please accept the consent to begin.", variant: "destructive" });
       return;
     }
 
-    setIsLoading(true);
+    setIsConnecting(true);
     try {
       const res = await apiRequest("POST", "/api/sessions", {
         consentGiven: true,
@@ -154,172 +226,72 @@ export default function LiveDesk() {
       setAccessToken(session.accessToken);
       sessionStorage.setItem(`session_token_${session.id}`, session.accessToken);
       setSessionData(session);
-      setMessages([]);
       setCurrentAgent("admin");
 
-      await connectAvatar("heygen", "admin");
+      let avatarReady = false;
+      try {
+        const avatar = await initializeAvatar(ADMIN_AVATAR);
+        avatarReady = true;
 
-      const welcomeRes = await fetch(`/api/sessions/${session.id}/message`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: "Hello, I need help with my equipment." }),
-      });
+        setTimeout(async () => {
+          try {
+            const welcomeText = "Welcome to American Iron US! I'm here to help you with your equipment. What can I help you with today?";
+            setSubtitleText(welcomeText);
+            await avatar.speak({
+              text: welcomeText,
+              taskType: TaskType.TALK,
+              taskMode: TaskMode.SYNC,
+            });
 
-      await handleStreamResponse(welcomeRes);
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+            conversationRef.current.push({ role: "assistant", content: welcomeText });
 
-  const connectAvatar = async (provider: string, agentType: string) => {
-    try {
-      const res = await apiRequest("POST", "/api/avatar/session", { provider, agentType });
-      const avatarData = await res.json();
-      setAvatarSessionId(avatarData.sessionId);
+            await fetch(`/api/sessions/${session.id}/message`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ content: "[Session started - Admin greeting]" }),
+            }).catch(() => {});
 
-      if (avatarData.offer && avatarData.iceServers) {
-        const pc = new RTCPeerConnection({
-          iceServers: avatarData.iceServers,
-        });
-
-        pc.ontrack = (event) => {
-          if (videoRef.current && event.streams[0]) {
-            videoRef.current.srcObject = event.streams[0];
-            setAvatarConnected(true);
-          }
-        };
-
-        pc.onicecandidate = async (event) => {
-          if (event.candidate && avatarData.sessionId) {
             try {
-              await apiRequest("POST", "/api/avatar/ice", {
-                sessionId: avatarData.sessionId,
-                candidate: event.candidate.toJSON(),
-              });
-            } catch (e) {
-              console.error("ICE candidate error:", e);
+              await avatar.startVoiceChat({ isInputAudioMuted: false });
+              setIsListening(true);
+            } catch {
+              setShowTextInput(true);
             }
+          } catch (err) {
+            console.error("Welcome message error:", err);
+            setShowTextInput(true);
           }
-        };
+        }, 2000);
+      } catch (avatarErr) {
+        console.error("Avatar connection failed, using text mode:", avatarErr);
+        setUsingFallback(true);
+        setAvatarReady(true);
+        setShowTextInput(true);
 
-        await pc.setRemoteDescription(new RTCSessionDescription(avatarData.offer));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
+        const welcomeText = "Welcome to American Iron US! I'm here to help you with your equipment. What can I help you with today?";
+        setSubtitleText(welcomeText);
+        conversationRef.current.push({ role: "assistant", content: welcomeText });
 
-        await apiRequest("POST", "/api/avatar/sdp", {
-          sessionId: avatarData.sessionId,
-          sdp: answer.sdp,
-        });
+        speakWithBrowser(welcomeText);
 
-        peerConnectionRef.current = pc;
+        await fetch(`/api/sessions/${session.id}/message`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: "[Session started - Admin greeting]" }),
+        }).catch(() => {});
       }
-    } catch (err) {
-      console.error("Avatar connection failed:", err);
+    } catch (err: any) {
+      toast({ title: "Connection failed", description: err.message || "Could not start session.", variant: "destructive" });
+    } finally {
+      setIsConnecting(false);
     }
   };
 
-  const handleStreamResponse = async (response: Response) => {
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ error: "Connection error" }));
-      toast({ title: "Error", description: errorData.error || "Failed to get response", variant: "destructive" });
-      return;
-    }
+  const handleUserMessage = async (userMsg: string) => {
+    if (!sessionData || isProcessing || !userMsg.trim()) return;
 
-    setIsStreaming(true);
-    setStreamingText("");
-
-    const reader = response.body?.getReader();
-    if (!reader) return;
-
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let fullText = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-
-      for (const line of lines) {
-        if (!line.startsWith("data: ")) continue;
-        try {
-          const event = JSON.parse(line.slice(6));
-
-          if (event.type === "text") {
-            fullText += event.content;
-            setStreamingText(fullText);
-          } else if (event.type === "handoff") {
-            setHandoffInProgress(true);
-            setMechanicType(event.mechanicType);
-
-            setTimeout(async () => {
-              if (sessionData) {
-                await apiRequest("POST", `/api/sessions/${sessionData.id}/handoff`);
-                setCurrentAgent("mechanic");
-                setHandoffInProgress(false);
-
-                if (avatarSessionId) {
-                  try { await apiRequest("DELETE", `/api/avatar/session/${avatarSessionId}`); } catch {}
-                }
-                await connectAvatar("did", "mechanic");
-
-                await loadSession(sessionData.id);
-              }
-            }, 2000);
-          } else if (event.type === "done") {
-            if (fullText && sessionData) {
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: Date.now(),
-                  role: "assistant",
-                  content: fullText,
-                  agentType: currentAgent,
-                  createdAt: new Date().toISOString(),
-                },
-              ]);
-            }
-            setStreamingText("");
-
-            if (avatarSessionId && fullText) {
-              try {
-                const speakText = fullText.length > 200 ? fullText.substring(0, 200) + "..." : fullText;
-                await apiRequest("POST", "/api/avatar/speak", {
-                  sessionId: avatarSessionId,
-                  text: speakText,
-                });
-              } catch (e) {
-                console.error("Avatar speak error:", e);
-              }
-            }
-          }
-        } catch {}
-      }
-    }
-
-    setIsStreaming(false);
-  };
-
-  const sendMessage = async () => {
-    if (!inputText.trim() || !sessionData || isStreaming) return;
-
-    const userMsg = inputText.trim();
-    setInputText("");
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: Date.now(),
-        role: "user",
-        content: userMsg,
-        agentType: currentAgent,
-        createdAt: new Date().toISOString(),
-      },
-    ]);
+    setIsProcessing(true);
+    conversationRef.current.push({ role: "user", content: userMsg });
 
     try {
       const response = await fetch(`/api/sessions/${sessionData.id}/message`, {
@@ -327,67 +299,162 @@ export default function LiveDesk() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: userMsg }),
       });
-      await handleStreamResponse(response);
+
+      if (!response.ok) {
+        toast({ title: "Error", description: "Failed to get response", variant: "destructive" });
+        setIsProcessing(false);
+        return;
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) { setIsProcessing(false); return; }
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let fullText = "";
+      let handoffData: any = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const event = JSON.parse(line.slice(6));
+            if (event.type === "text") {
+              fullText += event.content;
+            } else if (event.type === "handoff") {
+              handoffData = event;
+            }
+          } catch {}
+        }
+      }
+
+      if (fullText) {
+        const speakText = fullText.length > 500 ? fullText.substring(0, 500) : fullText;
+        setSubtitleText(speakText);
+        conversationRef.current.push({ role: "assistant", content: fullText });
+
+        if (avatarRef.current && !usingFallback) {
+          try {
+            await avatarRef.current.speak({
+              text: speakText,
+              taskType: TaskType.TALK,
+              taskMode: TaskMode.SYNC,
+            });
+          } catch (err) {
+            console.error("Avatar speak error:", err);
+            speakWithBrowser(speakText);
+          }
+        } else {
+          speakWithBrowser(speakText);
+        }
+      }
+
+      if (handoffData) {
+        await performHandoff(handoffData);
+      }
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsProcessing(false);
     }
   };
 
-  const startRecording = async () => {
+  const performHandoff = async (handoffData: any) => {
+    if (!sessionData) return;
+    setHandoffInProgress(true);
+
+    const mechType = handoffData.mechanicType || "heavy_equipment";
+    setMechanicType(mechType);
+    const mechanic = MECHANIC_INFO[mechType];
+
+    setSubtitleText(`Transferring you to ${mechanic?.name || "our specialist"}. One moment please...`);
+
+    if (avatarRef.current) {
+      try {
+        await avatarRef.current.speak({
+          text: `I'm now transferring you to ${mechanic?.name || "our specialist"}, our ${mechanic?.title || "diagnostic specialist"}. They'll take great care of you. One moment please.`,
+          taskType: TaskType.TALK,
+          taskMode: TaskMode.SYNC,
+        });
+      } catch {}
+    }
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
-      audioChunksRef.current = [];
+      if (avatarRef.current) {
+        await avatarRef.current.stopAvatar().catch(() => {});
+      }
+      setAvatarReady(false);
 
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunksRef.current.push(e.data);
-      };
+      await apiRequest("POST", `/api/sessions/${sessionData.id}/handoff`);
+      setCurrentAgent("mechanic");
 
-      recorder.onstop = async () => {
-        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-        stream.getTracks().forEach((t) => t.stop());
+      const newAvatar = await initializeAvatar(mechanic?.avatarName || ADMIN_AVATAR);
 
-        const reader = new FileReader();
-        reader.onload = async () => {
-          const base64 = (reader.result as string).split(",")[1];
+      setTimeout(async () => {
+        const mechGreeting = `Hello! I'm ${mechanic?.name || "your specialist"}. I've reviewed your intake information and I'm ready to help diagnose the issue. Let's get started — can you tell me more about what you're experiencing?`;
+        setSubtitleText(mechGreeting);
+        conversationRef.current.push({ role: "assistant", content: mechGreeting });
 
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: Date.now(),
-              role: "user",
-              content: "[Voice message - transcribing...]",
-              agentType: currentAgent,
-              createdAt: new Date().toISOString(),
-            },
-          ]);
+        try {
+          await newAvatar.speak({
+            text: mechGreeting,
+            taskType: TaskType.TALK,
+            taskMode: TaskMode.SYNC,
+          });
 
           try {
-            const response = await fetch(`/api/sessions/${sessionData!.id}/message`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ useVoice: true, audio: base64 }),
-            });
-            await handleStreamResponse(response);
-          } catch (err: any) {
-            toast({ title: "Error", description: err.message, variant: "destructive" });
+            await newAvatar.startVoiceChat({ isInputAudioMuted: false });
+            setIsListening(true);
+          } catch {
+            setShowTextInput(true);
           }
-        };
-        reader.readAsDataURL(blob);
-        setIsRecording(false);
-      };
+        } catch {}
 
-      mediaRecorderRef.current = recorder;
-      recorder.start(100);
-      setIsRecording(true);
+        setHandoffInProgress(false);
+      }, 2000);
     } catch (err) {
-      toast({ title: "Microphone access denied", description: "Please allow microphone access.", variant: "destructive" });
+      console.error("Handoff error:", err);
+      setHandoffInProgress(false);
+      toast({ title: "Transfer failed", variant: "destructive" });
     }
   };
 
-  const stopRecording = () => {
-    if (mediaRecorderRef.current?.state === "recording") {
-      mediaRecorderRef.current.stop();
+  const sendTextMessage = async () => {
+    if (!inputText.trim() || isProcessing) return;
+    const msg = inputText.trim();
+    setInputText("");
+
+    if (avatarRef.current && isListening) {
+      try { await avatarRef.current.stopListening(); } catch {}
+    }
+
+    await handleUserMessage(msg);
+
+    if (avatarRef.current && isListening) {
+      try { await avatarRef.current.startListening(); } catch {}
+    }
+  };
+
+  const toggleMicrophone = async () => {
+    if (!avatarRef.current) return;
+
+    try {
+      if (isListening) {
+        await avatarRef.current.closeVoiceChat();
+        setIsListening(false);
+      } else {
+        await avatarRef.current.startVoiceChat({ isInputAudioMuted: false });
+        setIsListening(true);
+      }
+    } catch (err) {
+      console.error("Mic toggle error:", err);
+      toast({ title: "Microphone error", description: "Could not access microphone.", variant: "destructive" });
     }
   };
 
@@ -405,39 +472,30 @@ export default function LiveDesk() {
         body: formData,
       });
       if (res.ok) {
-        toast({ title: "Files uploaded", description: "Your files have been attached to this session." });
-        await loadSession(sessionData.id);
+        toast({ title: "Files uploaded", description: "Attached to your session." });
       }
     } catch (err: any) {
-      toast({ title: "Upload failed", description: err.message, variant: "destructive" });
+      toast({ title: "Upload failed", variant: "destructive" });
     }
     e.target.value = "";
   };
 
   const generateReport = async () => {
     if (!sessionData) return;
-
     if (sessionData.visitType === "pro" && sessionData.paymentStatus !== "paid") {
       setShowPaywall(true);
       return;
     }
-
     setIsGeneratingReport(true);
     try {
       const res = await apiRequest("POST", `/api/sessions/${sessionData.id}/report`);
-      if (res.status === 402) {
-        setShowPaywall(true);
-        return;
-      }
-      const reportData = await res.json();
-      setReport(reportData);
+      if (res.status === 402) { setShowPaywall(true); return; }
+      const data = await res.json();
+      setReport(data);
       setShowReport(true);
     } catch (err: any) {
-      if (err.message.includes("402")) {
-        setShowPaywall(true);
-      } else {
-        toast({ title: "Error", description: err.message, variant: "destructive" });
-      }
+      if (err.message?.includes("402")) { setShowPaywall(true); }
+      else { toast({ title: "Error generating report", variant: "destructive" }); }
     } finally {
       setIsGeneratingReport(false);
     }
@@ -449,127 +507,47 @@ export default function LiveDesk() {
       const res = await apiRequest("POST", `/api/sessions/${sessionData.id}/checkout`);
       const { url } = await res.json();
       if (url) window.location.href = url;
-    } catch (err: any) {
-      toast({ title: "Checkout error", description: err.message, variant: "destructive" });
+    } catch {
+      toast({ title: "Checkout error", variant: "destructive" });
     }
   };
 
   const copyShareLink = async () => {
     if (!report?.shareToken) return;
-    const url = `${window.location.origin}/live-desk?shared=${report.shareToken}`;
+    const url = `${window.location.origin}/?shared=${report.shareToken}`;
     await navigator.clipboard.writeText(url);
-    toast({ title: "Link copied", description: "Share link copied to clipboard." });
+    toast({ title: "Link copied" });
   };
 
   const currentMechanic = mechanicType ? MECHANIC_INFO[mechanicType] : null;
-  const MechanicIcon = currentMechanic?.icon || Wrench;
 
   if (sharedReport) {
     const sr = sharedReport.report;
     return (
       <div className="min-h-screen bg-background flex flex-col">
         <title>Shared Report | American Iron US</title>
-        <meta name="description" content="Shared diagnostic report from American Iron US." />
-
-        <header className="border-b border-border/50 px-4 py-3 flex items-center justify-between gap-2">
+        <header className="border-b border-border/50 px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center">
               <Wrench className="w-4 h-4 text-primary-foreground" />
             </div>
             <div>
               <h1 className="text-sm font-semibold">American Iron US</h1>
-              <p className="text-xs text-muted-foreground">Shared Report</p>
+              <p className="text-xs text-muted-foreground">Diagnostic Report</p>
             </div>
           </div>
-          <Button variant="secondary" size="sm" onClick={() => { setSharedReport(null); }} data-testid="button-back-home">
+          <Button variant="secondary" size="sm" onClick={() => setSharedReport(null)} data-testid="button-back-home">
             Start New Session
           </Button>
         </header>
-
         <div className="flex-1 p-4 max-w-2xl mx-auto w-full">
           <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <Badge variant={sr.reportType === "pro" ? "default" : "secondary"}>
-                {sr.reportType === "pro" ? "Pro Diagnostic" : "Quick Advice"}
-              </Badge>
-              {sharedReport.session?.equipmentType && (
-                <span className="text-sm text-muted-foreground">
-                  {sharedReport.session.make} {sharedReport.session.model} {sharedReport.session.equipmentType}
-                </span>
-              )}
-            </div>
-
+            <Badge variant={sr.reportType === "pro" ? "default" : "secondary"}>
+              {sr.reportType === "pro" ? "Pro Diagnostic" : "Quick Advice"}
+            </Badge>
             {sr.content && typeof sr.content === "object" && (
-              <div className="space-y-3 text-sm">
-                {(sr.content as any).problemSummary && (
-                  <div>
-                    <h4 className="font-semibold mb-1">Problem Summary</h4>
-                    <p className="text-muted-foreground">{(sr.content as any).problemSummary}</p>
-                  </div>
-                )}
-                {(sr.content as any).likelyCauses && (
-                  <div>
-                    <h4 className="font-semibold mb-1">Likely Causes</h4>
-                    <div className="space-y-1">
-                      {((sr.content as any).likelyCauses as any[]).map((cause: any, i: number) => (
-                        <div key={i} className="flex items-center gap-2">
-                          <Badge variant="secondary" className="text-xs">{cause.confidence || "Medium"}</Badge>
-                          <span className="text-muted-foreground">{cause.cause}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {(sr.content as any).rootCauseMatrix && (
-                  <div>
-                    <h4 className="font-semibold mb-1">Root Cause Matrix</h4>
-                    <div className="space-y-1">
-                      {((sr.content as any).rootCauseMatrix as any[]).map((item: any, i: number) => (
-                        <div key={i} className="bg-card/50 border border-card-border rounded-md p-2">
-                          <div className="flex items-center gap-2 mb-1">
-                            <Badge variant="secondary" className="text-xs">{item.probability}</Badge>
-                            <span className="font-medium text-xs">{item.cause}</span>
-                          </div>
-                          {item.evidence && <p className="text-xs text-muted-foreground">{item.evidence}</p>}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {(sr.content as any).safeChecks && (
-                  <div>
-                    <h4 className="font-semibold mb-1">Safe Checks</h4>
-                    <ul className="space-y-1">
-                      {((sr.content as any).safeChecks as string[]).map((check: string, i: number) => (
-                        <li key={i} className="flex items-start gap-2 text-muted-foreground">
-                          <ChevronRight className="w-3 h-3 shrink-0 mt-1 text-primary" />
-                          {check}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {(sr.content as any).safetyWarnings && (
-                  <div className="bg-destructive/5 border border-destructive/20 rounded-md p-3">
-                    <h4 className="font-semibold mb-1 flex items-center gap-1.5">
-                      <AlertTriangle className="w-3.5 h-3.5 text-destructive" />
-                      Safety Warnings
-                    </h4>
-                    <ul className="space-y-1 text-xs text-muted-foreground">
-                      {((sr.content as any).safetyWarnings as string[]).map((w: string, i: number) => (
-                        <li key={i}>- {w}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {(sr.content as any).disclaimer && (
-                  <p className="text-xs text-muted-foreground italic border-t border-border/50 pt-2">
-                    {(sr.content as any).disclaimer}
-                  </p>
-                )}
-              </div>
+              <ReportContent content={sr.content} />
             )}
-
             {sr.svgDiagram && (
               <div>
                 <h4 className="text-sm font-semibold mb-2">Technical Diagram</h4>
@@ -579,12 +557,9 @@ export default function LiveDesk() {
             )}
           </div>
         </div>
-
-        <footer className="border-t border-border/50 p-3 text-center">
-          <div className="flex items-start gap-1.5 justify-center text-xs text-muted-foreground">
-            <Shield className="w-3 h-3 shrink-0 mt-0.5" />
-            <p>AI guidance is informational only. Not a substitute for certified inspection.</p>
-          </div>
+        <footer className="border-t border-border/50 p-3 text-center text-xs text-muted-foreground flex items-center justify-center gap-1.5">
+          <Shield className="w-3 h-3" />
+          AI guidance is informational only. Not a substitute for certified inspection.
         </footer>
       </div>
     );
@@ -592,101 +567,70 @@ export default function LiveDesk() {
 
   if (!sessionData) {
     return (
-      <div className="min-h-screen bg-background flex flex-col">
+      <div className="min-h-screen bg-[#0a0e17] flex flex-col items-center justify-center relative overflow-hidden">
         <title>Live AI Engineer Desk | American Iron US</title>
-        <meta name="description" content="Get real-time AI-powered heavy equipment diagnostics from expert mechanic avatars." />
+        <meta name="description" content="Connect with AI-powered mechanics for real-time heavy equipment diagnostics." />
+        <meta property="og:title" content="Live AI Engineer Desk | American Iron US" />
+        <meta property="og:description" content="Real-time AI-powered heavy equipment diagnostics with live video avatars." />
 
-        <header className="border-b border-border/50 px-4 py-3 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center">
-              <Wrench className="w-4 h-4 text-primary-foreground" />
+        <div className="absolute inset-0 bg-gradient-to-b from-primary/5 via-transparent to-transparent" />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-primary/5 rounded-full blur-3xl" />
+
+        <div className="relative z-10 max-w-md w-full px-6 space-y-8">
+          <div className="text-center space-y-4">
+            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 flex items-center justify-center mx-auto backdrop-blur-sm">
+              <Wrench className="w-10 h-10 text-primary" />
             </div>
             <div>
-              <h1 className="text-sm font-semibold" data-testid="text-brand-name">American Iron US</h1>
-              <p className="text-xs text-muted-foreground">Live AI Engineer Desk</p>
+              <h1 className="text-3xl font-bold text-white tracking-tight" data-testid="text-brand-name">
+                American Iron US
+              </h1>
+              <p className="text-primary/80 text-sm font-medium mt-1">Live AI Engineer Desk</p>
             </div>
+            <p className="text-gray-400 text-sm leading-relaxed max-w-sm mx-auto" data-testid="text-page-title">
+              Speak face-to-face with our AI-powered front desk admin and specialist mechanics. 
+              Real-time video diagnostics for your heavy equipment.
+            </p>
           </div>
-          <Badge variant="outline" className="text-xs">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5 inline-block" />
-            Online
-          </Badge>
-        </header>
 
-        <div className="flex-1 flex items-center justify-center p-4">
-          <div className="max-w-lg w-full space-y-6">
-            <div className="text-center space-y-3">
-              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
-                <Video className="w-8 h-8 text-primary" />
-              </div>
-              <h2 className="text-2xl font-bold" data-testid="text-page-title">Live AI Engineer Desk</h2>
-              <p className="text-muted-foreground text-sm leading-relaxed max-w-md mx-auto">
-                Connect with our AI-powered registration admin and specialist mechanics
-                for real-time equipment diagnostics. Get expert guidance powered by
-                HeyGen and D-ID avatar technology.
-              </p>
-            </div>
-
-            <div className="bg-card rounded-md border border-card-border p-4 space-y-4">
-              <h3 className="text-sm font-medium">How it works</h3>
-              <div className="space-y-3">
-                {[
-                  { step: "1", text: "Our Registration Admin collects your equipment details" },
-                  { step: "2", text: "You're assigned to a specialist mechanic" },
-                  { step: "3", text: "Get real-time diagnostic guidance and reports" },
-                ].map((item) => (
-                  <div key={item.step} className="flex items-start gap-3">
-                    <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-                      <span className="text-xs font-semibold text-primary">{item.step}</span>
-                    </div>
-                    <p className="text-sm text-muted-foreground">{item.text}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="bg-card rounded-md border border-card-border p-4 space-y-3">
-              <div className="flex items-start gap-2">
-                <Checkbox
-                  id="consent"
-                  checked={consentGiven}
-                  onCheckedChange={(checked) => setConsentGiven(checked as boolean)}
-                  data-testid="checkbox-consent"
-                />
-                <label htmlFor="consent" className="text-xs text-muted-foreground leading-relaxed cursor-pointer">
-                  I consent to having my conversation transcribed for report generation
-                  and case details stored for follow-up. I understand that AI guidance
-                  is informational and not a substitute for certified inspection.
-                </label>
-              </div>
+          <div className="bg-white/5 backdrop-blur-sm rounded-xl border border-white/10 p-5 space-y-4">
+            <div className="flex items-start gap-3">
+              <Checkbox
+                id="consent"
+                checked={consentGiven}
+                onCheckedChange={(c) => setConsentGiven(c as boolean)}
+                data-testid="checkbox-consent"
+                className="mt-0.5 border-white/30 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+              />
+              <label htmlFor="consent" className="text-xs text-gray-400 leading-relaxed cursor-pointer">
+                I consent to having my conversation transcribed for report generation 
+                and understand that AI guidance is informational, not a substitute for certified inspection.
+              </label>
             </div>
 
             <Button
-              className="w-full"
-              size="lg"
+              className="w-full h-12 text-base font-semibold"
               onClick={startSession}
-              disabled={!consentGiven || isLoading}
+              disabled={!consentGiven || isConnecting}
               data-testid="button-start-session"
             >
-              {isLoading ? (
+              {isConnecting ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                  Connecting...
+                  <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                  Connecting to Front Desk...
                 </>
               ) : (
                 <>
-                  <Phone className="w-4 h-4 mr-2" />
-                  Start Live Session
+                  <Phone className="w-5 h-5 mr-2" />
+                  Walk In
                 </>
               )}
             </Button>
+          </div>
 
-            <div className="flex items-start gap-2 text-xs text-muted-foreground">
-              <Shield className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-              <p>
-                AI guidance is informational only. For safety-critical scenarios,
-                our agents will advise safe shutdown and recommend certified technician on-site.
-              </p>
-            </div>
+          <div className="flex items-center justify-center gap-2 text-xs text-gray-500">
+            <Shield className="w-3.5 h-3.5" />
+            <span>Encrypted. Secure. AI-Powered.</span>
           </div>
         </div>
       </div>
@@ -694,351 +638,302 @@ export default function LiveDesk() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-background" data-testid="live-desk-active">
+    <div className="h-screen w-screen bg-black flex flex-col relative overflow-hidden" data-testid="live-desk-active">
       <title>Live Session | American Iron US</title>
 
-      <header className="border-b border-border/50 px-4 py-2 flex items-center justify-between gap-2 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-7 h-7 rounded-md bg-primary flex items-center justify-center">
-            <Wrench className="w-3.5 h-3.5 text-primary-foreground" />
-          </div>
-          <div>
-            <h1 className="text-sm font-semibold">American Iron US</h1>
-            <p className="text-xs text-muted-foreground">Live AI Engineer Desk</p>
-          </div>
-        </div>
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        className="absolute inset-0 w-full h-full object-cover"
+        data-testid="video-avatar"
+      />
 
-        <div className="flex items-center gap-2" data-testid="status-bar">
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-card border border-card-border">
-            {currentAgent === "admin" ? (
-              <User className="w-3.5 h-3.5 text-primary" />
-            ) : (
-              <MechanicIcon className="w-3.5 h-3.5 text-primary" />
-            )}
-            <span className="text-xs font-medium" data-testid="text-current-agent">
-              {currentAgent === "admin"
-                ? "Registration Admin"
-                : currentMechanic?.name || "Specialist"}
-            </span>
-          </div>
-
-          <Badge
-            variant={sessionData.tier === "pro" ? "default" : "secondary"}
-            data-testid="badge-tier"
-          >
-            {sessionData.tier === "pro" ? "Pro" : "Free"}
-          </Badge>
-
-          {avatarConnected && (
-            <Badge variant="outline" className="text-xs">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5 inline-block" />
-              Live
-            </Badge>
-          )}
-        </div>
-      </header>
-
-      <div className="flex-1 flex min-h-0">
-        <div className="flex-1 flex flex-col min-w-0">
-          <div className="relative bg-black/5 dark:bg-black/20 aspect-video max-h-[280px] w-full shrink-0">
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted={false}
-              className="w-full h-full object-cover"
-              data-testid="video-avatar"
-            />
-
-            {!avatarConnected && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="text-center space-y-3">
-                  <div className="w-20 h-20 rounded-full bg-card border-2 border-border flex items-center justify-center mx-auto">
-                    {currentAgent === "admin" ? (
-                      <User className="w-10 h-10 text-muted-foreground" />
-                    ) : (
-                      <MechanicIcon className="w-10 h-10 text-muted-foreground" />
-                    )}
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">
-                      {currentAgent === "admin"
-                        ? "Registration Admin"
-                        : currentMechanic?.name || "Specialist"}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {currentAgent === "admin"
-                        ? "AI-Powered Intake Agent"
-                        : currentMechanic?.title || "Diagnostic Specialist"}
-                    </p>
-                  </div>
-                  {handoffInProgress && (
-                    <div className="flex items-center gap-2 justify-center text-primary">
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span className="text-xs font-medium">Transferring to specialist...</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {handoffInProgress && avatarConnected && (
-              <div className="absolute inset-0 bg-background/80 flex items-center justify-center backdrop-blur-sm">
-                <div className="text-center space-y-2">
-                  <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto" />
-                  <p className="text-sm font-medium">Connecting to {currentMechanic?.name || "Specialist"}...</p>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="flex-1 flex flex-col min-h-0">
-            <ScrollArea className="flex-1 p-4">
-              <div className="space-y-3 max-w-2xl mx-auto">
-                {messages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-                    data-testid={`message-${msg.role}-${msg.id}`}
-                  >
-                    <div
-                      className={`max-w-[85%] rounded-md px-3 py-2 text-sm ${
-                        msg.role === "user"
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-card border border-card-border"
-                      }`}
-                    >
-                      {msg.role === "assistant" && (
-                        <div className="flex items-center gap-1.5 mb-1">
-                          {msg.agentType === "admin" ? (
-                            <User className="w-3 h-3 text-muted-foreground" />
-                          ) : (
-                            <Wrench className="w-3 h-3 text-muted-foreground" />
-                          )}
-                          <span className="text-xs text-muted-foreground font-medium">
-                            {msg.agentType === "admin" ? "Admin" : currentMechanic?.name || "Specialist"}
-                          </span>
-                        </div>
-                      )}
-                      <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
-                    </div>
-                  </div>
-                ))}
-
-                {isStreaming && streamingText && (
-                  <div className="flex justify-start">
-                    <div className="max-w-[85%] rounded-md px-3 py-2 text-sm bg-card border border-card-border">
-                      <div className="flex items-center gap-1.5 mb-1">
-                        {currentAgent === "admin" ? (
-                          <User className="w-3 h-3 text-muted-foreground" />
-                        ) : (
-                          <MechanicIcon className="w-3 h-3 text-muted-foreground" />
-                        )}
-                        <span className="text-xs text-muted-foreground font-medium">
-                          {currentAgent === "admin" ? "Admin" : currentMechanic?.name || "Specialist"}
-                        </span>
-                      </div>
-                      <p className="whitespace-pre-wrap leading-relaxed">{streamingText}</p>
-                      <span className="inline-block w-1.5 h-4 bg-primary animate-pulse ml-0.5" />
-                    </div>
-                  </div>
+      {(!avatarReady || usingFallback) && (
+        <div className={`absolute inset-0 bg-gradient-to-b from-[#0f1829] via-[#0a1020] to-[#060a14] flex items-center justify-center z-10`}>
+          {!avatarReady ? (
+            <div className="text-center space-y-4">
+              <div className="w-24 h-24 rounded-full bg-primary/10 border-2 border-primary/30 flex items-center justify-center mx-auto animate-pulse">
+                {currentAgent === "admin" ? (
+                  <User className="w-12 h-12 text-primary/60" />
+                ) : (
+                  currentMechanic ? <currentMechanic.icon className="w-12 h-12 text-primary/60" /> : <Wrench className="w-12 h-12 text-primary/60" />
                 )}
-
-                {isStreaming && !streamingText && (
-                  <div className="flex justify-start">
-                    <div className="rounded-md px-3 py-2 bg-card border border-card-border">
-                      <div className="flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: "0ms" }} />
-                        <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: "150ms" }} />
-                        <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: "300ms" }} />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div ref={messagesEndRef} />
               </div>
-            </ScrollArea>
-
-            <div className="border-t border-border/50 p-3 shrink-0">
-              <div className="flex items-center gap-2 max-w-2xl mx-auto">
-                <Button
-                  size="icon"
-                  variant={isRecording ? "destructive" : "secondary"}
-                  onClick={isRecording ? stopRecording : startRecording}
-                  disabled={isStreaming || !sessionData}
-                  data-testid="button-microphone"
-                >
-                  {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-                </Button>
-
-                <Input
-                  placeholder="Type your message..."
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
-                  disabled={isStreaming || isRecording}
-                  className="flex-1"
-                  data-testid="input-message"
-                />
-
-                <Button
-                  size="icon"
-                  onClick={sendMessage}
-                  disabled={!inputText.trim() || isStreaming}
-                  data-testid="button-send"
-                >
-                  <Send className="w-4 h-4" />
-                </Button>
+              <div>
+                <p className="text-white text-lg font-medium">
+                  {handoffInProgress
+                    ? `Connecting to ${currentMechanic?.name || "Specialist"}...`
+                    : "Connecting to Front Desk..."}
+                </p>
+                <p className="text-gray-400 text-sm mt-1">
+                  {handoffInProgress
+                    ? currentMechanic?.title || "Diagnostic Specialist"
+                    : "Registration Admin"}
+                </p>
               </div>
+              <Loader2 className="w-6 h-6 animate-spin text-primary mx-auto" />
             </div>
-          </div>
-        </div>
-
-        <div className="w-72 border-l border-border/50 flex flex-col shrink-0 hidden md:flex">
-          <div className="p-3 border-b border-border/50">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Session Panel</h3>
-          </div>
-
-          <ScrollArea className="flex-1">
-            <div className="p-3 space-y-4">
-              {sessionData.customerName && (
-                <div className="space-y-1.5">
-                  <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Customer</h4>
-                  <p className="text-sm font-medium" data-testid="text-customer-name">{sessionData.customerName}</p>
-                  {sessionData.equipmentType && (
-                    <p className="text-xs text-muted-foreground">
-                      {sessionData.make} {sessionData.model} {sessionData.equipmentType}
-                    </p>
+          ) : (
+            <div className="text-center relative">
+              <div className={`w-44 h-44 md:w-56 md:h-56 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 border-2 ${isTalking ? 'border-primary shadow-lg shadow-primary/20' : 'border-white/10'} flex items-center justify-center mx-auto transition-all duration-300`}>
+                <div className={`w-40 h-40 md:w-52 md:h-52 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center ${isTalking ? 'scale-105' : 'scale-100'} transition-transform duration-300`}>
+                  {currentAgent === "admin" ? (
+                    <User className="w-20 h-20 md:w-24 md:h-24 text-gray-400" />
+                  ) : (
+                    currentMechanic ? <currentMechanic.icon className="w-20 h-20 md:w-24 md:h-24 text-gray-400" /> : <Wrench className="w-20 h-20 md:w-24 md:h-24 text-gray-400" />
                   )}
                 </div>
-              )}
-
-              <div className="space-y-2">
-                <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</h4>
-
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  accept="image/*,.pdf"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                  data-testid="input-file-upload"
-                />
-
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="w-full justify-start"
-                  onClick={() => fileInputRef.current?.click()}
-                  data-testid="button-upload"
-                >
-                  <Upload className="w-3.5 h-3.5 mr-2" />
-                  Upload Photos / PDFs
-                </Button>
-
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="w-full justify-start"
-                  onClick={generateReport}
-                  disabled={isGeneratingReport || messages.length < 2}
-                  data-testid="button-generate-report"
-                >
-                  {isGeneratingReport ? (
-                    <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
-                  ) : (
-                    <FileText className="w-3.5 h-3.5 mr-2" />
-                  )}
-                  {sessionData.visitType === "pro" && sessionData.paymentStatus !== "paid"
-                    ? "Get Pro Report ($149)"
-                    : "Generate Report"}
-                </Button>
-
-                {report && (
-                  <>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="w-full justify-start"
-                      onClick={() => setShowReport(true)}
-                      data-testid="button-view-report"
-                    >
-                      <Download className="w-3.5 h-3.5 mr-2" />
-                      View Report
-                    </Button>
-
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="w-full justify-start"
-                      onClick={copyShareLink}
-                      data-testid="button-share"
-                    >
-                      <Share2 className="w-3.5 h-3.5 mr-2" />
-                      Copy Share Link
-                    </Button>
-                  </>
-                )}
               </div>
-
-              {sessionData.files && sessionData.files.length > 0 && (
-                <div className="space-y-1.5">
-                  <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Uploaded Files</h4>
-                  {sessionData.files.map((file: any) => (
-                    <div key={file.id} className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <FileText className="w-3 h-3 shrink-0" />
-                      <span className="truncate">{file.fileName}</span>
-                    </div>
+              {isTalking && (
+                <div className="flex items-center justify-center gap-1 mt-4">
+                  {[0, 1, 2, 3, 4].map((i) => (
+                    <div key={i} className="w-1 bg-primary rounded-full animate-pulse" style={{
+                      height: `${12 + Math.random() * 20}px`,
+                      animationDelay: `${i * 100}ms`,
+                      animationDuration: '0.6s',
+                    }} />
                   ))}
                 </div>
               )}
+              <p className="text-white text-lg font-medium mt-4">
+                {currentAgent === "admin"
+                  ? "Registration Admin"
+                  : currentMechanic?.name || "Specialist"}
+              </p>
+              <p className="text-gray-400 text-sm">
+                {currentAgent === "admin"
+                  ? "American Iron US - Front Desk"
+                  : currentMechanic?.title || "Diagnostic Specialist"}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
-              <div className="space-y-1.5">
-                <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Session Notes</h4>
-                <div className="bg-card/50 rounded-md p-2 text-xs text-muted-foreground space-y-1 border border-card-border">
-                  <p>Status: {sessionData.status}</p>
-                  {sessionData.visitType && <p>Type: {sessionData.visitType === "pro" ? "Pro Diagnostics" : sessionData.visitType === "emergency" ? "Emergency" : "Quick Advice"}</p>}
-                  {sessionData.mechanicType && <p>Specialist: {currentMechanic?.title}</p>}
-                  <p>Messages: {messages.length}</p>
-                </div>
+      <div className="absolute top-0 left-0 right-0 z-20 pointer-events-none">
+        <div className="bg-gradient-to-b from-black/70 via-black/30 to-transparent p-4 pb-8">
+          <div className="flex items-center justify-between pointer-events-auto">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-md bg-white/10 backdrop-blur-sm flex items-center justify-center border border-white/20">
+                <Wrench className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <p className="text-white text-sm font-semibold">American Iron US</p>
+                <p className="text-white/60 text-xs" data-testid="text-current-agent">
+                  {currentAgent === "admin"
+                    ? "Registration Admin"
+                    : currentMechanic?.name || "Specialist"}
+                </p>
               </div>
             </div>
-          </ScrollArea>
 
-          <div className="p-3 border-t border-border/50">
-            <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
-              <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />
-              <p>AI guidance is informational only. Not a substitute for certified inspection.</p>
+            <div className="flex items-center gap-2" data-testid="status-bar">
+              {avatarReady && (
+                <Badge variant="outline" className="bg-green-500/20 text-green-400 border-green-500/30 text-xs">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 mr-1.5 animate-pulse" />
+                  Live
+                </Badge>
+              )}
+              <Badge
+                variant={sessionData.tier === "pro" ? "default" : "secondary"}
+                className="text-xs"
+                data-testid="badge-tier"
+              >
+                {sessionData.tier === "pro" ? "Pro" : "Free"}
+              </Badge>
+              {isTalking && (
+                <div className="flex items-center gap-1 px-2 py-1 bg-white/10 rounded-md backdrop-blur-sm">
+                  <Volume2 className="w-3 h-3 text-white animate-pulse" />
+                  <span className="text-white/80 text-xs">Speaking</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
 
+      {(subtitleText || userTranscript) && (
+        <div className="absolute bottom-32 left-0 right-0 z-20 flex justify-center px-4 pointer-events-none">
+          <div className="max-w-2xl w-full">
+            {userTranscript && (
+              <div className="bg-primary/80 backdrop-blur-sm text-white text-sm px-4 py-2 rounded-lg mb-2 inline-block">
+                <span className="text-primary-foreground/70 text-xs mr-2">You:</span>
+                {userTranscript}
+              </div>
+            )}
+            {subtitleText && (
+              <div className="bg-black/70 backdrop-blur-sm text-white text-sm px-4 py-3 rounded-lg leading-relaxed" data-testid="text-subtitle">
+                {subtitleText}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="absolute bottom-0 left-0 right-0 z-20">
+        <div className="bg-gradient-to-t from-black/80 via-black/50 to-transparent pt-8 pb-6 px-4">
+          <div className="max-w-xl mx-auto space-y-3">
+            {showTextInput && (
+              <div className="flex items-center gap-2">
+                <Input
+                  placeholder="Type your message..."
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendTextMessage()}
+                  disabled={isProcessing}
+                  className="flex-1 bg-white/10 border-white/20 text-white placeholder:text-white/40 h-11"
+                  data-testid="input-message"
+                />
+                <Button
+                  size="icon"
+                  onClick={sendTextMessage}
+                  disabled={!inputText.trim() || isProcessing}
+                  className="h-11 w-11 shrink-0"
+                  data-testid="button-send"
+                >
+                  {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                </Button>
+              </div>
+            )}
+
+            <div className="flex items-center justify-center gap-3">
+              <Button
+                size="icon"
+                variant={isListening ? "default" : "secondary"}
+                className={`h-14 w-14 rounded-full ${isListening ? "bg-primary ring-4 ring-primary/30" : "bg-white/10 hover:bg-white/20 border border-white/20"}`}
+                onClick={toggleMicrophone}
+                disabled={!avatarReady}
+                data-testid="button-microphone"
+              >
+                {isListening ? <Mic className="w-6 h-6 text-white" /> : <MicOff className="w-6 h-6 text-white" />}
+              </Button>
+
+              <Button
+                size="icon"
+                variant="secondary"
+                className="h-10 w-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/20"
+                onClick={() => setShowTextInput(!showTextInput)}
+                data-testid="button-toggle-keyboard"
+              >
+                <Keyboard className="w-4 h-4 text-white" />
+              </Button>
+
+              <Button
+                size="icon"
+                variant="secondary"
+                className="h-10 w-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/20"
+                onClick={() => setShowActions(!showActions)}
+                data-testid="button-actions"
+              >
+                <FileText className="w-4 h-4 text-white" />
+              </Button>
+
+              <Button
+                size="icon"
+                variant="destructive"
+                className="h-10 w-10 rounded-full"
+                onClick={async () => {
+                  if (avatarRef.current) await avatarRef.current.stopAvatar().catch(() => {});
+                  setSessionData(null);
+                  setAvatarReady(false);
+                  setIsListening(false);
+                  setShowTextInput(false);
+                  setCurrentAgent("admin");
+                  setMechanicType(null);
+                  conversationRef.current = [];
+                }}
+                data-testid="button-end-session"
+              >
+                <Phone className="w-4 h-4 text-white rotate-[135deg]" />
+              </Button>
+            </div>
+
+            {isListening && (
+              <p className="text-center text-white/50 text-xs">
+                Listening... speak naturally
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {showActions && (
+        <div className="absolute bottom-36 right-4 z-30 bg-card/95 backdrop-blur-sm rounded-xl border border-card-border shadow-xl p-3 w-56 space-y-2">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</span>
+            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setShowActions(false)}>
+              <X className="w-3 h-3" />
+            </Button>
+          </div>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/*,.pdf"
+            onChange={handleFileUpload}
+            className="hidden"
+            data-testid="input-file-upload"
+          />
+
+          <Button
+            variant="secondary"
+            size="sm"
+            className="w-full justify-start"
+            onClick={() => fileInputRef.current?.click()}
+            data-testid="button-upload"
+          >
+            <Upload className="w-3.5 h-3.5 mr-2" />
+            Upload Photos / PDFs
+          </Button>
+
+          <Button
+            variant="secondary"
+            size="sm"
+            className="w-full justify-start"
+            onClick={generateReport}
+            disabled={isGeneratingReport}
+            data-testid="button-generate-report"
+          >
+            {isGeneratingReport ? (
+              <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+            ) : (
+              <FileText className="w-3.5 h-3.5 mr-2" />
+            )}
+            {sessionData.visitType === "pro" && sessionData.paymentStatus !== "paid"
+              ? "Get Pro Report ($149)"
+              : "Generate Report"}
+          </Button>
+
+          {report && (
+            <>
+              <Button variant="secondary" size="sm" className="w-full justify-start" onClick={() => setShowReport(true)} data-testid="button-view-report">
+                <Download className="w-3.5 h-3.5 mr-2" />
+                View Report
+              </Button>
+              <Button variant="secondary" size="sm" className="w-full justify-start" onClick={copyShareLink} data-testid="button-share">
+                <Share2 className="w-3.5 h-3.5 mr-2" />
+                Share Report
+              </Button>
+            </>
+          )}
+        </div>
+      )}
+
       <Dialog open={showPaywall} onOpenChange={setShowPaywall}>
-        <DialogContent data-testid="modal-paywall">
+        <DialogContent data-testid="modal-paywall" className="bg-card">
           <DialogHeader>
             <DialogTitle>Pro Diagnostic Report</DialogTitle>
-            <DialogDescription>
-              Unlock the full diagnostic package for your equipment
-            </DialogDescription>
+            <DialogDescription>Unlock the full diagnostic package</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="bg-card rounded-md border border-card-border p-4 space-y-3">
+            <div className="bg-muted/50 rounded-md p-4 space-y-2">
               <h4 className="text-sm font-semibold">What's included:</h4>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                {[
-                  "Root-cause analysis matrix",
-                  "Step-by-step diagnostic tree",
-                  "Required tools list",
-                  "Safety checklist",
-                  "Labor estimate ranges",
-                  "Complete parts list with alternatives",
-                  "Technical SVG diagram",
-                  "Downloadable PDF report",
-                  "Shareable report link",
-                ].map((item) => (
+              <ul className="space-y-1.5 text-sm text-muted-foreground">
+                {["Root-cause analysis matrix", "Step-by-step diagnostic tree", "Required tools list",
+                  "Safety checklist", "Labor estimate ranges", "Parts list with alternatives",
+                  "Technical SVG diagram", "Downloadable PDF report", "Shareable report link"].map((item) => (
                   <li key={item} className="flex items-center gap-2">
                     <ChevronRight className="w-3 h-3 text-primary shrink-0" />
                     {item}
@@ -1061,7 +956,7 @@ export default function LiveDesk() {
       </Dialog>
 
       <Dialog open={showReport} onOpenChange={setShowReport}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto" data-testid="modal-report">
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto bg-card" data-testid="modal-report">
           <DialogHeader>
             <DialogTitle>
               {report?.reportType === "pro" ? "Pro Diagnostic Report" : "Quick Advice Report"}
@@ -1070,147 +965,130 @@ export default function LiveDesk() {
               Generated for {sessionData.equipmentType || "your equipment"}
             </DialogDescription>
           </DialogHeader>
-          {report && (
-            <div className="space-y-4">
-              {report.content && typeof report.content === "object" && (
-                <div className="space-y-3 text-sm">
-                  {(report.content as any).problemSummary && (
-                    <div>
-                      <h4 className="font-semibold mb-1">Problem Summary</h4>
-                      <p className="text-muted-foreground">{(report.content as any).problemSummary}</p>
-                    </div>
-                  )}
-
-                  {(report.content as any).likelyCauses && (
-                    <div>
-                      <h4 className="font-semibold mb-1">Likely Causes</h4>
-                      <div className="space-y-1">
-                        {((report.content as any).likelyCauses as any[]).map((cause: any, i: number) => (
-                          <div key={i} className="flex items-center gap-2">
-                            <Badge variant="secondary" className="text-xs">{cause.confidence || "Medium"}</Badge>
-                            <span className="text-muted-foreground">{cause.cause}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {(report.content as any).rootCauseMatrix && (
-                    <div>
-                      <h4 className="font-semibold mb-1">Root Cause Matrix</h4>
-                      <div className="space-y-1">
-                        {((report.content as any).rootCauseMatrix as any[]).map((item: any, i: number) => (
-                          <div key={i} className="bg-card/50 border border-card-border rounded-md p-2">
-                            <div className="flex items-center gap-2 mb-1">
-                              <Badge variant="secondary" className="text-xs">{item.probability}</Badge>
-                              <span className="font-medium text-xs">{item.cause}</span>
-                            </div>
-                            {item.evidence && <p className="text-xs text-muted-foreground">{item.evidence}</p>}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {(report.content as any).safeChecks && (
-                    <div>
-                      <h4 className="font-semibold mb-1">Safe Checks</h4>
-                      <ul className="space-y-1">
-                        {((report.content as any).safeChecks as string[]).map((check: string, i: number) => (
-                          <li key={i} className="flex items-start gap-2 text-muted-foreground">
-                            <ChevronRight className="w-3 h-3 shrink-0 mt-1 text-primary" />
-                            {check}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {(report.content as any).diagnosticTree && (
-                    <div>
-                      <h4 className="font-semibold mb-1">Diagnostic Steps</h4>
-                      <div className="space-y-1">
-                        {((report.content as any).diagnosticTree as any[]).map((step: any, i: number) => (
-                          <div key={i} className="flex items-start gap-2 text-muted-foreground text-xs">
-                            <span className="font-mono text-primary font-semibold">{step.step}.</span>
-                            <div>
-                              <p>{step.action}</p>
-                              {step.expectedResult && <p className="text-xs opacity-75">Expected: {step.expectedResult}</p>}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {(report.content as any).partsList && (
-                    <div>
-                      <h4 className="font-semibold mb-1">Parts List</h4>
-                      <div className="space-y-1">
-                        {((report.content as any).partsList as any[]).map((part: any, i: number) => (
-                          <div key={i} className="flex items-center justify-between text-xs bg-card/50 border border-card-border rounded-md px-2 py-1.5">
-                            <span>{part.partName}</span>
-                            <div className="flex items-center gap-2">
-                              {part.partNumber && <span className="text-muted-foreground font-mono">{part.partNumber}</span>}
-                              <Badge variant={part.verified ? "default" : "secondary"} className="text-xs">
-                                {part.verified ? "Verified" : "Verify"}
-                              </Badge>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {(report.content as any).safetyWarnings && (
-                    <div className="bg-destructive/5 border border-destructive/20 rounded-md p-3">
-                      <h4 className="font-semibold mb-1 flex items-center gap-1.5">
-                        <AlertTriangle className="w-3.5 h-3.5 text-destructive" />
-                        Safety Warnings
-                      </h4>
-                      <ul className="space-y-1 text-xs text-muted-foreground">
-                        {((report.content as any).safetyWarnings as string[]).map((warning: string, i: number) => (
-                          <li key={i}>- {warning}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {(report.content as any).whenToCallTech && (
-                    <div>
-                      <h4 className="font-semibold mb-1">When to Call a Technician</h4>
-                      <p className="text-muted-foreground">{(report.content as any).whenToCallTech}</p>
-                    </div>
-                  )}
-
-                  {(report.content as any).disclaimer && (
-                    <p className="text-xs text-muted-foreground italic border-t border-border/50 pt-2">
-                      {(report.content as any).disclaimer}
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {report.svgDiagram && (
-                <div>
-                  <h4 className="text-sm font-semibold mb-2">Technical Diagram</h4>
-                  <div
-                    className="bg-card rounded-md border border-card-border p-2 overflow-x-auto"
-                    dangerouslySetInnerHTML={{ __html: report.svgDiagram }}
-                  />
-                </div>
-              )}
-
-              <div className="flex items-center gap-2 pt-2 border-t border-border/50">
-                <Button variant="secondary" size="sm" onClick={copyShareLink} data-testid="button-share-report">
-                  <Share2 className="w-3.5 h-3.5 mr-1.5" />
-                  Share Report
-                </Button>
-              </div>
+          {report?.content && <ReportContent content={report.content} />}
+          {report?.svgDiagram && (
+            <div>
+              <h4 className="text-sm font-semibold mb-2">Technical Diagram</h4>
+              <div className="bg-muted/50 rounded-md border border-card-border p-2 overflow-x-auto"
+                dangerouslySetInnerHTML={{ __html: report.svgDiagram }} />
             </div>
           )}
+          <div className="flex items-center gap-2 pt-2 border-t border-border/50">
+            <Button variant="secondary" size="sm" onClick={copyShareLink} data-testid="button-share-report">
+              <Share2 className="w-3.5 h-3.5 mr-1.5" />
+              Share Report
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function ReportContent({ content }: { content: any }) {
+  return (
+    <div className="space-y-3 text-sm">
+      {content.problemSummary && (
+        <div>
+          <h4 className="font-semibold mb-1">Problem Summary</h4>
+          <p className="text-muted-foreground">{content.problemSummary}</p>
+        </div>
+      )}
+      {content.likelyCauses && (
+        <div>
+          <h4 className="font-semibold mb-1">Likely Causes</h4>
+          <div className="space-y-1">
+            {(content.likelyCauses as any[]).map((cause: any, i: number) => (
+              <div key={i} className="flex items-center gap-2">
+                <Badge variant="secondary" className="text-xs">{cause.confidence || "Medium"}</Badge>
+                <span className="text-muted-foreground">{cause.cause}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {content.rootCauseMatrix && (
+        <div>
+          <h4 className="font-semibold mb-1">Root Cause Matrix</h4>
+          <div className="space-y-1">
+            {(content.rootCauseMatrix as any[]).map((item: any, i: number) => (
+              <div key={i} className="bg-card/50 border border-card-border rounded-md p-2">
+                <div className="flex items-center gap-2 mb-1">
+                  <Badge variant="secondary" className="text-xs">{item.probability}</Badge>
+                  <span className="font-medium text-xs">{item.cause}</span>
+                </div>
+                {item.evidence && <p className="text-xs text-muted-foreground">{item.evidence}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {content.safeChecks && (
+        <div>
+          <h4 className="font-semibold mb-1">Safe Checks</h4>
+          <ul className="space-y-1">
+            {(content.safeChecks as string[]).map((check: string, i: number) => (
+              <li key={i} className="flex items-start gap-2 text-muted-foreground">
+                <ChevronRight className="w-3 h-3 shrink-0 mt-1 text-primary" />
+                {check}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {content.diagnosticTree && (
+        <div>
+          <h4 className="font-semibold mb-1">Diagnostic Steps</h4>
+          <div className="space-y-1">
+            {(content.diagnosticTree as any[]).map((step: any, i: number) => (
+              <div key={i} className="flex items-start gap-2 text-muted-foreground text-xs">
+                <span className="font-mono text-primary font-semibold">{step.step}.</span>
+                <div>
+                  <p>{step.action}</p>
+                  {step.expectedResult && <p className="opacity-75">Expected: {step.expectedResult}</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {content.partsList && (
+        <div>
+          <h4 className="font-semibold mb-1">Parts List</h4>
+          <div className="space-y-1">
+            {(content.partsList as any[]).map((part: any, i: number) => (
+              <div key={i} className="flex items-center justify-between text-xs bg-card/50 border border-card-border rounded-md px-2 py-1.5">
+                <span>{part.partName}</span>
+                {part.partNumber && <span className="text-muted-foreground font-mono">{part.partNumber}</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {content.safetyWarnings && (
+        <div className="bg-destructive/5 border border-destructive/20 rounded-md p-3">
+          <h4 className="font-semibold mb-1 flex items-center gap-1.5">
+            <AlertTriangle className="w-3.5 h-3.5 text-destructive" />
+            Safety Warnings
+          </h4>
+          <ul className="space-y-1 text-xs text-muted-foreground">
+            {(content.safetyWarnings as string[]).map((w: string, i: number) => (
+              <li key={i}>- {w}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {content.whenToCallTech && (
+        <div>
+          <h4 className="font-semibold mb-1">When to Call a Technician</h4>
+          <p className="text-muted-foreground">{content.whenToCallTech}</p>
+        </div>
+      )}
+      {content.disclaimer && (
+        <p className="text-xs text-muted-foreground italic border-t border-border/50 pt-2">
+          {content.disclaimer}
+        </p>
+      )}
     </div>
   );
 }
