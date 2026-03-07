@@ -81,6 +81,8 @@ export default function LiveDesk() {
   const avatarSessionIdRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const conversationRef = useRef<Array<{ role: string; content: string }>>([]);
+  const pendingHandoffRef = useRef<any>(null);
+  const speakEndedResolveRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -139,6 +141,20 @@ export default function LiveDesk() {
       if (preferred) utterance.voice = preferred;
       window.speechSynthesis.speak(utterance);
     }
+  }, []);
+
+  const waitForSpeakEnd = useCallback((timeoutMs: number = 30000): Promise<void> => {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        speakEndedResolveRef.current = null;
+        resolve();
+      }, timeoutMs);
+
+      speakEndedResolveRef.current = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+    });
   }, []);
 
   const sendAvatarSpeakCommand = useCallback((text: string) => {
@@ -252,6 +268,11 @@ export default function LiveDesk() {
         } else if (eventType === "avatar.speak_ended" || eventType === "avatar_stop_talking") {
           setIsTalking(false);
           setTimeout(() => setSubtitleText(""), 3000);
+
+          if (speakEndedResolveRef.current) {
+            speakEndedResolveRef.current();
+            speakEndedResolveRef.current = null;
+          }
         } else if (eventType === "avatar.transcription") {
           if (message.text) {
             setSubtitleText(message.text);
@@ -376,6 +397,11 @@ export default function LiveDesk() {
         setSubtitleText(speakText);
         conversationRef.current.push({ role: "assistant", content: fullText });
         sendAvatarSpeakCommand(speakText);
+
+        if (handoffData) {
+          await waitForSpeakEnd(30000);
+          await new Promise(r => setTimeout(r, 1500));
+        }
       }
 
       if (handoffData) {
@@ -396,11 +422,12 @@ export default function LiveDesk() {
     setMechanicType(mechType);
     const mechanic = MECHANIC_INFO[mechType];
 
-    const transferMsg = `Transferring you to ${mechanic?.name || "our specialist"}. One moment please...`;
+    const transferMsg = `I'm now transferring you to ${mechanic?.name || "our specialist"}, our ${mechanic?.title || "diagnostic specialist"}. They'll take great care of you. One moment please.`;
     setSubtitleText(transferMsg);
-    sendAvatarSpeakCommand(`I'm now transferring you to ${mechanic?.name || "our specialist"}, our ${mechanic?.title || "diagnostic specialist"}. They'll take great care of you. One moment please.`);
+    sendAvatarSpeakCommand(transferMsg);
 
-    await new Promise(r => setTimeout(r, 5000));
+    await waitForSpeakEnd(20000);
+    await new Promise(r => setTimeout(r, 1500));
 
     try {
       cleanupAvatarSession();
