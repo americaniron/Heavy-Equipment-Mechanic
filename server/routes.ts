@@ -1,16 +1,494 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
+import crypto from "crypto";
 import { storage } from "./storage";
+import {
+  streamAdminResponse, streamMechanicResponse,
+  parseIntakeJson, stripIntakeJson, getMechanicName,
+  generateQuickAdviceReport, generateProReport,
+  type ConversationMessage,
+} from "./services/ai-engine";
+import {
+  createAvatarSession, sendSdpAnswer, sendIceCandidate,
+  sendSpeak, closeAvatarSession,
+} from "./services/avatar";
+import { getUncachableStripeClient, getStripePublishableKey } from "./services/stripe-client";
+import { speechToText, ensureCompatibleFormat } from "./replit_integrations/audio/client";
+
+const uploadDir = path.join(process.cwd(), "uploads");
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const sessionTokens = new Map<number, string>();
+
+function generateSessionToken(sessionId: number): string {
+  const token = crypto.randomBytes(32).toString("hex");
+  sessionTokens.set(sessionId, token);
+  return token;
+}
+
+function validateSessionAccess(req: any, sessionId: number): boolean {
+  const token = req.headers["x-session-token"] || req.query.token;
+  const stored = sessionTokens.get(sessionId);
+  return !!(token && stored && token === stored);
+}
+
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, uploadDir),
+    filename: (_req, file, cb) => {
+      const ext = path.extname(file.originalname);
+      cb(null, `${Date.now()}-${crypto.randomBytes(4).toString("hex")}${ext}`);
+    },
+  }),
+  limits: { fileSize: 20 * 1024 * 1024 },
+});
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // put application routes here
-  // prefix all routes with /api
 
-  // use storage to perform CRUD operations on the storage interface
-  // e.g. storage.insertUser(user) or storage.getUserByUsername(username)
+  app.post("/api/sessions", async (req, res) => {
+    try {
+      const session = await storage.createSession({
+        status: "intake",
+        tier: "free",
+        consentGiven: req.body.consentGiven || false,
+        agentProvider: req.body.provider || "heygen",
+      });
+      const accessToken = generateSessionToken(session.id);
+      res.json({ ...session, accessToken });
+    } catch (error: any) {
+      console.error("Create session error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/sessions/:id", async (req, res) => {
+    try {
+      const sessionId = parseInt(req.params.id);
+      if (!validateSessionAccess(req, sessionId)) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      const session = await storage.getSession(sessionId);
+      if (!session) return res.status(404).json({ error: "Session not found" });
+      const messages = await storage.getMessages(session.id);
+      const files = await storage.getFiles(session.id);
+      res.json({ ...session, messages, files });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/sessions/:id/message", async (req, res) => {
+    try {
+      const sessionId = parseInt(req.params.id);
+      const session = await storage.getSession(sessionId);
+      if (!session) return res.status(404).json({ error: "Session not found" });
+
+      const { content, useVoice, audio } = req.body;
+
+      let userText = content;
+
+      if (useVoice && audio) {
+        const rawBuffer = Buffer.from(audio, "base64");
+        const { buffer: audioBuffer, format } = await ensureCompatibleFormat(rawBuffer);
+        userText = await speechToText(audioBuffer, format);
+      }
+
+      if (!userText || !userText.trim()) {
+        return res.status(400).json({ error: "Message content is required" });
+      }
+
+      const agentType = session.status === "intake" || session.status === "assigned"
+        ? "admin"
+        : "mechanic";
+
+      await storage.createMessage({
+        sessionId,
+        role: "user",
+        content: userText,
+        agentType,
+      });
+
+      const existingMessages = await storage.getMessages(sessionId);
+      const chatHistory: ConversationMessage[] = existingMessages.map((m) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content,
+      }));
+
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+
+      let fullResponse = "";
+
+      if (agentType === "admin") {
+        for await (const chunk of streamAdminResponse(chatHistory)) {
+          fullResponse += chunk;
+          res.write(`data: ${JSON.stringify({ type: "text", content: chunk })}\n\n`);
+        }
+
+        const intakeData = parseIntakeJson(fullResponse);
+        if (intakeData) {
+          const cleanResponse = stripIntakeJson(fullResponse);
+          fullResponse = cleanResponse;
+
+          const updateData: Record<string, any> = {};
+          if (intakeData.customerName) updateData.customerName = intakeData.customerName;
+          if (intakeData.customerEmail) updateData.customerEmail = intakeData.customerEmail;
+          if (intakeData.customerPhone) updateData.customerPhone = intakeData.customerPhone;
+          if (intakeData.company) updateData.company = intakeData.company;
+          if (intakeData.equipmentType) updateData.equipmentType = intakeData.equipmentType;
+          if (intakeData.make) updateData.make = intakeData.make;
+          if (intakeData.model) updateData.model = intakeData.model;
+          if (intakeData.year) updateData.year = intakeData.year;
+          if (intakeData.serialNumber) updateData.serialNumber = intakeData.serialNumber;
+          if (intakeData.serialPrefix) updateData.serialPrefix = intakeData.serialPrefix;
+          if (intakeData.smuHours) updateData.smuHours = intakeData.smuHours;
+          if (intakeData.problemSummary) updateData.problemSummary = intakeData.problemSummary;
+          if (intakeData.faultCodes) updateData.faultCodes = intakeData.faultCodes;
+          if (intakeData.issueStarted) updateData.issueStarted = intakeData.issueStarted;
+          if (intakeData.location) updateData.location = intakeData.location;
+          if (intakeData.canSafelyShutdown !== undefined) updateData.canSafelyShutdown = intakeData.canSafelyShutdown;
+          if (intakeData.visitType) updateData.visitType = intakeData.visitType as string;
+          if (intakeData.mechanicType) updateData.mechanicType = intakeData.mechanicType as string;
+          updateData.intakeJson = intakeData;
+
+          await storage.updateSession(sessionId, updateData);
+
+          if (intakeData.readyForHandoff) {
+            res.write(`data: ${JSON.stringify({
+              type: "handoff",
+              mechanicType: intakeData.mechanicType,
+              mechanicName: getMechanicName(intakeData.mechanicType as string),
+              visitType: intakeData.visitType,
+              intakeData,
+            })}\n\n`);
+          }
+        }
+      } else {
+        const intakeJson = session.intakeJson as Record<string, unknown> | null;
+        for await (const chunk of streamMechanicResponse(
+          session.mechanicType || "heavy_equipment",
+          chatHistory,
+          intakeJson
+        )) {
+          fullResponse += chunk;
+          res.write(`data: ${JSON.stringify({ type: "text", content: chunk })}\n\n`);
+        }
+      }
+
+      await storage.createMessage({
+        sessionId,
+        role: "assistant",
+        content: fullResponse,
+        agentType,
+      });
+
+      res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
+      res.end();
+    } catch (error: any) {
+      console.error("Message error:", error);
+      if (res.headersSent) {
+        res.write(`data: ${JSON.stringify({ type: "error", error: error.message })}\n\n`);
+        res.end();
+      } else {
+        res.status(500).json({ error: error.message });
+      }
+    }
+  });
+
+  app.post("/api/sessions/:id/handoff", async (req, res) => {
+    try {
+      const sessionId = parseInt(req.params.id);
+      const session = await storage.getSession(sessionId);
+      if (!session) return res.status(404).json({ error: "Session not found" });
+
+      await storage.updateSession(sessionId, {
+        status: "diagnosing",
+        tier: session.visitType === "pro" ? "pro" : "free",
+      });
+
+      const mechanicName = getMechanicName(session.mechanicType || "heavy_equipment");
+
+      await storage.createMessage({
+        sessionId,
+        role: "assistant",
+        content: `Hello! I'm ${mechanicName}. I've reviewed your intake information and I'm ready to help diagnose the issue with your ${session.equipmentType || "equipment"}. Let's get started.`,
+        agentType: "mechanic",
+      });
+
+      res.json({
+        success: true,
+        mechanicName,
+        mechanicType: session.mechanicType,
+        visitType: session.visitType,
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/sessions/:id/upload", upload.array("files", 10), async (req, res) => {
+    try {
+      const sessionId = parseInt(req.params.id);
+      if (!validateSessionAccess(req, sessionId)) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      const files = req.files as Express.Multer.File[];
+      if (!files || files.length === 0) {
+        return res.status(400).json({ error: "No files uploaded" });
+      }
+
+      const savedFiles = [];
+      for (const file of files) {
+        const saved = await storage.createFile({
+          sessionId,
+          fileName: file.originalname,
+          fileType: file.mimetype,
+          filePath: file.path,
+        });
+        savedFiles.push(saved);
+      }
+
+      res.json(savedFiles);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/sessions/:id/files/:fileId", async (req, res) => {
+    try {
+      const sessionId = parseInt(req.params.id);
+      if (!validateSessionAccess(req, sessionId)) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      const files = await storage.getFiles(sessionId);
+      const file = files.find(f => f.id === parseInt(req.params.fileId));
+      if (!file) return res.status(404).json({ error: "File not found" });
+      const filePath = path.resolve(file.filePath);
+      if (!filePath.startsWith(path.resolve(uploadDir))) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      res.sendFile(filePath);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/sessions/:id/report", async (req, res) => {
+    try {
+      const sessionId = parseInt(req.params.id);
+      const session = await storage.getSession(sessionId);
+      if (!session) return res.status(404).json({ error: "Session not found" });
+
+      const messages = await storage.getMessages(sessionId);
+      const chatHistory: ConversationMessage[] = messages.map((m) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content,
+      }));
+
+      const intakeJson = session.intakeJson as Record<string, unknown> | null;
+      const reportType = session.visitType === "pro" ? "pro" : "quick_advice";
+
+      if (reportType === "pro" && session.paymentStatus !== "paid") {
+        return res.status(402).json({
+          error: "Payment required for Pro report",
+          requiresPayment: true,
+        });
+      }
+
+      let reportContent: Record<string, unknown>;
+      let svgDiagram = "";
+
+      if (reportType === "pro") {
+        const result = await generateProReport(chatHistory, intakeJson);
+        reportContent = result.report;
+        svgDiagram = result.svg;
+      } else {
+        reportContent = await generateQuickAdviceReport(chatHistory, intakeJson);
+      }
+
+      const shareToken = crypto.randomBytes(16).toString("hex");
+
+      const report = await storage.createReport({
+        sessionId,
+        reportType,
+        content: reportContent,
+        svgDiagram,
+        shareToken,
+      });
+
+      await storage.updateSession(sessionId, {
+        shareToken,
+        status: "completed",
+      });
+
+      res.json(report);
+    } catch (error: any) {
+      console.error("Report generation error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/sessions/:id/report", async (req, res) => {
+    try {
+      const sessionId = parseInt(req.params.id);
+      if (!validateSessionAccess(req, sessionId)) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      const report = await storage.getReport(sessionId);
+      if (!report) return res.status(404).json({ error: "Report not found" });
+      res.json(report);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/shared/:token", async (req, res) => {
+    try {
+      const report = await storage.getReportByShareToken(req.params.token);
+      if (!report) return res.status(404).json({ error: "Report not found" });
+
+      const session = await storage.getSession(report.sessionId);
+      res.json({ report, session });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/sessions/:id/checkout", async (req, res) => {
+    try {
+      const sessionId = parseInt(req.params.id);
+      const session = await storage.getSession(sessionId);
+      if (!session) return res.status(404).json({ error: "Session not found" });
+
+      const stripe = await getUncachableStripeClient();
+      const host = req.get("host");
+      const protocol = req.protocol;
+
+      const checkoutSession = await stripe.checkout.sessions.create({
+        payment_method_types: ["card"],
+        line_items: [{
+          price_data: {
+            currency: "usd",
+            product_data: {
+              name: "Pro Diagnostic Report",
+              description: `Comprehensive diagnostic report for ${session.equipmentType || "equipment"} - ${session.make || ""} ${session.model || ""}`,
+            },
+            unit_amount: 14900,
+          },
+          quantity: 1,
+        }],
+        mode: "payment",
+        success_url: `${protocol}://${host}/live-desk?session=${sessionId}&payment=success`,
+        cancel_url: `${protocol}://${host}/live-desk?session=${sessionId}&payment=cancel`,
+        metadata: {
+          sessionId: sessionId.toString(),
+        },
+      });
+
+      await storage.updateSession(sessionId, {
+        stripeSessionId: checkoutSession.id,
+        paymentStatus: "pending",
+      });
+
+      res.json({ url: checkoutSession.url });
+    } catch (error: any) {
+      console.error("Checkout error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/sessions/:id/payment-status", async (req, res) => {
+    try {
+      const sessionId = parseInt(req.params.id);
+      const session = await storage.getSession(sessionId);
+      if (!session) return res.status(404).json({ error: "Session not found" });
+
+      if (session.stripeSessionId && session.paymentStatus === "pending") {
+        try {
+          const stripe = await getUncachableStripeClient();
+          const checkoutSession = await stripe.checkout.sessions.retrieve(session.stripeSessionId);
+          if (checkoutSession.payment_status === "paid") {
+            await storage.updateSession(sessionId, { paymentStatus: "paid" });
+            return res.json({ status: "paid" });
+          }
+        } catch (stripeErr) {
+          console.error("Stripe check error:", stripeErr);
+        }
+      }
+
+      res.json({ status: session.paymentStatus || "none" });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/stripe/publishable-key", async (_req, res) => {
+    try {
+      const key = await getStripePublishableKey();
+      res.json({ key });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/avatar/session", async (req, res) => {
+    try {
+      const { provider = "heygen", agentType = "admin" } = req.body;
+      const session = await createAvatarSession(provider, agentType);
+      res.json(session);
+    } catch (error: any) {
+      console.error("Avatar session error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/avatar/sdp", async (req, res) => {
+    try {
+      const { sessionId, sdp } = req.body;
+      await sendSdpAnswer(sessionId, sdp);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/avatar/ice", async (req, res) => {
+    try {
+      const { sessionId, candidate } = req.body;
+      await sendIceCandidate(sessionId, candidate);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/avatar/speak", async (req, res) => {
+    try {
+      const { sessionId, text } = req.body;
+      await sendSpeak(sessionId, text);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/avatar/session/:id", async (req, res) => {
+    try {
+      await closeAvatarSession(req.params.id);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
 
   return httpServer;
 }
