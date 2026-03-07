@@ -11,10 +11,7 @@ import {
   generateQuickAdviceReport, generateProReport,
   type ConversationMessage,
 } from "./services/ai-engine";
-import {
-  createAvatarSession, sendSdpAnswer, sendIceCandidate,
-  sendSpeak, closeAvatarSession,
-} from "./services/avatar";
+import { createStreamingToken } from "./services/avatar";
 import { getUncachableStripeClient, getStripePublishableKey } from "./services/stripe-client";
 import { speechToText, ensureCompatibleFormat } from "./replit_integrations/audio/client";
 
@@ -440,52 +437,12 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/avatar/session", async (req, res) => {
+  app.get("/api/avatar/token", async (_req, res) => {
     try {
-      const { provider = "heygen", agentType = "admin" } = req.body;
-      const session = await createAvatarSession(provider, agentType);
-      res.json(session);
+      const token = await createStreamingToken();
+      res.json({ token });
     } catch (error: any) {
-      console.error("Avatar session error:", error);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.post("/api/avatar/sdp", async (req, res) => {
-    try {
-      const { sessionId, sdp } = req.body;
-      await sendSdpAnswer(sessionId, sdp);
-      res.json({ success: true });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.post("/api/avatar/ice", async (req, res) => {
-    try {
-      const { sessionId, candidate } = req.body;
-      await sendIceCandidate(sessionId, candidate);
-      res.json({ success: true });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.post("/api/avatar/speak", async (req, res) => {
-    try {
-      const { sessionId, text } = req.body;
-      await sendSpeak(sessionId, text);
-      res.json({ success: true });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.delete("/api/avatar/session/:id", async (req, res) => {
-    try {
-      await closeAvatarSession(req.params.id);
-      res.json({ success: true });
-    } catch (error: any) {
+      console.error("Avatar token error:", error);
       res.status(500).json({ error: error.message });
     }
   });
