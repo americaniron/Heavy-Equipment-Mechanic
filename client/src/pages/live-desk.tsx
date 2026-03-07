@@ -19,6 +19,7 @@ import {
   Loader2, Wrench, Zap, Anchor, Droplets, Cpu, User,
   ChevronRight, X, Download, Share2, AlertTriangle, Volume2, Keyboard
 } from "lucide-react";
+import shopBackgroundPath from "@assets/shop_background.png";
 
 interface SessionData {
   id: number;
@@ -633,13 +634,23 @@ export default function LiveDesk() {
       <title>Live Session | American Iron US</title>
 
       <div
+        className="absolute inset-0 w-full h-full bg-cover bg-center bg-no-repeat"
+        style={{ backgroundImage: `url(${shopBackgroundPath})` }}
+        data-testid="shop-background"
+      />
+
+      <div
         ref={videoContainerRef}
-        className="absolute inset-0 w-full h-full bg-black"
+        className="absolute inset-0 w-full h-full"
+        style={{ zIndex: 1 }}
         data-testid="video-avatar-container"
       />
 
       {!avatarReady && (
-        <div className="absolute inset-0 bg-gradient-to-b from-[#0f1829] via-[#0a1020] to-[#060a14] flex items-center justify-center z-10">
+        <div
+          className="absolute inset-0 flex items-center justify-center z-10 bg-cover bg-center bg-no-repeat"
+          style={{ backgroundImage: `linear-gradient(to bottom, rgba(10,14,23,0.7), rgba(6,10,20,0.85)), url(${shopBackgroundPath})` }}
+        >
           <div className="text-center space-y-4">
             <div className="w-24 h-24 rounded-full bg-primary/10 border-2 border-primary/30 flex items-center justify-center mx-auto animate-pulse">
               {currentAgent === "admin" ? (
