@@ -8,50 +8,58 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
 - **Backend**: Express.js with TypeScript
 - **Database**: PostgreSQL with Drizzle ORM
 - **AI Engine**: OpenAI (GPT-4o) via Replit AI Integrations
-- **Video Avatars**: HeyGen Interactive Avatar SDK (`@heygen/streaming-avatar`) with browser TTS fallback
+- **Video Avatars**: LiveAvatar (HeyGen) FULL mode API with LiveKit transport + browser TTS fallback
 - **Billing**: Stripe (via Replit connector)
-- **Voice**: HeyGen SDK voice chat + browser SpeechSynthesis fallback
+- **Voice**: LiveKit audio tracks via LiveAvatar + browser SpeechSynthesis fallback
 
 ## Key Files
 - `shared/schema.ts` - Database schema (sessions, messages, files, reports)
 - `server/routes.ts` - All API endpoints with session token auth
 - `server/services/ai-engine.ts` - OpenAI conversation engine (Admin + 5 Mechanic system prompts)
-- `server/services/avatar.ts` - HeyGen streaming token creation
+- `server/services/avatar.ts` - LiveAvatar API integration (session creation, start, stop)
 - `server/services/stripe-client.ts` - Stripe client via Replit connector
 - `server/storage.ts` - Database CRUD operations
 - `server/db.ts` - Drizzle database connection
-- `client/src/pages/live-desk.tsx` - Full-screen video-first experience
+- `client/src/pages/live-desk.tsx` - Full-screen video-first experience with LiveKit client
 - `client/src/App.tsx` - Router (/ and /live-desk both go to LiveDesk)
+
+## LiveAvatar Integration
+- **API**: `https://api.liveavatar.com` using HEYGEN_API_KEY
+- **Mode**: FULL mode (server-side LLM, avatar speaks text sent via LiveKit data channel)
+- **Flow**: Server creates session token → starts session → returns LiveKit URL + client token → client connects to LiveKit Room → subscribes to video/audio tracks → sends speak commands on `agent-control` topic
+- **Events**: `avatar.speak_text` command → `avatar.speak_started`/`avatar.speak_ended` server events → `avatar.transcription` for subtitle text
+- **Avatars**: Katya (admin), Anthony (heavy equip), Alessandra (power gen), Pedro (marine), Graham (hydraulics), Anastasia (electrical)
+- **Fallback**: Browser SpeechSynthesis when LiveKit room is disconnected
 
 ## UI Design
 - **Landing**: Dark cinematic page with "Walk In" button and consent checkbox
 - **Active Session**: Full-screen video of avatar, floating controls at bottom
-  - Large mic button (push-to-talk or always-on via HeyGen voice chat)
+  - Large mic button for voice input via LiveKit
   - Keyboard toggle for text input
   - Actions menu (upload files, generate report, share)
   - End session (hang up) button
 - **Subtitles**: Avatar speech appears as subtitle overlay on video
 - **No chat bubbles**: Responses are spoken by avatar + shown as subtitles
-- **Fallback**: When HeyGen unavailable, shows animated avatar placeholder with browser TTS
 
 ## Environment Variables
 - `DATABASE_URL` - PostgreSQL connection
 - `AI_INTEGRATIONS_OPENAI_API_KEY` / `AI_INTEGRATIONS_OPENAI_BASE_URL` - OpenAI via Replit
-- `HEYGEN_API_KEY` - HeyGen Interactive Avatar API (used for streaming token)
+- `HEYGEN_API_KEY` - LiveAvatar API key (from app.liveavatar.com)
 - `DID_API_KEY` - D-ID API (legacy, kept for reference)
 - Stripe credentials via Replit connector
 
 ## Features
-1. **Full-Screen Video Avatars** - HeyGen StreamingAvatar SDK with LiveKit transport
+1. **Full-Screen Video Avatars** - LiveAvatar FULL mode with LiveKit video/audio streaming
 2. **Registration Admin** - AI agent that collects intake info, classifies visit, assigns specialist
 3. **5 Specialist Mechanics** - Heavy Equipment, Power Gen, Marine, Hydraulics, Electrical
-4. **Voice Conversation** - Real-time voice via HeyGen SDK or browser mic
+4. **Voice Conversation** - Real-time voice via LiveKit audio tracks
 5. **Text Input** - Toggle keyboard for typing instead of speaking
 6. **File Uploads** - Photos and PDFs attached to sessions
 7. **Report Generation** - Quick Advice (free) and Pro Diagnostic ($149)
 8. **Stripe Billing** - One-time checkout for Pro reports
 9. **Share Links** - Token-based report sharing
 10. **Session Security** - Access tokens protect all session endpoints
+11. **Browser TTS Fallback** - SpeechSynthesis when LiveKit is unavailable
 
 ## API Endpoints
 - `POST /api/sessions` - Create session (returns accessToken)
@@ -65,4 +73,5 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
 - `POST /api/sessions/:id/checkout` - Stripe checkout
 - `GET /api/sessions/:id/payment-status` - Check payment
 - `GET /api/shared/:token` - Access shared report (public)
-- `GET /api/avatar/token` - Get HeyGen streaming token
+- `POST /api/avatar/session` - Create LiveAvatar session (returns LiveKit connection info)
+- `POST /api/avatar/session/stop` - Stop LiveAvatar session

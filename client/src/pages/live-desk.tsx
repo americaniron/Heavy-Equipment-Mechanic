@@ -6,17 +6,18 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import StreamingAvatar, {
-  AvatarQuality,
-  StreamingEvents,
-  TaskType,
-  TaskMode,
-  type StartAvatarResponse,
-} from "@heygen/streaming-avatar";
+import {
+  Room,
+  RoomEvent,
+  Track,
+  VideoPresets,
+  type RemoteTrackPublication,
+  type RemoteParticipant,
+} from "livekit-client";
 import {
   Mic, MicOff, Send, Upload, FileText, Phone, Shield,
   Loader2, Wrench, Zap, Anchor, Droplets, Cpu, User,
-  ChevronRight, X, Download, Share2, AlertTriangle, Volume2, VolumeX, Keyboard
+  ChevronRight, X, Download, Share2, AlertTriangle, Volume2, Keyboard
 } from "lucide-react";
 
 interface SessionData {
@@ -42,16 +43,13 @@ interface ReportData {
   shareToken: string | null;
 }
 
-const MECHANIC_INFO: Record<string, { name: string; title: string; icon: any; avatarName: string }> = {
-  heavy_equipment: { name: "Mike Torres", title: "Heavy Equipment Mechanic", icon: Wrench, avatarName: "Wayne_20240711" },
-  power_gen: { name: "Sarah Chen", title: "Power Generation Engineer", icon: Zap, avatarName: "Susan_public_2_20240328" },
-  marine: { name: "James Coastal", title: "Marine Engine Mechanic", icon: Anchor, avatarName: "josh_lite3_20230714" },
-  hydraulics: { name: "David Pressure", title: "Hydraulics Specialist", icon: Droplets, avatarName: "Wayne_20240711" },
-  electrical: { name: "Elena Circuit", title: "Electrical Controls Specialist", icon: Cpu, avatarName: "Susan_public_2_20240328" },
+const MECHANIC_INFO: Record<string, { name: string; title: string; icon: any }> = {
+  heavy_equipment: { name: "Mike Torres", title: "Heavy Equipment Mechanic", icon: Wrench },
+  power_gen: { name: "Sarah Chen", title: "Power Generation Engineer", icon: Zap },
+  marine: { name: "James Coastal", title: "Marine Engine Mechanic", icon: Anchor },
+  hydraulics: { name: "David Pressure", title: "Hydraulics Specialist", icon: Droplets },
+  electrical: { name: "Elena Circuit", title: "Electrical Controls Specialist", icon: Cpu },
 };
-
-const ADMIN_AVATAR = "Anna_public_3_20240108";
-const ADMIN_VOICE = "1bd001e7e50f421d891986aad5571571";
 
 export default function LiveDesk() {
   const { toast } = useToast();
@@ -68,7 +66,6 @@ export default function LiveDesk() {
   const [mechanicType, setMechanicType] = useState<string | null>(null);
   const [handoffInProgress, setHandoffInProgress] = useState(false);
   const [subtitleText, setSubtitleText] = useState("");
-  const [userTranscript, setUserTranscript] = useState("");
   const [showPaywall, setShowPaywall] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const [report, setReport] = useState<ReportData | null>(null);
@@ -78,11 +75,11 @@ export default function LiveDesk() {
   const [sharedReport, setSharedReport] = useState<{ report: ReportData; session: any } | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
-  const avatarRef = useRef<StreamingAvatar | null>(null);
-  const sessionInfoRef = useRef<StartAvatarResponse | null>(null);
+  const roomRef = useRef<Room | null>(null);
+  const avatarSessionTokenRef = useRef<string | null>(null);
+  const avatarSessionIdRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const conversationRef = useRef<Array<{ role: string; content: string }>>([]);
-  const [usingFallback, setUsingFallback] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -101,10 +98,28 @@ export default function LiveDesk() {
     }
 
     return () => {
-      if (avatarRef.current) {
-        avatarRef.current.stopAvatar().catch(() => {});
-      }
+      cleanupAvatarSession();
     };
+  }, []);
+
+  const cleanupAvatarSession = useCallback(() => {
+    if (roomRef.current) {
+      try {
+        roomRef.current.disconnect();
+      } catch (e) {
+        console.error("Room disconnect error:", e);
+      }
+      roomRef.current = null;
+    }
+    if (avatarSessionTokenRef.current) {
+      fetch("/api/avatar/session/stop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionToken: avatarSessionTokenRef.current }),
+      }).catch(() => {});
+      avatarSessionTokenRef.current = null;
+      avatarSessionIdRef.current = null;
+    }
   }, []);
 
   const speakWithBrowser = useCallback((text: string) => {
@@ -125,6 +140,31 @@ export default function LiveDesk() {
     }
   }, []);
 
+  const sendAvatarSpeakCommand = useCallback((text: string) => {
+    const room = roomRef.current;
+    if (!room || room.state !== "connected") {
+      speakWithBrowser(text);
+      return;
+    }
+
+    try {
+      const encoder = new TextEncoder();
+      const payload = JSON.stringify({
+        event_type: "avatar.speak_text",
+        session_id: avatarSessionIdRef.current,
+        text: text,
+      });
+      room.localParticipant.publishData(encoder.encode(payload), {
+        reliable: true,
+        topic: "agent-control",
+      });
+      setIsTalking(true);
+    } catch (err) {
+      console.error("Failed to send speak command:", err);
+      speakWithBrowser(text);
+    }
+  }, [speakWithBrowser]);
+
   const loadSharedReport = async (token: string) => {
     try {
       const res = await fetch(`/api/shared/${token}`);
@@ -138,76 +178,77 @@ export default function LiveDesk() {
     }
   };
 
-  const initializeAvatar = async (avatarName: string) => {
-    try {
-      const tokenRes = await fetch("/api/avatar/token");
-      if (!tokenRes.ok) throw new Error("Failed to get avatar token");
-      const { token } = await tokenRes.json();
+  const connectAvatar = async (agentType: string = "admin"): Promise<Room> => {
+    const res = await apiRequest("POST", "/api/avatar/session", { agentType });
+    const { sessionId, sessionToken, livekitUrl, livekitClientToken } = await res.json();
 
-      const avatar = new StreamingAvatar({ token });
-      avatarRef.current = avatar;
+    avatarSessionTokenRef.current = sessionToken;
+    avatarSessionIdRef.current = sessionId;
 
-      avatar.on(StreamingEvents.STREAM_READY, (event: any) => {
-        if (videoRef.current && event.detail) {
-          videoRef.current.srcObject = event.detail;
+    const room = new Room({
+      adaptiveStream: true,
+      dynacast: true,
+      videoCaptureDefaults: {
+        resolution: VideoPresets.h720.resolution,
+      },
+    });
+
+    const mediaStream = new MediaStream();
+
+    room.on(RoomEvent.TrackSubscribed, (track, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
+      if (track.kind === Track.Kind.Video) {
+        const videoTrack = track.attach();
+        if (videoRef.current) {
+          videoRef.current.srcObject = new MediaStream([track.mediaStreamTrack]);
           videoRef.current.play().catch(() => {});
         }
         setAvatarReady(true);
-      });
+      }
+      if (track.kind === Track.Kind.Audio) {
+        const audioElement = track.attach();
+        document.body.appendChild(audioElement);
+      }
+    });
 
-      avatar.on(StreamingEvents.AVATAR_START_TALKING, () => {
-        setIsTalking(true);
-      });
+    room.on(RoomEvent.TrackUnsubscribed, (track) => {
+      track.detach().forEach((el) => el.remove());
+    });
 
-      avatar.on(StreamingEvents.AVATAR_STOP_TALKING, () => {
-        setIsTalking(false);
-        setTimeout(() => setSubtitleText(""), 2000);
-      });
+    room.on(RoomEvent.DataReceived, (data, participant, kind, topic) => {
+      try {
+        const decoded = new TextDecoder().decode(data);
+        const message = JSON.parse(decoded);
+        const eventType = message.event_type || message.type;
 
-      avatar.on(StreamingEvents.AVATAR_TALKING_MESSAGE, (event: any) => {
-        if (event.detail?.message) {
-          setSubtitleText(event.detail.message);
+        if (eventType === "avatar.speak_started" || eventType === "avatar_start_talking") {
+          setIsTalking(true);
+        } else if (eventType === "avatar.speak_ended" || eventType === "avatar_stop_talking") {
+          setIsTalking(false);
+          setTimeout(() => setSubtitleText(""), 3000);
+        } else if (eventType === "avatar.transcription") {
+          if (message.text) {
+            setSubtitleText(message.text);
+          }
+        } else if (eventType === "user.transcription") {
+          if (message.text) {
+            handleUserMessage(message.text);
+          }
+        } else if (eventType === "session.stopped") {
+          setAvatarReady(false);
         }
-      });
+      } catch (e) {
+        console.warn("Failed to parse LiveKit data message:", e);
+      }
+    });
 
-      avatar.on(StreamingEvents.USER_TALKING_MESSAGE, (event: any) => {
-        if (event.detail?.message) {
-          setUserTranscript(event.detail.message);
-        }
-      });
+    room.on(RoomEvent.Disconnected, () => {
+      setAvatarReady(false);
+    });
 
-      avatar.on(StreamingEvents.USER_END_MESSAGE, (event: any) => {
-        if (event.detail?.message) {
-          const userMsg = event.detail.message;
-          setUserTranscript("");
-          handleUserMessage(userMsg);
-        }
-      });
+    await room.connect(livekitUrl, livekitClientToken);
+    roomRef.current = room;
 
-      avatar.on(StreamingEvents.STREAM_DISCONNECTED, () => {
-        setAvatarReady(false);
-        toast({ title: "Connection lost", description: "Avatar stream disconnected.", variant: "destructive" });
-      });
-
-      const sessionInfo = await avatar.createStartAvatar({
-        quality: AvatarQuality.Medium,
-        avatarName,
-        voice: { voiceId: ADMIN_VOICE, rate: 1.0 },
-        language: "en",
-      });
-
-      sessionInfoRef.current = sessionInfo;
-
-      await avatar.startAvatar(
-        { quality: AvatarQuality.Medium, avatarName, voice: { voiceId: ADMIN_VOICE }, language: "en" },
-        sessionInfo
-      );
-
-      return avatar;
-    } catch (error: any) {
-      console.error("Avatar initialization error:", error);
-      throw error;
-    }
+    return room;
   };
 
   const startSession = async () => {
@@ -228,57 +269,26 @@ export default function LiveDesk() {
       setSessionData(session);
       setCurrentAgent("admin");
 
-      let avatarReady = false;
       try {
-        const avatar = await initializeAvatar(ADMIN_AVATAR);
-        avatarReady = true;
-
-        setTimeout(async () => {
-          try {
-            const welcomeText = "Welcome to American Iron US! I'm here to help you with your equipment. What can I help you with today?";
-            setSubtitleText(welcomeText);
-            await avatar.speak({
-              text: welcomeText,
-              taskType: TaskType.TALK,
-              taskMode: TaskMode.SYNC,
-            });
-
-            conversationRef.current.push({ role: "assistant", content: welcomeText });
-
-            await fetch(`/api/sessions/${session.id}/message`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ content: "[Session started - Admin greeting]" }),
-            }).catch(() => {});
-
-            try {
-              await avatar.startVoiceChat({ isInputAudioMuted: false });
-              setIsListening(true);
-            } catch {
-              setShowTextInput(true);
-            }
-          } catch (err) {
-            console.error("Welcome message error:", err);
-            setShowTextInput(true);
-          }
-        }, 2000);
-      } catch (avatarErr) {
-        console.error("Avatar connection failed, using text mode:", avatarErr);
-        setUsingFallback(true);
-        setAvatarReady(true);
+        const room = await connectAvatar("admin");
         setShowTextInput(true);
 
-        const welcomeText = "Welcome to American Iron US! I'm here to help you with your equipment. What can I help you with today?";
-        setSubtitleText(welcomeText);
-        conversationRef.current.push({ role: "assistant", content: welcomeText });
+        setTimeout(async () => {
+          const welcomeText = "Welcome to American Iron US! I'm here to help you with your equipment. What can I help you with today?";
+          setSubtitleText(welcomeText);
+          conversationRef.current.push({ role: "assistant", content: welcomeText });
+          sendAvatarSpeakCommand(welcomeText);
 
-        speakWithBrowser(welcomeText);
-
-        await fetch(`/api/sessions/${session.id}/message`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content: "[Session started - Admin greeting]" }),
-        }).catch(() => {});
+          await fetch(`/api/sessions/${session.id}/message`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ content: "[Session started - Admin greeting]" }),
+          }).catch(() => {});
+        }, 3000);
+      } catch (avatarErr: any) {
+        console.error("Avatar connection failed:", avatarErr);
+        toast({ title: "Avatar connection issue", description: "Could not connect to live avatar. Please try again.", variant: "destructive" });
+        setSessionData(null);
       }
     } catch (err: any) {
       toast({ title: "Connection failed", description: err.message || "Could not start session.", variant: "destructive" });
@@ -338,21 +348,7 @@ export default function LiveDesk() {
         const speakText = fullText.length > 500 ? fullText.substring(0, 500) : fullText;
         setSubtitleText(speakText);
         conversationRef.current.push({ role: "assistant", content: fullText });
-
-        if (avatarRef.current && !usingFallback) {
-          try {
-            await avatarRef.current.speak({
-              text: speakText,
-              taskType: TaskType.TALK,
-              taskMode: TaskMode.SYNC,
-            });
-          } catch (err) {
-            console.error("Avatar speak error:", err);
-            speakWithBrowser(speakText);
-          }
-        } else {
-          speakWithBrowser(speakText);
-        }
+        sendAvatarSpeakCommand(speakText);
       }
 
       if (handoffData) {
@@ -373,51 +369,28 @@ export default function LiveDesk() {
     setMechanicType(mechType);
     const mechanic = MECHANIC_INFO[mechType];
 
-    setSubtitleText(`Transferring you to ${mechanic?.name || "our specialist"}. One moment please...`);
+    const transferMsg = `Transferring you to ${mechanic?.name || "our specialist"}. One moment please...`;
+    setSubtitleText(transferMsg);
+    sendAvatarSpeakCommand(`I'm now transferring you to ${mechanic?.name || "our specialist"}, our ${mechanic?.title || "diagnostic specialist"}. They'll take great care of you. One moment please.`);
 
-    if (avatarRef.current) {
-      try {
-        await avatarRef.current.speak({
-          text: `I'm now transferring you to ${mechanic?.name || "our specialist"}, our ${mechanic?.title || "diagnostic specialist"}. They'll take great care of you. One moment please.`,
-          taskType: TaskType.TALK,
-          taskMode: TaskMode.SYNC,
-        });
-      } catch {}
-    }
+    await new Promise(r => setTimeout(r, 5000));
 
     try {
-      if (avatarRef.current) {
-        await avatarRef.current.stopAvatar().catch(() => {});
-      }
+      cleanupAvatarSession();
       setAvatarReady(false);
 
       await apiRequest("POST", `/api/sessions/${sessionData.id}/handoff`);
       setCurrentAgent("mechanic");
 
-      const newAvatar = await initializeAvatar(mechanic?.avatarName || ADMIN_AVATAR);
+      const room = await connectAvatar(mechType);
 
-      setTimeout(async () => {
+      setTimeout(() => {
         const mechGreeting = `Hello! I'm ${mechanic?.name || "your specialist"}. I've reviewed your intake information and I'm ready to help diagnose the issue. Let's get started — can you tell me more about what you're experiencing?`;
         setSubtitleText(mechGreeting);
         conversationRef.current.push({ role: "assistant", content: mechGreeting });
-
-        try {
-          await newAvatar.speak({
-            text: mechGreeting,
-            taskType: TaskType.TALK,
-            taskMode: TaskMode.SYNC,
-          });
-
-          try {
-            await newAvatar.startVoiceChat({ isInputAudioMuted: false });
-            setIsListening(true);
-          } catch {
-            setShowTextInput(true);
-          }
-        } catch {}
-
+        sendAvatarSpeakCommand(mechGreeting);
         setHandoffInProgress(false);
-      }, 2000);
+      }, 3000);
     } catch (err) {
       console.error("Handoff error:", err);
       setHandoffInProgress(false);
@@ -429,27 +402,19 @@ export default function LiveDesk() {
     if (!inputText.trim() || isProcessing) return;
     const msg = inputText.trim();
     setInputText("");
-
-    if (avatarRef.current && isListening) {
-      try { await avatarRef.current.stopListening(); } catch {}
-    }
-
     await handleUserMessage(msg);
-
-    if (avatarRef.current && isListening) {
-      try { await avatarRef.current.startListening(); } catch {}
-    }
   };
 
   const toggleMicrophone = async () => {
-    if (!avatarRef.current) return;
+    const room = roomRef.current;
+    if (!room) return;
 
     try {
       if (isListening) {
-        await avatarRef.current.closeVoiceChat();
+        await room.localParticipant.setMicrophoneEnabled(false);
         setIsListening(false);
       } else {
-        await avatarRef.current.startVoiceChat({ isInputAudioMuted: false });
+        await room.localParticipant.setMicrophoneEnabled(true);
         setIsListening(true);
       }
     } catch (err) {
@@ -588,7 +553,7 @@ export default function LiveDesk() {
               <p className="text-primary/80 text-sm font-medium mt-1">Live AI Engineer Desk</p>
             </div>
             <p className="text-gray-400 text-sm leading-relaxed max-w-sm mx-auto" data-testid="text-page-title">
-              Speak face-to-face with our AI-powered front desk admin and specialist mechanics. 
+              Speak face-to-face with our AI-powered front desk admin and specialist mechanics.
               Real-time video diagnostics for your heavy equipment.
             </p>
           </div>
@@ -603,7 +568,7 @@ export default function LiveDesk() {
                 className="mt-0.5 border-white/30 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
               />
               <label htmlFor="consent" className="text-xs text-gray-400 leading-relaxed cursor-pointer">
-                I consent to having my conversation transcribed for report generation 
+                I consent to having my conversation transcribed for report generation
                 and understand that AI guidance is informational, not a substitute for certified inspection.
               </label>
             </div>
@@ -649,65 +614,30 @@ export default function LiveDesk() {
         data-testid="video-avatar"
       />
 
-      {(!avatarReady || usingFallback) && (
-        <div className={`absolute inset-0 bg-gradient-to-b from-[#0f1829] via-[#0a1020] to-[#060a14] flex items-center justify-center z-10`}>
-          {!avatarReady ? (
-            <div className="text-center space-y-4">
-              <div className="w-24 h-24 rounded-full bg-primary/10 border-2 border-primary/30 flex items-center justify-center mx-auto animate-pulse">
-                {currentAgent === "admin" ? (
-                  <User className="w-12 h-12 text-primary/60" />
-                ) : (
-                  currentMechanic ? <currentMechanic.icon className="w-12 h-12 text-primary/60" /> : <Wrench className="w-12 h-12 text-primary/60" />
-                )}
-              </div>
-              <div>
-                <p className="text-white text-lg font-medium">
-                  {handoffInProgress
-                    ? `Connecting to ${currentMechanic?.name || "Specialist"}...`
-                    : "Connecting to Front Desk..."}
-                </p>
-                <p className="text-gray-400 text-sm mt-1">
-                  {handoffInProgress
-                    ? currentMechanic?.title || "Diagnostic Specialist"
-                    : "Registration Admin"}
-                </p>
-              </div>
-              <Loader2 className="w-6 h-6 animate-spin text-primary mx-auto" />
-            </div>
-          ) : (
-            <div className="text-center relative">
-              <div className={`w-44 h-44 md:w-56 md:h-56 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 border-2 ${isTalking ? 'border-primary shadow-lg shadow-primary/20' : 'border-white/10'} flex items-center justify-center mx-auto transition-all duration-300`}>
-                <div className={`w-40 h-40 md:w-52 md:h-52 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center ${isTalking ? 'scale-105' : 'scale-100'} transition-transform duration-300`}>
-                  {currentAgent === "admin" ? (
-                    <User className="w-20 h-20 md:w-24 md:h-24 text-gray-400" />
-                  ) : (
-                    currentMechanic ? <currentMechanic.icon className="w-20 h-20 md:w-24 md:h-24 text-gray-400" /> : <Wrench className="w-20 h-20 md:w-24 md:h-24 text-gray-400" />
-                  )}
-                </div>
-              </div>
-              {isTalking && (
-                <div className="flex items-center justify-center gap-1 mt-4">
-                  {[0, 1, 2, 3, 4].map((i) => (
-                    <div key={i} className="w-1 bg-primary rounded-full animate-pulse" style={{
-                      height: `${12 + Math.random() * 20}px`,
-                      animationDelay: `${i * 100}ms`,
-                      animationDuration: '0.6s',
-                    }} />
-                  ))}
-                </div>
+      {!avatarReady && (
+        <div className="absolute inset-0 bg-gradient-to-b from-[#0f1829] via-[#0a1020] to-[#060a14] flex items-center justify-center z-10">
+          <div className="text-center space-y-4">
+            <div className="w-24 h-24 rounded-full bg-primary/10 border-2 border-primary/30 flex items-center justify-center mx-auto animate-pulse">
+              {currentAgent === "admin" ? (
+                <User className="w-12 h-12 text-primary/60" />
+              ) : (
+                currentMechanic ? <currentMechanic.icon className="w-12 h-12 text-primary/60" /> : <Wrench className="w-12 h-12 text-primary/60" />
               )}
-              <p className="text-white text-lg font-medium mt-4">
-                {currentAgent === "admin"
-                  ? "Registration Admin"
-                  : currentMechanic?.name || "Specialist"}
+            </div>
+            <div>
+              <p className="text-white text-lg font-medium">
+                {handoffInProgress
+                  ? `Connecting to ${currentMechanic?.name || "Specialist"}...`
+                  : "Connecting to Front Desk..."}
               </p>
-              <p className="text-gray-400 text-sm">
-                {currentAgent === "admin"
-                  ? "American Iron US - Front Desk"
-                  : currentMechanic?.title || "Diagnostic Specialist"}
+              <p className="text-gray-400 text-sm mt-1">
+                {handoffInProgress
+                  ? currentMechanic?.title || "Diagnostic Specialist"
+                  : "Registration Admin"}
               </p>
             </div>
-          )}
+            <Loader2 className="w-6 h-6 animate-spin text-primary mx-auto" />
+          </div>
         </div>
       )}
 
@@ -753,20 +683,12 @@ export default function LiveDesk() {
         </div>
       </div>
 
-      {(subtitleText || userTranscript) && (
+      {subtitleText && (
         <div className="absolute bottom-32 left-0 right-0 z-20 flex justify-center px-4 pointer-events-none">
           <div className="max-w-2xl w-full">
-            {userTranscript && (
-              <div className="bg-primary/80 backdrop-blur-sm text-white text-sm px-4 py-2 rounded-lg mb-2 inline-block">
-                <span className="text-primary-foreground/70 text-xs mr-2">You:</span>
-                {userTranscript}
-              </div>
-            )}
-            {subtitleText && (
-              <div className="bg-black/70 backdrop-blur-sm text-white text-sm px-4 py-3 rounded-lg leading-relaxed" data-testid="text-subtitle">
-                {subtitleText}
-              </div>
-            )}
+            <div className="bg-black/70 backdrop-blur-sm text-white text-sm px-4 py-3 rounded-lg leading-relaxed" data-testid="text-subtitle">
+              {subtitleText}
+            </div>
           </div>
         </div>
       )}
@@ -833,8 +755,8 @@ export default function LiveDesk() {
                 size="icon"
                 variant="destructive"
                 className="h-10 w-10 rounded-full"
-                onClick={async () => {
-                  if (avatarRef.current) await avatarRef.current.stopAvatar().catch(() => {});
+                onClick={() => {
+                  cleanupAvatarSession();
                   setSessionData(null);
                   setAvatarReady(false);
                   setIsListening(false);

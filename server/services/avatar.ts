@@ -1,124 +1,115 @@
-const DID_API_BASE = "https://api.d-id.com";
+const LIVEAVATAR_API = "https://api.liveavatar.com";
 
-const PRESENTER_PHOTOS: Record<string, string> = {
-  admin: "https://d-id-public-bucket.s3.us-west-2.amazonaws.com/alice.jpg",
-  heavy_equipment: "https://d-id-public-bucket.s3.us-west-2.amazonaws.com/noelle.jpg",
-  power_gen: "https://d-id-public-bucket.s3.us-west-2.amazonaws.com/alice.jpg",
-  marine: "https://d-id-public-bucket.s3.us-west-2.amazonaws.com/noelle.jpg",
-  hydraulics: "https://d-id-public-bucket.s3.us-west-2.amazonaws.com/alice.jpg",
-  electrical: "https://d-id-public-bucket.s3.us-west-2.amazonaws.com/noelle.jpg",
-};
-
-const VOICE_IDS: Record<string, string> = {
-  admin: "en-US-JennyNeural",
-  heavy_equipment: "en-US-GuyNeural",
-  power_gen: "en-US-JennyNeural",
-  marine: "en-US-GuyNeural",
-  hydraulics: "en-US-GuyNeural",
-  electrical: "en-US-JennyNeural",
+const AVATAR_MAP: Record<string, { avatarId: string; name: string; persona: string }> = {
+  admin: {
+    avatarId: "073b60a9-89a8-45aa-8902-c358f64d2852",
+    name: "Katya",
+    persona: "You are a friendly, professional registration admin at American Iron US, a heavy equipment diagnostic service. You greet visitors, collect information about their equipment issue, and connect them with the right specialist mechanic.",
+  },
+  heavy_equipment: {
+    avatarId: "38ad67ed-98f0-407c-a2d2-4f0998b306fc",
+    name: "Anthony",
+    persona: "You are Mike Torres, a heavy equipment mechanic specialist at American Iron US. You diagnose issues with bulldozers, excavators, loaders, and other heavy equipment.",
+  },
+  power_gen: {
+    avatarId: "9c59a215-4c9f-478f-9d95-edca74c7b0d0",
+    name: "Alessandra",
+    persona: "You are Sarah Chen, a power generation engineer at American Iron US. You diagnose issues with generators, turbines, and power systems.",
+  },
+  marine: {
+    avatarId: "200eba85-74c0-4210-8670-81ceab4efd0d",
+    name: "Pedro",
+    persona: "You are James Coastal, a marine engine mechanic at American Iron US. You diagnose issues with boat engines and marine propulsion systems.",
+  },
+  hydraulics: {
+    avatarId: "03f8332d-9046-42a1-bff3-3b2309f77b58",
+    name: "Graham",
+    persona: "You are David Pressure, a hydraulics specialist at American Iron US. You diagnose issues with hydraulic systems, pumps, and cylinders.",
+  },
+  electrical: {
+    avatarId: "ebdfdc7e-7e2c-4d2c-8407-a78883e5000a",
+    name: "Anastasia",
+    persona: "You are Elena Circuit, an electrical controls specialist at American Iron US. You diagnose issues with electrical systems, wiring, and control panels.",
+  },
 };
 
 function getApiKey(): string {
-  const key = process.env.DID_API_KEY;
-  if (!key) throw new Error("DID_API_KEY not configured");
+  const key = process.env.HEYGEN_API_KEY;
+  if (!key) throw new Error("HEYGEN_API_KEY not configured");
   return key;
 }
 
-export async function createTalkingVideo(
-  text: string,
-  agentType: string = "admin"
-): Promise<{ talkId: string }> {
+export async function createAvatarSession(agentType: string = "admin"): Promise<{
+  sessionId: string;
+  sessionToken: string;
+  livekitUrl: string;
+  livekitClientToken: string;
+}> {
   const key = getApiKey();
-  const sourceUrl = PRESENTER_PHOTOS[agentType] || PRESENTER_PHOTOS.admin;
-  const voiceId = VOICE_IDS[agentType] || VOICE_IDS.admin;
+  const avatarConfig = AVATAR_MAP[agentType] || AVATAR_MAP.admin;
 
-  const speakText = text.length > 500 ? text.substring(0, 497) + "..." : text;
-
-  const response = await fetch(`${DID_API_BASE}/talks`, {
+  const tokenRes = await fetch(`${LIVEAVATAR_API}/v1/sessions/token`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Basic ${key}`,
-    },
+    headers: { "Content-Type": "application/json", "x-api-key": key },
     body: JSON.stringify({
-      source_url: sourceUrl,
-      script: {
-        type: "text",
-        input: speakText,
-        provider: { type: "microsoft", voice_id: voiceId },
+      mode: "FULL",
+      avatar_id: avatarConfig.avatarId,
+      avatar_persona: {
+        persona: avatarConfig.persona,
       },
-      config: { stitch: true },
     }),
   });
 
-  if (!response.ok) {
-    const errText = await response.text();
-    console.error("D-ID talk creation failed:", response.status, errText);
-    throw new Error(`D-ID error: ${response.status}`);
+  if (!tokenRes.ok) {
+    const errText = await tokenRes.text();
+    console.error("LiveAvatar token creation failed:", tokenRes.status, errText);
+    throw new Error(`LiveAvatar token error: ${tokenRes.status}`);
   }
 
-  const data = await response.json();
-  return { talkId: data.id };
-}
+  const tokenData = await tokenRes.json();
+  const sessionToken = tokenData.data.session_token;
+  const sessionId = tokenData.data.session_id;
 
-export async function getTalkStatus(
-  talkId: string
-): Promise<{ status: string; resultUrl?: string; duration?: number }> {
-  const key = getApiKey();
-
-  const response = await fetch(`${DID_API_BASE}/talks/${talkId}`, {
-    headers: { "Authorization": `Basic ${key}` },
+  const startRes = await fetch(`${LIVEAVATAR_API}/v1/sessions/start`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${sessionToken}`,
+    },
+    body: JSON.stringify({}),
   });
 
-  if (!response.ok) {
-    throw new Error(`D-ID status check error: ${response.status}`);
+  if (!startRes.ok) {
+    const errText = await startRes.text();
+    console.error("LiveAvatar session start failed:", startRes.status, errText);
+    throw new Error(`LiveAvatar start error: ${startRes.status}`);
   }
 
-  const data = await response.json();
+  const startData = await startRes.json();
+
   return {
-    status: data.status,
-    resultUrl: data.result_url,
-    duration: data.duration,
+    sessionId: startData.data.session_id,
+    sessionToken,
+    livekitUrl: startData.data.livekit_url,
+    livekitClientToken: startData.data.livekit_client_token,
   };
 }
 
-export async function waitForTalk(
-  talkId: string,
-  maxWaitMs: number = 30000
-): Promise<{ resultUrl: string; duration: number }> {
-  const startTime = Date.now();
-
-  while (Date.now() - startTime < maxWaitMs) {
-    const result = await getTalkStatus(talkId);
-
-    if (result.status === "done" && result.resultUrl) {
-      return { resultUrl: result.resultUrl, duration: result.duration || 0 };
-    }
-
-    if (result.status === "error") {
-      throw new Error("D-ID video generation failed");
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-  }
-
-  throw new Error("D-ID video generation timed out");
-}
-
-export async function getPresenterPhoto(agentType: string = "admin"): Promise<string> {
-  return PRESENTER_PHOTOS[agentType] || PRESENTER_PHOTOS.admin;
-}
-
-export async function checkCredits(): Promise<number> {
+export async function stopAvatarSession(sessionToken: string): Promise<void> {
   try {
-    const key = getApiKey();
-    const response = await fetch(`${DID_API_BASE}/credits`, {
-      headers: { "Authorization": `Basic ${key}` },
+    await fetch(`${LIVEAVATAR_API}/v1/sessions/stop`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${sessionToken}`,
+      },
+      body: JSON.stringify({}),
     });
-    if (!response.ok) return 0;
-    const data = await response.json();
-    return data.remaining || 0;
-  } catch {
-    return 0;
+  } catch (err) {
+    console.error("Error stopping avatar session:", err);
   }
+}
+
+export function getAvatarInfo(agentType: string = "admin") {
+  return AVATAR_MAP[agentType] || AVATAR_MAP.admin;
 }
