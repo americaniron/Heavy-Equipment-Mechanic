@@ -322,7 +322,7 @@ export default function LiveDesk() {
         setShowTextInput(true);
 
         setTimeout(async () => {
-          const welcomeText = "Welcome to American Iron US! I'm here to help you with your equipment. What can I help you with today?";
+          const welcomeText = "Welcome to American Iron! I'm here to help you with your equipment. What can I help you with today?";
           setSubtitleText(welcomeText);
           conversationRef.current.push({ role: "assistant", content: welcomeText });
           sendAvatarSpeakCommand(welcomeText);
@@ -544,14 +544,14 @@ export default function LiveDesk() {
     const sr = sharedReport.report;
     return (
       <div className="min-h-screen bg-background flex flex-col">
-        <title>Shared Report | American Iron US</title>
+        <title>Shared Report | American Iron</title>
         <header className="border-b border-border/50 px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center">
               <Wrench className="w-4 h-4 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-sm font-semibold">American Iron US</h1>
+              <h1 className="text-sm font-semibold">American Iron</h1>
               <p className="text-xs text-muted-foreground">Diagnostic Report</p>
             </div>
           </div>
@@ -587,9 +587,9 @@ export default function LiveDesk() {
   if (!sessionData) {
     return (
       <div className="min-h-screen bg-[#0a0e17] flex flex-col items-center justify-center relative overflow-hidden">
-        <title>Live AI Engineer Desk | American Iron US</title>
+        <title>Live AI Engineer Desk | American Iron</title>
         <meta name="description" content="Connect with AI-powered mechanics for real-time heavy equipment diagnostics." />
-        <meta property="og:title" content="Live AI Engineer Desk | American Iron US" />
+        <meta property="og:title" content="Live AI Engineer Desk | American Iron" />
         <meta property="og:description" content="Real-time AI-powered heavy equipment diagnostics with live video avatars." />
 
         <div className="absolute inset-0 bg-gradient-to-b from-primary/5 via-transparent to-transparent" />
@@ -602,7 +602,7 @@ export default function LiveDesk() {
             </div>
             <div>
               <h1 className="text-3xl font-bold text-white tracking-tight" data-testid="text-brand-name">
-                American Iron US
+                American Iron
               </h1>
               <p className="text-primary/80 text-sm font-medium mt-1">Live AI Engineer Desk</p>
             </div>
@@ -658,7 +658,7 @@ export default function LiveDesk() {
 
   return (
     <div className="h-screen w-screen bg-black flex flex-col relative overflow-hidden" data-testid="live-desk-active">
-      <title>Live Session | American Iron US</title>
+      <title>Live Session | American Iron</title>
 
       <div
         className="absolute inset-0 w-full h-full bg-cover bg-center bg-no-repeat"
@@ -711,7 +711,7 @@ export default function LiveDesk() {
                 <Wrench className="w-4 h-4 text-white" />
               </div>
               <div>
-                <p className="text-white text-sm font-semibold">American Iron US</p>
+                <p className="text-white text-sm font-semibold">American Iron</p>
                 <p className="text-white/60 text-xs" data-testid="text-current-agent">
                   {currentAgent === "admin"
                     ? "Registration Admin"
