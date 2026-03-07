@@ -1,4 +1,4 @@
-# American Iron US - Live AI Engineer Desk
+# American Iron - Live AI Engineer Desk
 
 ## Overview
 A full-screen, video-first live front desk experience for heavy equipment diagnostics. Visitors "walk in" and interact face-to-face with AI-powered avatars — a Registration Admin for intake and 5 specialist Mechanics for diagnostics. No traditional chat UI — the avatar is the experience.
