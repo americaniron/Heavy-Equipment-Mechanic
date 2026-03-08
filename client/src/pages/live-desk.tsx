@@ -23,6 +23,7 @@ import {
 import shopBackgroundPath from "@assets/shop_background.png";
 import logoPath from "@assets/american-iron-logo_1772935008934.png";
 import heroFacilityPath from "@assets/hero_facility.png";
+import workshopVideoPath from "@assets/generated_videos/workshop_aerial_view.mp4";
 import serviceHeavyEquipPath from "@assets/service_heavyequip.png";
 import servicePowerGenPath from "@assets/service_powergen.png";
 import serviceMarinePath from "@assets/service_marine.png";
@@ -102,6 +103,7 @@ export default function LiveDesk() {
   const pendingHandoffRef = useRef<any>(null);
   const speakEndedResolveRef = useRef<(() => void) | null>(null);
   const introPlayingRef = useRef(false);
+  const heroVideoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -109,6 +111,11 @@ export default function LiveDesk() {
     if (shared) {
       loadSharedReport(shared);
       window.history.replaceState({}, "", "/");
+    }
+
+    if (heroVideoRef.current) {
+      heroVideoRef.current.muted = true;
+      heroVideoRef.current.play().catch(() => {});
     }
 
     return () => {
@@ -655,8 +662,19 @@ export default function LiveDesk() {
         </nav>
 
         <section className="relative min-h-screen flex items-center justify-center pt-16" data-testid="hero-section">
-          <div className="absolute inset-0">
-            <img src={heroFacilityPath} alt="AMERICAN IRON Facility" className="w-full h-full object-cover opacity-30" />
+          <div className="absolute inset-0 overflow-hidden">
+            <video
+              ref={heroVideoRef}
+              autoPlay
+              loop
+              muted
+              playsInline
+              aria-hidden="true"
+              className="w-full h-full object-cover opacity-30"
+              data-testid="video-hero-bg"
+              poster={heroFacilityPath}
+              src={workshopVideoPath}
+            />
             <div className="absolute inset-0 bg-gradient-to-b from-[#111111] via-[#111111]/60 to-[#111111]" />
             <div className="absolute inset-0 bg-gradient-to-r from-[#111111] via-transparent to-[#111111]" />
           </div>
