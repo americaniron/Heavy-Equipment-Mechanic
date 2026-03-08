@@ -76,7 +76,6 @@ export default function LiveDesk() {
   const [handoffInProgress, setHandoffInProgress] = useState(false);
   const [introPlaying, setIntroPlaying] = useState(false);
   const [subtitleText, setSubtitleText] = useState("");
-  const [showPaywall, setShowPaywall] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const [report, setReport] = useState<ReportData | null>(null);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
@@ -97,16 +96,8 @@ export default function LiveDesk() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const shared = params.get("shared");
-    const sessionId = params.get("session");
-    const payment = params.get("payment");
-
     if (shared) {
       loadSharedReport(shared);
-      window.history.replaceState({}, "", "/");
-    } else if (sessionId && payment === "success") {
-      const storedToken = sessionStorage.getItem(`session_token_${sessionId}`);
-      if (storedToken) setAccessToken(storedToken);
-      toast({ title: "Payment successful", description: "Your Pro Diagnostic Report is ready to generate." });
       window.history.replaceState({}, "", "/");
     }
 
@@ -529,33 +520,16 @@ export default function LiveDesk() {
 
   const generateReport = async () => {
     if (!sessionData) return;
-    if (sessionData.visitType === "pro" && sessionData.paymentStatus !== "paid") {
-      setShowPaywall(true);
-      return;
-    }
     setIsGeneratingReport(true);
     try {
       const res = await apiRequest("POST", `/api/sessions/${sessionData.id}/report`);
-      if (res.status === 402) { setShowPaywall(true); return; }
       const data = await res.json();
       setReport(data);
       setShowReport(true);
     } catch (err: any) {
-      if (err.message?.includes("402")) { setShowPaywall(true); }
-      else { toast({ title: "Error generating report", variant: "destructive" }); }
+      toast({ title: "Error generating report", variant: "destructive" });
     } finally {
       setIsGeneratingReport(false);
-    }
-  };
-
-  const handleCheckout = async () => {
-    if (!sessionData) return;
-    try {
-      const res = await apiRequest("POST", `/api/sessions/${sessionData.id}/checkout`);
-      const { url } = await res.json();
-      if (url) window.location.href = url;
-    } catch {
-      toast({ title: "Checkout error", variant: "destructive" });
     }
   };
 
@@ -1179,9 +1153,7 @@ export default function LiveDesk() {
             ) : (
               <FileText className="w-3.5 h-3.5 mr-2" />
             )}
-            {sessionData.visitType === "pro" && sessionData.paymentStatus !== "paid"
-              ? "Get Pro Report ($149)"
-              : "Generate Report"}
+            Generate Report
           </Button>
 
           {report && (
@@ -1198,40 +1170,6 @@ export default function LiveDesk() {
           )}
         </div>
       )}
-
-      <Dialog open={showPaywall} onOpenChange={setShowPaywall}>
-        <DialogContent data-testid="modal-paywall" className="bg-card">
-          <DialogHeader>
-            <DialogTitle>Pro Diagnostic Report</DialogTitle>
-            <DialogDescription>Unlock the full diagnostic package</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="bg-muted/50 rounded-md p-4 space-y-2">
-              <h4 className="text-sm font-semibold">What's included:</h4>
-              <ul className="space-y-1.5 text-sm text-muted-foreground">
-                {["Root-cause analysis matrix", "Step-by-step diagnostic tree", "Required tools list",
-                  "Safety checklist", "Labor estimate ranges", "Parts list with alternatives",
-                  "Technical SVG diagram", "Downloadable PDF report", "Shareable report link"].map((item) => (
-                  <li key={item} className="flex items-center gap-2">
-                    <ChevronRight className="w-3 h-3 text-primary shrink-0" />
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-2xl font-bold">$149.00</p>
-                <p className="text-xs text-muted-foreground">One-time report fee</p>
-              </div>
-              <Button onClick={handleCheckout} data-testid="button-checkout">
-                Proceed to Checkout
-                <ChevronRight className="w-4 h-4 ml-1" />
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={showReport} onOpenChange={setShowReport}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto bg-card" data-testid="modal-report">
