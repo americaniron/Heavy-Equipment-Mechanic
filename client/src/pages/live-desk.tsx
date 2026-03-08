@@ -1422,6 +1422,31 @@ export default function LiveDesk() {
         data-testid="video-avatar-container"
       />
 
+      {avatarReady && (
+        <div
+          className="absolute bottom-28 left-4 z-20 pointer-events-none"
+          data-testid="avatar-name-tag"
+        >
+          <div className="bg-white rounded-lg shadow-xl overflow-hidden" style={{ minWidth: "140px" }}>
+            <div className="bg-[#FFCD11] px-3 py-1">
+              <p className="text-[10px] font-black text-black tracking-widest text-center uppercase">AMERICAN IRON</p>
+            </div>
+            <div className="px-3 py-2 bg-white text-center">
+              <p className="text-base font-bold text-gray-900 leading-tight" data-testid="text-name-tag-name">
+                {currentAgent === "admin"
+                  ? "Sarah"
+                  : currentMechanic?.name || "Specialist"}
+              </p>
+              <p className="text-[10px] text-gray-500 mt-0.5 uppercase tracking-wide">
+                {currentAgent === "admin"
+                  ? "Front Desk"
+                  : currentMechanic?.title || "Mechanic"}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {avatarListening && (
         <div className="absolute top-20 left-1/2 -translate-x-1/2 z-20 pointer-events-none" data-testid="listening-indicator">
           <div className="flex items-center gap-2.5 px-5 py-2.5 bg-black/60 backdrop-blur-md rounded-full border border-[#FFCD11]/30">
