@@ -3,14 +3,20 @@ import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { AuthProvider } from "@/lib/auth";
 import NotFound from "@/pages/not-found";
 import LiveDesk from "@/pages/live-desk";
+import AuthPage from "@/pages/auth";
+import Portal from "@/pages/portal";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={LiveDesk} />
       <Route path="/live-desk" component={LiveDesk} />
+      <Route path="/login" component={AuthPage} />
+      <Route path="/register" component={AuthPage} />
+      <Route path="/portal" component={Portal} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -19,10 +25,12 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Router />
-      </TooltipProvider>
+      <AuthProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Router />
+        </TooltipProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }
