@@ -150,6 +150,9 @@ export default function LiveDesk() {
   const recordingChunksRef = useRef<Blob[]>([]);
   const vadFrameRef = useRef<number>(0);
   const manualStopRef = useRef(false);
+  const sessionDataRef = useRef<SessionData | null>(null);
+  const isProcessingRef = useRef(false);
+  const handleUserMessageRef = useRef<(msg: string) => Promise<void>>(() => Promise.resolve());
 
   const cleanupAudioNodes = useCallback(() => {
     if (vadFrameRef.current) {
@@ -241,6 +244,7 @@ export default function LiveDesk() {
 
         try {
           setIsProcessing(true);
+          isProcessingRef.current = true;
           setIsListening(false);
 
           const formData = new FormData();
@@ -251,14 +255,16 @@ export default function LiveDesk() {
 
           if (text && text.trim().length > 1) {
             console.log("Transcribed:", text);
-            await handleUserMessage(text.trim());
+            await handleUserMessageRef.current(text.trim());
           } else {
             setIsProcessing(false);
+            isProcessingRef.current = false;
             setTimeout(() => startVoiceCapture(), 200);
           }
         } catch (err) {
           console.error("Transcription error:", err);
           setIsProcessing(false);
+          isProcessingRef.current = false;
           setTimeout(() => startVoiceCapture(), 500);
         }
       };
@@ -549,6 +555,7 @@ export default function LiveDesk() {
       setAccessToken(session.accessToken);
       sessionStorage.setItem(`session_token_${session.id}`, session.accessToken);
       setSessionData(session);
+      sessionDataRef.current = session;
       setCurrentAgent("admin");
 
       const introText = selectedLanguage === "ar"
@@ -645,17 +652,19 @@ export default function LiveDesk() {
   }, [selectedLanguage]);
 
   const handleUserMessage = async (userMsg: string) => {
-    if (!sessionData || isProcessing || !userMsg.trim()) return;
+    const currentSession = sessionDataRef.current;
+    if (!currentSession || isProcessingRef.current || !userMsg.trim()) return;
 
     stopVoiceCapture();
     setIsProcessing(true);
+    isProcessingRef.current = true;
     setIsListening(false);
     conversationRef.current.push({ role: "user", content: userMsg });
 
     sendAvatarListeningCue();
 
     try {
-      const response = await fetch(`/api/sessions/${sessionData.id}/message`, {
+      const response = await fetch(`/api/sessions/${currentSession.id}/message`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: userMsg }),
@@ -664,11 +673,12 @@ export default function LiveDesk() {
       if (!response.ok) {
         toast({ title: "Error", description: "Failed to get response", variant: "destructive" });
         setIsProcessing(false);
+        isProcessingRef.current = false;
         return;
       }
 
       const reader = response.body?.getReader();
-      if (!reader) { setIsProcessing(false); return; }
+      if (!reader) { setIsProcessing(false); isProcessingRef.current = false; return; }
 
       const decoder = new TextDecoder();
       let buffer = "";
@@ -717,11 +727,14 @@ export default function LiveDesk() {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
       setIsProcessing(false);
+      isProcessingRef.current = false;
     }
   };
 
+  handleUserMessageRef.current = handleUserMessage;
+
   const performHandoff = async (handoffData: any) => {
-    if (!sessionData) return;
+    if (!sessionDataRef.current) return;
     setHandoffInProgress(true);
 
     const mechType = handoffData.mechanicType || "heavy_equipment";
@@ -742,7 +755,7 @@ export default function LiveDesk() {
       cleanupAvatarSession();
       setAvatarReady(false);
 
-      await apiRequest("POST", `/api/sessions/${sessionData.id}/handoff`);
+      await apiRequest("POST", `/api/sessions/${sessionDataRef.current!.id}/handoff`);
       setCurrentAgent("mechanic");
 
       const room = await connectAvatar(mechType, selectedLanguage);
@@ -788,14 +801,14 @@ export default function LiveDesk() {
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!sessionData || !e.target.files) return;
+    if (!sessionDataRef.current || !e.target.files) return;
     const formData = new FormData();
     Array.from(e.target.files).forEach((file) => formData.append("files", file));
 
     try {
       const headers: Record<string, string> = {};
       if (accessToken) headers["x-session-token"] = accessToken;
-      const res = await fetch(`/api/sessions/${sessionData.id}/upload`, {
+      const res = await fetch(`/api/sessions/${sessionDataRef.current.id}/upload`, {
         method: "POST",
         headers,
         body: formData,
@@ -1859,6 +1872,7 @@ export default function LiveDesk() {
                 onClick={() => {
                   cleanupAvatarSession();
                   setSessionData(null);
+                  sessionDataRef.current = null;
                   setAvatarReady(false);
                   setIsListening(false);
                   setShowTextInput(false);
