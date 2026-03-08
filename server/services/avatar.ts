@@ -2,11 +2,26 @@ const LIVEAVATAR_API = "https://api.liveavatar.com";
 
 type AvatarConfig = { avatarId: string; name: string; persona: string };
 
+const ADMIN_AVATAR_IDS = [
+  "998e5637-cfca-4700-891e-8a40ce33f562",
+  "8175dfc2-7858-49d6-b5fa-0c135d1c4bad",
+  "26393b8e-e944-4367-98ef-e2bc75c4b792",
+  "bf00036b-558a-44b5-b2ff-1e3cec0f4ceb",
+];
+
+function getRandomAdminAvatarId(): string {
+  return ADMIN_AVATAR_IDS[Math.floor(Math.random() * ADMIN_AVATAR_IDS.length)];
+}
+
+const ADMIN_PERSONA_EN = "You are Sarah, the Registration Admin at American Iron. You greet customers warmly, introduce yourself by name, and briefly explain that you'll help them describe their equipment issue so you can assign the right specialist mechanic. Keep it short, friendly, and professional. Do not elaborate about the company or list the divisions.";
+
+const ADMIN_PERSONA_AR = "أنتِ سارة، مديرة الاستقبال في أمريكان أيرون. رحّبي بالعملاء بحرارة، عرّفي عن نفسك بالاسم، واشرحي باختصار أنك ستساعدينهم في وصف مشكلة معداتهم لتوصيلهم بالميكانيكي المتخصص المناسب. اجعلي الكلام قصيراً وودوداً ومهنياً. لا تتحدثي بالتفصيل عن الشركة أو أقسامها. تحدثي دائماً بالعربية.";
+
 const AVATAR_MAP_EN: Record<string, AvatarConfig> = {
   admin: {
-    avatarId: "3f291b22-0267-4fb6-a25b-847fb63604b0",
-    name: "Silas",
-    persona: "You are the Registration Admin at American Iron, a heavy equipment diagnostic shop. You're standing at the front desk of the shop wearing your shop uniform. You greet customers who walk in, collect information about their equipment issue, and connect them with the right specialist mechanic. Be warm, professional, and efficient. Use expressive facial expressions — smile when greeting, raise eyebrows when interested, nod when acknowledging. Look directly at the customer with attentive eye contact. Show genuine engagement through your expressions.",
+    avatarId: "",
+    name: "Sarah",
+    persona: ADMIN_PERSONA_EN,
   },
   heavy_equipment: {
     avatarId: "64b526e4-741c-43b6-a918-4e40f3261c7a",
@@ -37,9 +52,9 @@ const AVATAR_MAP_EN: Record<string, AvatarConfig> = {
 
 const AVATAR_MAP_AR: Record<string, AvatarConfig> = {
   admin: {
-    avatarId: "3f291b22-0267-4fb6-a25b-847fb63604b0",
-    name: "Fatima",
-    persona: "أنتِ مديرة الاستقبال في أمريكان أيرون، ورشة تشخيص المعدات الثقيلة. أنتِ واقفة عند مكتب الاستقبال في الورشة وترتدين زي العمل. ترحبين بالعملاء الذين يدخلون وتجمعين معلومات عن مشكلة معداتهم وتربطينهم بالميكانيكي المتخصص المناسب. كوني دافئة ومهنية وفعالة. استخدمي تعابير وجه معبّرة — ابتسمي عند الترحيب، ارفعي حاجبيك عند الاهتمام، أومئي بالموافقة. حافظي على تواصل بصري يقظ. تحدثي دائماً بالعربية.",
+    avatarId: "",
+    name: "Sarah",
+    persona: ADMIN_PERSONA_AR,
   },
   heavy_equipment: {
     avatarId: "64b526e4-741c-43b6-a918-4e40f3261c7a",
@@ -89,9 +104,12 @@ export async function createAvatarSession(agentType: string = "admin", backgroun
   const avatarMap = AVATAR_MAPS[language] || AVATAR_MAPS.en;
   const avatarConfig = avatarMap[agentType] || avatarMap.admin;
 
+  const avatarId = agentType === "admin" ? getRandomAdminAvatarId() : avatarConfig.avatarId;
+  console.log(`Using avatar: ${avatarConfig.name} (${avatarId}) for ${agentType}/${language}`);
+
   const tokenBody: any = {
     mode: "FULL",
-    avatar_id: avatarConfig.avatarId,
+    avatar_id: avatarId,
     avatar_persona: {
       persona: avatarConfig.persona,
     },

@@ -376,16 +376,12 @@ export default function LiveDesk() {
       setCurrentAgent("admin");
 
       const introText = selectedLanguage === "ar"
-        ? "مرحباً بكم في أمريكان أيرون! نحن وجهتكم الأولى لتشخيص المعدات الثقيلة والدعم الميكانيكي المتخصص. " +
-          "إليكم كيف يعمل النظام. أخبروني قليلاً عن معداتكم والمشكلة التي تواجهونها، وسأوصلكم بأحد ميكانيكيينا المتخصصين الخمسة. " +
-          "لدينا خبراء في المعدات الثقيلة مثل الحفارات والبلدوزرات، وأنظمة توليد الطاقة، والمحركات البحرية، والأنظمة الهيدروليكية، والتحكم الكهربائي. " +
-          "كل ميكانيكي لديه عقود من الخبرة العملية ومستعد لإرشادكم في تشخيص فوري هنا وجهاً لوجه. " +
-          "بعد استشارتكم ستحصلون على تقرير تشخيصي يمكنكم تقديمه مباشرة لفريق الصيانة. الآن أخبروني ما المشكلة مع معداتكم ولنبدأ!"
-        : "Welcome to American Iron! We're your one-stop shop for heavy equipment diagnostics and expert mechanical support. " +
-          "Here's how it works. You tell me a little about your equipment and the issue you're experiencing, and I'll connect you with one of our five specialist mechanics. " +
-          "We have experts in heavy equipment like excavators and bulldozers, power generation systems, marine engines, hydraulic systems, and electrical controls. " +
-          "Each mechanic has decades of hands-on experience and is ready to walk you through a real-time diagnosis, right here, face to face. " +
-          "After your consultation, you'll receive a diagnostic report you can take straight to your service team. Now, let me know what's going on with your equipment, and we'll get started!";
+        ? "مرحباً! أنا سارة، مديرة الاستقبال في أمريكان أيرون. أهلاً وسهلاً بك! " +
+          "أنا هنا لمساعدتك. أخبرني عن المشكلة التي تواجهها مع معداتك وسأوصلك بالميكانيكي المتخصص المناسب. " +
+          "ما الذي يمكنني مساعدتك فيه اليوم؟"
+        : "Hi there! I'm Sarah, the front desk admin here at American Iron. Welcome! " +
+          "I'm here to help get you started. Just tell me a bit about the issue you're having with your equipment, " +
+          "and I'll connect you with the right specialist mechanic. What can I help you with today?";
 
       let avatarConnected = false;
       try {
