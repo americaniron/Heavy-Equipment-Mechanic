@@ -243,8 +243,6 @@ export default function LiveDesk() {
         }
 
         try {
-          setIsProcessing(true);
-          isProcessingRef.current = true;
           setIsListening(false);
 
           const formData = new FormData();
@@ -257,14 +255,10 @@ export default function LiveDesk() {
             console.log("Transcribed:", text);
             await handleUserMessageRef.current(text.trim());
           } else {
-            setIsProcessing(false);
-            isProcessingRef.current = false;
             setTimeout(() => startVoiceCapture(), 200);
           }
         } catch (err) {
           console.error("Transcription error:", err);
-          setIsProcessing(false);
-          isProcessingRef.current = false;
           setTimeout(() => startVoiceCapture(), 500);
         }
       };
