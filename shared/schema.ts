@@ -30,6 +30,7 @@ export const sessions = pgTable("sessions", {
   stripeSessionId: text("stripe_session_id"),
   shareToken: text("share_token"),
   intakeJson: jsonb("intake_json"),
+  language: text("language").default("en"),
   consentGiven: boolean("consent_given").default(false),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
