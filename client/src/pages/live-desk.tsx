@@ -26,6 +26,7 @@ import logoPath from "@assets/american-iron-logo_1772935008934.png";
 import heroFacilityPath from "@assets/hero_facility.png";
 import workshopVideoPath from "@assets/generated_videos/workshop_bg_compressed.mp4";
 import aboutShopVideoPath from "@assets/generated_videos/about_shop_compressed.mp4";
+import aboutNarrationPath from "@assets/generated_videos/about_narration.mp3";
 import serviceHeavyEquipPath from "@assets/service_heavyequip.png";
 import servicePowerGenPath from "@assets/service_powergen.png";
 import serviceMarinePath from "@assets/service_marine.png";
@@ -100,35 +101,30 @@ export default function LiveDesk() {
   const [activeView, setActiveView] = useState<"home" | "services">("home");
   const [expandedService, setExpandedService] = useState<number | null>(null);
   const aboutVideoRef = useRef<HTMLVideoElement>(null);
-  const aboutNarrationRef = useRef<SpeechSynthesisUtterance | null>(null);
-
-  const aboutNarrationText = "Welcome to American Iron — your full-service, AI-powered diagnostic facility for heavy industrial equipment. Our virtual shop floor covers five expert divisions: Heavy Equipment, Power Generation, Marine Engines, Hydraulic Systems, and Electrical Controls. Whether you're dealing with an excavator that won't start, a generator running rough, or a hydraulic system losing pressure — our AI-powered specialist mechanics are here to help. Walk in, speak face-to-face with our friendly front desk admin, and she'll connect you with the right expert. No appointments needed. Real-time diagnostics. Detailed reports delivered on the spot. American Iron — built for the people who build the world.";
+  const aboutAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const startAboutNarration = useCallback(() => {
-    if (!('speechSynthesis' in window)) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(aboutNarrationText);
-    utterance.rate = 0.95;
-    utterance.pitch = 1.0;
-    utterance.volume = 1.0;
-    const voices = window.speechSynthesis.getVoices();
-    const preferred = voices.find(v => v.name.includes("Google") && v.lang.startsWith("en") && v.name.includes("Female"))
-      || voices.find(v => v.name.includes("Google") && v.lang.startsWith("en"))
-      || voices.find(v => v.lang.startsWith("en"));
-    if (preferred) utterance.voice = preferred;
-    utterance.onstart = () => setAboutNarrating(true);
-    utterance.onend = () => setAboutNarrating(false);
-    utterance.onerror = () => setAboutNarrating(false);
-    aboutNarrationRef.current = utterance;
-    window.speechSynthesis.speak(utterance);
+    if (aboutAudioRef.current) {
+      aboutAudioRef.current.pause();
+      aboutAudioRef.current = null;
+    }
+    const audio = new Audio(aboutNarrationPath);
+    audio.volume = 1.0;
+    audio.onplay = () => setAboutNarrating(true);
+    audio.onended = () => setAboutNarrating(false);
+    audio.onerror = () => setAboutNarrating(false);
+    audio.onpause = () => setAboutNarrating(false);
+    aboutAudioRef.current = audio;
+    audio.play().catch(() => setAboutNarrating(false));
   }, []);
 
   const stopAboutNarration = useCallback(() => {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
+    if (aboutAudioRef.current) {
+      aboutAudioRef.current.pause();
+      aboutAudioRef.current.currentTime = 0;
+      aboutAudioRef.current = null;
     }
     setAboutNarrating(false);
-    aboutNarrationRef.current = null;
   }, []);
 
   const videoContainerRef = useRef<HTMLDivElement>(null);
