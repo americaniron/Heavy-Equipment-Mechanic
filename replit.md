@@ -26,7 +26,9 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
 - **Mode**: FULL mode (server-side LLM, avatar speaks text sent via LiveKit data channel)
 - **Flow**: Server creates session token → starts session → returns LiveKit URL + client token → client connects to LiveKit Room → subscribes to video/audio tracks → sends speak commands on `agent-control` topic
 - **Events**: `avatar.speak_text` command → `avatar.speak_started`/`avatar.speak_ended` server events → `avatar.transcription` for subtitle text
-- **Avatars**: Silas (admin), Bryan (heavy equip), Elenora (power gen), Pedro (marine), Thaddeus (hydraulics), Anastasia (electrical) — all casual/work-style avatars
+- **English Avatars**: Silas (admin), Bryan (heavy equip), Elenora (power gen), Pedro (marine), Thaddeus (hydraulics), Anastasia (electrical)
+- **Arabic Avatars**: Fatima (admin), Khalid (heavy equip), Layla (power gen), Omar (marine), Hassan (hydraulics), Nour (electrical)
+- **Language Selection**: Customer chooses English or Arabic on landing page; language flows through session → avatar → AI prompts
 - **Background**: Mechanic shop background image (attached_assets/shop_background.png) served at /static/shop_background.png, passed to LiveAvatar API as custom background, and used as CSS fallback behind the video
 - **Fallback**: Browser SpeechSynthesis when LiveKit room is disconnected
 
@@ -79,6 +81,7 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
 8. **Share Links** - Token-based report sharing
 10. **Session Security** - Access tokens protect all session endpoints
 11. **Browser TTS Fallback** - SpeechSynthesis when LiveKit is unavailable
+12. **Multi-Language Support** - English and Arabic with separate avatar characters and localized AI prompts
 
 ## API Endpoints
 - `POST /api/sessions` - Create session (returns accessToken)

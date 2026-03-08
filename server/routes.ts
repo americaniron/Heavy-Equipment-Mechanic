@@ -55,6 +55,7 @@ export async function registerRoutes(
       const session = await storage.createSession({
         status: "intake",
         tier: "free",
+        language: req.body.language || "en",
         consentGiven: req.body.consentGiven || false,
         agentProvider: req.body.provider || "heygen",
       });
@@ -125,8 +126,10 @@ export async function registerRoutes(
 
       let fullResponse = "";
 
+      const sessionLanguage = session.language || "en";
+
       if (agentType === "admin") {
-        for await (const chunk of streamAdminResponse(chatHistory)) {
+        for await (const chunk of streamAdminResponse(chatHistory, sessionLanguage)) {
           fullResponse += chunk;
           res.write(`data: ${JSON.stringify({ type: "text", content: chunk })}\n\n`);
         }
@@ -163,7 +166,7 @@ export async function registerRoutes(
             res.write(`data: ${JSON.stringify({
               type: "handoff",
               mechanicType: intakeData.mechanicType,
-              mechanicName: getMechanicName(intakeData.mechanicType as string),
+              mechanicName: getMechanicName(intakeData.mechanicType as string, sessionLanguage),
               visitType: intakeData.visitType,
               intakeData,
             })}\n\n`);
@@ -174,7 +177,8 @@ export async function registerRoutes(
         for await (const chunk of streamMechanicResponse(
           session.mechanicType || "heavy_equipment",
           chatHistory,
-          intakeJson
+          intakeJson,
+          sessionLanguage
         )) {
           fullResponse += chunk;
           res.write(`data: ${JSON.stringify({ type: "text", content: chunk })}\n\n`);
@@ -212,12 +216,17 @@ export async function registerRoutes(
         tier: session.visitType === "pro" ? "pro" : "free",
       });
 
-      const mechanicName = getMechanicName(session.mechanicType || "heavy_equipment");
+      const handoffLanguage = session.language || "en";
+      const mechanicName = getMechanicName(session.mechanicType || "heavy_equipment", handoffLanguage);
+
+      const handoffMessage = handoffLanguage === "ar"
+        ? `مرحباً! أنا ${mechanicName}. لقد راجعت معلومات القبول الخاصة بك وأنا مستعد لمساعدتك في تشخيص المشكلة مع ${session.equipmentType || "المعدات"} الخاصة بك. لنبدأ.`
+        : `Hello! I'm ${mechanicName}. I've reviewed your intake information and I'm ready to help diagnose the issue with your ${session.equipmentType || "equipment"}. Let's get started.`;
 
       await storage.createMessage({
         sessionId,
         role: "assistant",
-        content: `Hello! I'm ${mechanicName}. I've reviewed your intake information and I'm ready to help diagnose the issue with your ${session.equipmentType || "equipment"}. Let's get started.`,
+        content: handoffMessage,
         agentType: "mechanic",
       });
 
@@ -365,11 +374,11 @@ export async function registerRoutes(
 
   app.post("/api/avatar/session", async (req, res) => {
     try {
-      const { agentType } = req.body;
+      const { agentType, language } = req.body;
       const protocol = req.headers["x-forwarded-proto"] || "https";
       const host = req.get("host");
       const backgroundUrl = `${protocol}://${host}/static/shop_background.png`;
-      const result = await createAvatarSession(agentType || "admin", backgroundUrl);
+      const result = await createAvatarSession(agentType || "admin", backgroundUrl, language || "en");
       res.json(result);
     } catch (error: any) {
       console.error("Avatar session creation error:", error);

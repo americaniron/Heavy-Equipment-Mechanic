@@ -52,18 +52,28 @@ interface ReportData {
   shareToken: string | null;
 }
 
-const MECHANIC_INFO: Record<string, { name: string; title: string; icon: any }> = {
-  heavy_equipment: { name: "Mike Torres", title: "Heavy Equipment Mechanic", icon: Wrench },
-  power_gen: { name: "Sarah Chen", title: "Power Generation Engineer", icon: Zap },
-  marine: { name: "James Coastal", title: "Marine Engine Mechanic", icon: Anchor },
-  hydraulics: { name: "David Pressure", title: "Hydraulics Specialist", icon: Droplets },
-  electrical: { name: "Elena Circuit", title: "Electrical Controls Specialist", icon: Cpu },
+const MECHANIC_INFO: Record<string, Record<string, { name: string; title: string; icon: any }>> = {
+  en: {
+    heavy_equipment: { name: "Mike Torres", title: "Heavy Equipment Mechanic", icon: Wrench },
+    power_gen: { name: "Sarah Chen", title: "Power Generation Engineer", icon: Zap },
+    marine: { name: "James Coastal", title: "Marine Engine Mechanic", icon: Anchor },
+    hydraulics: { name: "David Pressure", title: "Hydraulics Specialist", icon: Droplets },
+    electrical: { name: "Elena Circuit", title: "Electrical Controls Specialist", icon: Cpu },
+  },
+  ar: {
+    heavy_equipment: { name: "خالد المهندس", title: "ميكانيكي معدات ثقيلة", icon: Wrench },
+    power_gen: { name: "ليلى", title: "مهندسة توليد الطاقة", icon: Zap },
+    marine: { name: "عمر البحري", title: "ميكانيكي محركات بحرية", icon: Anchor },
+    hydraulics: { name: "حسن", title: "أخصائي هيدروليك", icon: Droplets },
+    electrical: { name: "نور", title: "أخصائية كهرباء وتحكم", icon: Cpu },
+  },
 };
 
 export default function LiveDesk() {
   const { toast } = useToast();
   const [sessionData, setSessionData] = useState<SessionData | null>(null);
   const [consentGiven, setConsentGiven] = useState(false);
+  const [selectedLanguage, setSelectedLanguage] = useState<"en" | "ar">("en");
   const [isConnecting, setIsConnecting] = useState(false);
   const [avatarReady, setAvatarReady] = useState(false);
   const [isTalking, setIsTalking] = useState(false);
@@ -142,11 +152,13 @@ export default function LiveDesk() {
         }
       };
       const voices = window.speechSynthesis.getVoices();
-      const preferred = voices.find(v => v.name.includes("Google") && v.lang.startsWith("en")) || voices.find(v => v.lang.startsWith("en"));
+      const langPrefix = selectedLanguage === "ar" ? "ar" : "en";
+      const preferred = voices.find(v => v.name.includes("Google") && v.lang.startsWith(langPrefix)) || voices.find(v => v.lang.startsWith(langPrefix));
       if (preferred) utterance.voice = preferred;
+      if (selectedLanguage === "ar") utterance.lang = "ar";
       window.speechSynthesis.speak(utterance);
     }
-  }, []);
+  }, [selectedLanguage]);
 
   const waitForSpeakEnd = useCallback((timeoutMs: number = 30000): Promise<void> => {
     return new Promise((resolve) => {
@@ -200,8 +212,8 @@ export default function LiveDesk() {
     }
   };
 
-  const connectAvatar = async (agentType: string = "admin"): Promise<Room> => {
-    const res = await apiRequest("POST", "/api/avatar/session", { agentType });
+  const connectAvatar = async (agentType: string = "admin", language: string = "en"): Promise<Room> => {
+    const res = await apiRequest("POST", "/api/avatar/session", { agentType, language });
     const { sessionId, sessionToken, livekitUrl, livekitClientToken } = await res.json();
 
     avatarSessionTokenRef.current = sessionToken;
@@ -315,6 +327,7 @@ export default function LiveDesk() {
       const res = await apiRequest("POST", "/api/sessions", {
         consentGiven: true,
         provider: "heygen",
+        language: selectedLanguage,
       });
       const session = await res.json();
       setAccessToken(session.accessToken);
@@ -323,17 +336,23 @@ export default function LiveDesk() {
       setCurrentAgent("admin");
 
       try {
-        const room = await connectAvatar("admin");
+        const room = await connectAvatar("admin", selectedLanguage);
 
         setTimeout(async () => {
           setIntroPlaying(true);
           introPlayingRef.current = true;
 
-          const introText = "Welcome to American Iron! We're your one-stop shop for heavy equipment diagnostics and expert mechanical support. " +
-            "Here's how it works. You tell me a little about your equipment and the issue you're experiencing, and I'll connect you with one of our five specialist mechanics. " +
-            "We have experts in heavy equipment like excavators and bulldozers, power generation systems, marine engines, hydraulic systems, and electrical controls. " +
-            "Each mechanic has decades of hands-on experience and is ready to walk you through a real-time diagnosis, right here, face to face. " +
-            "After your consultation, you'll receive a diagnostic report you can take straight to your service team. Now, let me know what's going on with your equipment, and we'll get started!";
+          const introText = selectedLanguage === "ar"
+            ? "مرحباً بكم في أمريكان أيرون! نحن وجهتكم الأولى لتشخيص المعدات الثقيلة والدعم الميكانيكي المتخصص. " +
+              "إليكم كيف يعمل النظام. أخبروني قليلاً عن معداتكم والمشكلة التي تواجهونها، وسأوصلكم بأحد ميكانيكيينا المتخصصين الخمسة. " +
+              "لدينا خبراء في المعدات الثقيلة مثل الحفارات والبلدوزرات، وأنظمة توليد الطاقة، والمحركات البحرية، والأنظمة الهيدروليكية، والتحكم الكهربائي. " +
+              "كل ميكانيكي لديه عقود من الخبرة العملية ومستعد لإرشادكم في تشخيص فوري هنا وجهاً لوجه. " +
+              "بعد استشارتكم ستحصلون على تقرير تشخيصي يمكنكم تقديمه مباشرة لفريق الصيانة. الآن أخبروني ما المشكلة مع معداتكم ولنبدأ!"
+            : "Welcome to American Iron! We're your one-stop shop for heavy equipment diagnostics and expert mechanical support. " +
+              "Here's how it works. You tell me a little about your equipment and the issue you're experiencing, and I'll connect you with one of our five specialist mechanics. " +
+              "We have experts in heavy equipment like excavators and bulldozers, power generation systems, marine engines, hydraulic systems, and electrical controls. " +
+              "Each mechanic has decades of hands-on experience and is ready to walk you through a real-time diagnosis, right here, face to face. " +
+              "After your consultation, you'll receive a diagnostic report you can take straight to your service team. Now, let me know what's going on with your equipment, and we'll get started!";
 
           setSubtitleText(introText);
           sendAvatarSpeakCommand(introText);
@@ -439,9 +458,12 @@ export default function LiveDesk() {
 
     const mechType = handoffData.mechanicType || "heavy_equipment";
     setMechanicType(mechType);
-    const mechanic = MECHANIC_INFO[mechType];
+    const mechanicInfo = MECHANIC_INFO[selectedLanguage] || MECHANIC_INFO.en;
+    const mechanic = mechanicInfo[mechType];
 
-    const transferMsg = `I'm now transferring you to ${mechanic?.name || "our specialist"}, our ${mechanic?.title || "diagnostic specialist"}. They'll take great care of you. One moment please.`;
+    const transferMsg = selectedLanguage === "ar"
+      ? `سأقوم الآن بتحويلك إلى ${mechanic?.name || "المتخصص لدينا"}، ${mechanic?.title || "أخصائي التشخيص"}. سيعتنون بك جيداً. لحظة من فضلك.`
+      : `I'm now transferring you to ${mechanic?.name || "our specialist"}, our ${mechanic?.title || "diagnostic specialist"}. They'll take great care of you. One moment please.`;
     setSubtitleText(transferMsg);
     sendAvatarSpeakCommand(transferMsg);
 
@@ -455,10 +477,12 @@ export default function LiveDesk() {
       await apiRequest("POST", `/api/sessions/${sessionData.id}/handoff`);
       setCurrentAgent("mechanic");
 
-      const room = await connectAvatar(mechType);
+      const room = await connectAvatar(mechType, selectedLanguage);
 
       setTimeout(() => {
-        const mechGreeting = `Hello! I'm ${mechanic?.name || "your specialist"}. I've reviewed your intake information and I'm ready to help diagnose the issue. Let's get started — can you tell me more about what you're experiencing?`;
+        const mechGreeting = selectedLanguage === "ar"
+          ? `مرحباً! أنا ${mechanic?.name || "المتخصص"}. لقد راجعت معلومات القبول الخاصة بك وأنا مستعد لمساعدتك في تشخيص المشكلة. لنبدأ — هل يمكنك إخباري المزيد عما تواجهه؟`
+          : `Hello! I'm ${mechanic?.name || "your specialist"}. I've reviewed your intake information and I'm ready to help diagnose the issue. Let's get started — can you tell me more about what you're experiencing?`;
         setSubtitleText(mechGreeting);
         conversationRef.current.push({ role: "assistant", content: mechGreeting });
         sendAvatarSpeakCommand(mechGreeting);
@@ -540,7 +564,8 @@ export default function LiveDesk() {
     toast({ title: "Link copied" });
   };
 
-  const currentMechanic = mechanicType ? MECHANIC_INFO[mechanicType] : null;
+  const currentMechanicInfo = MECHANIC_INFO[selectedLanguage] || MECHANIC_INFO.en;
+  const currentMechanic = mechanicType ? currentMechanicInfo[mechanicType] : null;
 
   if (sharedReport) {
     const sr = sharedReport.report;
@@ -826,6 +851,26 @@ export default function LiveDesk() {
             </div>
 
             <div className="bg-white/5 backdrop-blur-sm rounded-xl border border-[#FFCD11]/15 p-6 space-y-5">
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-gray-300 uppercase tracking-wider">Select Language</label>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setSelectedLanguage("en")}
+                    className={`flex-1 py-3 px-4 rounded-lg border-2 text-sm font-bold transition-all ${selectedLanguage === "en" ? "border-[#FFCD11] bg-[#FFCD11]/10 text-[#FFCD11]" : "border-white/10 bg-white/5 text-gray-400 hover:border-white/20"}`}
+                    data-testid="button-lang-en"
+                  >
+                    English
+                  </button>
+                  <button
+                    onClick={() => setSelectedLanguage("ar")}
+                    className={`flex-1 py-3 px-4 rounded-lg border-2 text-sm font-bold transition-all ${selectedLanguage === "ar" ? "border-[#FFCD11] bg-[#FFCD11]/10 text-[#FFCD11]" : "border-white/10 bg-white/5 text-gray-400 hover:border-white/20"}`}
+                    data-testid="button-lang-ar"
+                  >
+                    العربية (Arabic)
+                  </button>
+                </div>
+              </div>
+
               <div className="flex items-start gap-3">
                 <Checkbox
                   id="consent"
@@ -835,8 +880,9 @@ export default function LiveDesk() {
                   className="mt-0.5 border-[#FFCD11]/40 data-[state=checked]:bg-[#FFCD11] data-[state=checked]:border-[#FFCD11] data-[state=checked]:text-black"
                 />
                 <label htmlFor="consent" className="text-xs text-gray-400 leading-relaxed cursor-pointer text-left">
-                  I consent to having my conversation transcribed for report generation
-                  and understand that AI guidance is informational, not a substitute for certified inspection.
+                  {selectedLanguage === "ar"
+                    ? "أوافق على تسجيل محادثتي لإنشاء التقرير وأفهم أن إرشادات الذكاء الاصطناعي معلوماتية وليست بديلاً عن الفحص المعتمد."
+                    : "I consent to having my conversation transcribed for report generation and understand that AI guidance is informational, not a substitute for certified inspection."}
                 </label>
               </div>
 
@@ -849,12 +895,12 @@ export default function LiveDesk() {
                 {isConnecting ? (
                   <>
                     <Loader2 className="w-5 h-5 animate-spin mr-2" />
-                    CONNECTING TO FRONT DESK...
+                    {selectedLanguage === "ar" ? "جاري الاتصال بالاستقبال..." : "CONNECTING TO FRONT DESK..."}
                   </>
                 ) : (
                   <>
                     <ArrowRight className="w-5 h-5 mr-2" />
-                    WALK IN NOW
+                    {selectedLanguage === "ar" ? "ادخل الآن" : "WALK IN NOW"}
                   </>
                 )}
               </Button>
@@ -1005,18 +1051,18 @@ export default function LiveDesk() {
                     setIntroPlaying(false);
                     introPlayingRef.current = false;
                     setShowTextInput(true);
-                    setSubtitleText("What can I help you with today?");
+                    setSubtitleText(selectedLanguage === "ar" ? "كيف يمكنني مساعدتك اليوم؟" : "What can I help you with today?");
                     if (speakEndedResolveRef.current) {
                       speakEndedResolveRef.current();
                       speakEndedResolveRef.current = null;
                     }
                   }}
                 >
-                  Skip Intro <ChevronRight className="w-3 h-3 ml-1" />
+                  {selectedLanguage === "ar" ? "تخطي المقدمة" : "Skip Intro"} <ChevronRight className="w-3 h-3 ml-1" />
                 </Button>
               </div>
             )}
-            <div className="bg-black/70 backdrop-blur-sm text-white text-sm px-4 py-3 rounded-lg leading-relaxed" data-testid="text-subtitle">
+            <div className="bg-black/70 backdrop-blur-sm text-white text-sm px-4 py-3 rounded-lg leading-relaxed" data-testid="text-subtitle" dir={selectedLanguage === "ar" ? "rtl" : "ltr"}>
               {subtitleText}
             </div>
           </div>
@@ -1029,11 +1075,12 @@ export default function LiveDesk() {
             {showTextInput && (
               <div className="flex items-center gap-2">
                 <Input
-                  placeholder="Type your message..."
+                  placeholder={selectedLanguage === "ar" ? "اكتب رسالتك..." : "Type your message..."}
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendTextMessage()}
                   disabled={isProcessing}
+                  dir={selectedLanguage === "ar" ? "rtl" : "ltr"}
                   className="flex-1 bg-white/10 border-white/20 text-white placeholder:text-white/40 h-11"
                   data-testid="input-message"
                 />
