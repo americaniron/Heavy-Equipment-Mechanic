@@ -19,7 +19,7 @@ import {
   Loader2, Wrench, Zap, Anchor, Droplets, Cpu, User,
   ChevronRight, X, Download, Share2, AlertTriangle, Volume2, Keyboard,
   HardHat, Cog, ArrowRight, CheckCircle2, Star, Play, MessageCircle,
-  Search, ChevronDown, ChevronUp
+  Search, ChevronDown, ChevronUp, Package
 } from "lucide-react";
 import shopBackgroundPath from "@assets/shop_background.png";
 import logoPath from "@assets/american-iron-logo_1772935008934.png";
@@ -32,6 +32,7 @@ import servicePowerGenPath from "@assets/service_powergen.png";
 import serviceMarinePath from "@assets/service_marine.png";
 import serviceHydraulicsPath from "@assets/service_hydraulics.png";
 import serviceElectricalPath from "@assets/service_electrical.png";
+import servicePartsPath from "@assets/service_parts.png";
 
 interface SessionData {
   id: number;
@@ -63,6 +64,7 @@ const MECHANIC_INFO: Record<string, Record<string, { name: string; title: string
     marine: { name: "James Coastal", title: "Marine Engine Mechanic", icon: Anchor },
     hydraulics: { name: "David Pressure", title: "Hydraulics Specialist", icon: Droplets },
     electrical: { name: "Elena Circuit", title: "Electrical Controls Specialist", icon: Cpu },
+    parts: { name: "Tariq Hassan", title: "Parts Assistance Specialist", icon: Package },
   },
   ar: {
     heavy_equipment: { name: "خالد المهندس", title: "ميكانيكي معدات ثقيلة", icon: Wrench },
@@ -70,6 +72,7 @@ const MECHANIC_INFO: Record<string, Record<string, { name: string; title: string
     marine: { name: "عمر البحري", title: "ميكانيكي محركات بحرية", icon: Anchor },
     hydraulics: { name: "حسن", title: "أخصائي هيدروليك", icon: Droplets },
     electrical: { name: "نور", title: "أخصائية كهرباء وتحكم", icon: Cpu },
+    parts: { name: "طارق", title: "أخصائي قطع الغيار", icon: Package },
   },
 };
 
@@ -703,6 +706,7 @@ export default function LiveDesk() {
       { icon: Anchor, title: "MARINE ENGINES", desc: "Marine diesel, propulsion systems, and marine electrical diagnostics", image: serviceMarinePath },
       { icon: Droplets, title: "HYDRAULIC SYSTEMS", desc: "Pumps, cylinders, valves, and complete hydraulic circuit analysis", image: serviceHydraulicsPath },
       { icon: Cpu, title: "ELECTRICAL CONTROLS", desc: "PLCs, wiring, sensors, and control system troubleshooting", image: serviceElectricalPath },
+      { icon: Package, title: "PARTS ASSISTANCE", desc: "Part identification, cross-referencing, and compatibility verification", image: servicePartsPath },
     ];
 
     const serviceDetails = [
@@ -794,6 +798,24 @@ export default function LiveDesk() {
           "Telematics & GPS module setup and diagnostics",
           "Battery isolator & disconnect switch inspection",
           "24V/12V system voltage drop testing & parasitic draw",
+        ]
+      },
+      {
+        icon: Package, title: "PARTS ASSISTANCE", image: servicePartsPath,
+        desc: "Expert parts identification and cross-referencing for all heavy equipment manufacturers using part numbers or machine serial numbers.",
+        items: [
+          "OEM part identification from part numbers — all manufacturers",
+          "Machine serial number lookup & configuration breakdown",
+          "Cross-reference OEM to aftermarket part numbers",
+          "Parts compatibility verification across models & years",
+          "Superseded & discontinued part number tracking",
+          "Filter, belt & fluid specification lookup by machine serial",
+          "Undercarriage component identification & measurement specs",
+          "Engine rebuild kit & gasket set part matching",
+          "Hydraulic seal kit & O-ring specification lookup",
+          "Service kit & maintenance parts group identification",
+          "Parts group breakdown by machine system (engine, hydraulic, electrical)",
+          "Safety-critical parts identification & OEM recommendations",
         ]
       },
     ];
@@ -1133,7 +1155,7 @@ export default function LiveDesk() {
             <div className="text-center mb-16">
               <p className="text-[#FFCD11] text-sm font-bold tracking-[0.2em] uppercase mb-3">OUR SPECIALTIES</p>
               <h2 className="text-3xl sm:text-4xl font-black text-white" data-testid="text-services-heading">
-                FIVE EXPERT DIVISIONS.<br />ONE POWERFUL FACILITY.
+                SIX EXPERT DIVISIONS.<br />ONE POWERFUL FACILITY.
               </h2>
               <p className="text-gray-400 mt-4 max-w-xl mx-auto">
                 Each specialist brings decades of real-world experience to diagnose your equipment issues in real time.
