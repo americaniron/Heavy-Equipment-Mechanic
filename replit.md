@@ -26,6 +26,7 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
 - **Mode**: FULL mode (server-side LLM, avatar speaks text sent via LiveKit data channel)
 - **Flow**: Server creates session token → starts session → returns LiveKit URL + client token → client connects to LiveKit Room → subscribes to video/audio tracks → sends speak commands on `agent-control` topic
 - **Events**: `avatar.speak_text` command → `avatar.speak_started`/`avatar.speak_ended` server events → `avatar.transcription` for subtitle text
+- **Voice Input**: Client-side MediaRecorder captures user mic audio with VAD (silence detection) → sends to `/api/transcribe` endpoint → OpenAI Whisper STT → transcribed text fed to `handleUserMessage` → GPT-4o response → `avatar.speak_text` command. LiveAvatar FULL mode's built-in STT is not used (unreliable `user.transcription` events).
 - **English Avatars**: Silas (admin), Bryan (heavy equip), Elenora (power gen), Pedro (marine), Thaddeus (hydraulics), Anastasia (electrical), Marcus (parts)
 - **Arabic Avatars**: Fatima (admin), Khalid (heavy equip), Layla (power gen), Omar (marine), Hassan (hydraulics), Nour (electrical), Tariq (parts)
 - **Language Selection**: Customer chooses English or Arabic on landing page; language flows through session → avatar → AI prompts
