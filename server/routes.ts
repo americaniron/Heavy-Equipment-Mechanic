@@ -13,7 +13,7 @@ import {
 } from "./services/ai-engine";
 import { createAvatarSession, stopAvatarSession, getAvatarInfo } from "./services/avatar";
 
-import { speechToText, ensureCompatibleFormat } from "./replit_integrations/audio/client";
+import { speechToText } from "./replit_integrations/audio/client";
 
 const uploadDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadDir)) {
@@ -392,8 +392,7 @@ export async function registerRoutes(
       if (!req.file) {
         return res.status(400).json({ error: "No audio file provided" });
       }
-      const { buffer: compatBuffer, format } = await ensureCompatibleFormat(req.file.buffer);
-      const transcript = await speechToText(compatBuffer, format);
+      const transcript = await speechToText(req.file.buffer, "webm");
       res.json({ text: transcript });
     } catch (error: any) {
       console.error("Transcription error:", error);
