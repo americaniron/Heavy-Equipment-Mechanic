@@ -11,7 +11,7 @@ import {
   generateQuickAdviceReport, generateProReport,
   type ConversationMessage,
 } from "./services/ai-engine";
-import { createAvatarSession, stopAvatarSession, getAvatarInfo } from "./services/avatar";
+import { createAvatarSession, stopAvatarSession, sendAvatarSpeak, getAvatarInfo } from "./services/avatar";
 
 
 const uploadDir = path.join(process.cwd(), "uploads");
@@ -408,6 +408,20 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Transcription error:", error.message);
       res.status(500).json({ error: "Transcription failed" });
+    }
+  });
+
+  app.post("/api/avatar/speak", async (req, res) => {
+    try {
+      const { sessionToken, text } = req.body;
+      if (!sessionToken || !text) {
+        return res.status(400).json({ error: "sessionToken and text required" });
+      }
+      await sendAvatarSpeak(sessionToken, text);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Avatar speak error:", error.message);
+      res.status(500).json({ error: error.message });
     }
   });
 

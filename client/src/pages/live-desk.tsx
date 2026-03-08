@@ -398,7 +398,7 @@ export default function LiveDesk() {
     });
   }, []);
 
-  const sendAvatarSpeakCommand = useCallback((text: string) => {
+  const sendAvatarSpeakCommand = useCallback(async (text: string) => {
     const room = roomRef.current;
     if (!room || room.state !== "connected") {
       speakWithBrowser(text);
@@ -417,8 +417,9 @@ export default function LiveDesk() {
         topic: "agent-control",
       });
       setIsTalking(true);
+      console.log("Avatar speak command sent via LiveKit, text length:", text.length);
     } catch (err) {
-      console.error("Failed to send speak command:", err);
+      console.error("Failed to send speak command via LiveKit:", err);
       speakWithBrowser(text);
     }
   }, [speakWithBrowser]);
@@ -503,6 +504,7 @@ export default function LiveDesk() {
         const decoded = new TextDecoder().decode(data);
         const message = JSON.parse(decoded);
         const eventType = message.event_type || message.type;
+        console.log("LiveKit event:", eventType, "topic:", topic, JSON.stringify(message).slice(0, 200));
 
         if (eventType === "avatar.speak_started" || eventType === "avatar_start_talking") {
           setIsTalking(true);
@@ -576,8 +578,9 @@ export default function LiveDesk() {
           introPlayingRef.current = true;
 
           setSubtitleText(introText);
-          sendAvatarSpeakCommand(introText);
-          await waitForSpeakEnd(90000);
+          await sendAvatarSpeakCommand(introText);
+          const introEstimate = Math.max(5000, introText.length * 80);
+          await waitForSpeakEnd(Math.min(introEstimate, 60000));
 
           if (introPlayingRef.current) {
             setIntroPlaying(false);
@@ -653,6 +656,7 @@ export default function LiveDesk() {
 
   const handleUserMessage = async (userMsg: string) => {
     const currentSession = sessionDataRef.current;
+    console.log("handleUserMessage called:", userMsg, "session:", !!currentSession, "processing:", isProcessingRef.current);
     if (!currentSession || isProcessingRef.current || !userMsg.trim()) return;
 
     stopVoiceCapture();
@@ -709,9 +713,10 @@ export default function LiveDesk() {
         const speakText = fullText.length > 500 ? fullText.substring(0, 500) : fullText;
         setSubtitleText(speakText);
         conversationRef.current.push({ role: "assistant", content: fullText });
-        sendAvatarSpeakCommand(speakText);
+        await sendAvatarSpeakCommand(speakText);
 
-        await waitForSpeakEnd(30000);
+        const estimatedMs = Math.max(3000, speakText.length * 80);
+        await waitForSpeakEnd(Math.min(estimatedMs, 30000));
 
         if (handoffData) {
           await new Promise(r => setTimeout(r, 1500));
@@ -746,9 +751,9 @@ export default function LiveDesk() {
       ? `سأقوم الآن بتحويلك إلى ${mechanic?.name || "المتخصص لدينا"}، ${mechanic?.title || "أخصائي التشخيص"}. سيعتنون بك جيداً. لحظة من فضلك.`
       : `I'm now transferring you to ${mechanic?.name || "our specialist"}, our ${mechanic?.title || "diagnostic specialist"}. They'll take great care of you. One moment please.`;
     setSubtitleText(transferMsg);
-    sendAvatarSpeakCommand(transferMsg);
+    await sendAvatarSpeakCommand(transferMsg);
 
-    await waitForSpeakEnd(20000);
+    await waitForSpeakEnd(15000);
     await new Promise(r => setTimeout(r, 1500));
 
     try {
@@ -766,10 +771,11 @@ export default function LiveDesk() {
           : `Hello! I'm ${mechanic?.name || "your specialist"}. I've reviewed your intake information and I'm ready to help diagnose the issue. Let's get started — can you tell me more about what you're experiencing?`;
         setSubtitleText(mechGreeting);
         conversationRef.current.push({ role: "assistant", content: mechGreeting });
-        sendAvatarSpeakCommand(mechGreeting);
+        await sendAvatarSpeakCommand(mechGreeting);
         setHandoffInProgress(false);
 
-        await waitForSpeakEnd(30000);
+        const mechEstimate = Math.max(5000, mechGreeting.length * 80);
+        await waitForSpeakEnd(Math.min(mechEstimate, 30000));
         startVoiceCapture();
         console.log("Voice capture started after mechanic greeting");
       }, 3000);
