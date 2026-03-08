@@ -18,12 +18,14 @@ import {
   Mic, MicOff, Send, Upload, FileText, Phone, Shield,
   Loader2, Wrench, Zap, Anchor, Droplets, Cpu, User,
   ChevronRight, X, Download, Share2, AlertTriangle, Volume2, Keyboard,
-  HardHat, Cog, ArrowRight, CheckCircle2, Star
+  HardHat, Cog, ArrowRight, CheckCircle2, Star, Play, MessageCircle,
+  Search, ChevronDown, ChevronUp
 } from "lucide-react";
 import shopBackgroundPath from "@assets/shop_background.png";
 import logoPath from "@assets/american-iron-logo_1772935008934.png";
 import heroFacilityPath from "@assets/hero_facility.png";
 import workshopVideoPath from "@assets/generated_videos/workshop_bg_compressed.mp4";
+import aboutShopVideoPath from "@assets/generated_videos/about_shop_compressed.mp4";
 import serviceHeavyEquipPath from "@assets/service_heavyequip.png";
 import servicePowerGenPath from "@assets/service_powergen.png";
 import serviceMarinePath from "@assets/service_marine.png";
@@ -93,6 +95,10 @@ export default function LiveDesk() {
   const [showActions, setShowActions] = useState(false);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [sharedReport, setSharedReport] = useState<{ report: ReportData; session: any } | null>(null);
+  const [showAboutVideo, setShowAboutVideo] = useState(false);
+  const [activeView, setActiveView] = useState<"home" | "services">("home");
+  const [expandedService, setExpandedService] = useState<number | null>(null);
+  const aboutVideoRef = useRef<HTMLVideoElement>(null);
 
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const roomRef = useRef<Room | null>(null);
@@ -656,12 +662,231 @@ export default function LiveDesk() {
       { icon: Cpu, title: "ELECTRICAL CONTROLS", desc: "PLCs, wiring, sensors, and control system troubleshooting", image: serviceElectricalPath },
     ];
 
+    const serviceDetails = [
+      {
+        icon: Wrench, title: "HEAVY EQUIPMENT", image: serviceHeavyEquipPath,
+        desc: "Complete diagnostics and repair guidance for all types of heavy machinery and earthmoving equipment.",
+        items: [
+          "Excavator hydraulic system diagnostics & troubleshooting",
+          "Bulldozer undercarriage inspection & track tension analysis",
+          "Wheel loader transmission & drivetrain fault diagnosis",
+          "Backhoe swing motor & boom cylinder repair guidance",
+          "Grader blade control system calibration & adjustment",
+          "Skid steer hydraulic flow testing & valve diagnosis",
+          "Crane boom inspection & load capacity verification",
+          "Compactor vibration system analysis & bearing inspection",
+          "Engine overheating & cooling system diagnostics",
+          "Fuel injection system testing & injector diagnosis",
+          "Turbocharger boost pressure analysis & wastegate check",
+          "Exhaust aftertreatment (DPF/SCR) regeneration troubleshooting",
+        ]
+      },
+      {
+        icon: Zap, title: "POWER GENERATION", image: servicePowerGenPath,
+        desc: "Expert diagnostics for generators, turbines, and complete power distribution systems.",
+        items: [
+          "Diesel generator starting & cranking system diagnosis",
+          "Alternator voltage regulation & AVR troubleshooting",
+          "Transfer switch operation testing & ATS diagnostics",
+          "Paralleling generator synchronization & load sharing",
+          "Coolant system inspection & radiator flow analysis",
+          "Fuel system priming, filtering & injector testing",
+          "Governor speed control calibration & hunting fix",
+          "Battery charger & starting battery load testing",
+          "Exhaust manifold & turbo inspection for gen-sets",
+          "Control panel fault code reading & ECU diagnostics",
+          "Load bank testing & performance verification",
+          "Preventive maintenance scheduling & oil analysis",
+        ]
+      },
+      {
+        icon: Anchor, title: "MARINE ENGINES", image: serviceMarinePath,
+        desc: "Specialized marine diesel and propulsion system diagnostics for vessels of all sizes.",
+        items: [
+          "Marine diesel engine overhaul & top-end rebuild guidance",
+          "Raw water cooling system & heat exchanger inspection",
+          "Marine transmission & reduction gear diagnosis",
+          "Propeller shaft alignment & stern tube seal check",
+          "Marine fuel system water separation & filter service",
+          "Exhaust elbow & wet exhaust system corrosion inspection",
+          "Marine starter motor & charging system diagnostics",
+          "Zincs & cathodic protection system assessment",
+          "Bilge pump system testing & float switch diagnosis",
+          "Marine electrical panel & shore power connection check",
+          "Engine mount inspection & vibration isolation analysis",
+          "Winterization procedures & long-term storage prep",
+        ]
+      },
+      {
+        icon: Droplets, title: "HYDRAULIC SYSTEMS", image: serviceHydraulicsPath,
+        desc: "Full hydraulic circuit analysis including pumps, cylinders, valves, and fluid power systems.",
+        items: [
+          "Hydraulic pump flow testing & pressure diagnostics",
+          "Cylinder seal replacement & rod inspection guidance",
+          "Directional control valve spool & solenoid testing",
+          "Hydraulic hose routing, sizing & pressure rating",
+          "Relief valve pressure setting & adjustment",
+          "Hydraulic oil contamination analysis & flushing",
+          "Accumulator pre-charge pressure verification",
+          "Proportional valve calibration & current testing",
+          "Hydraulic motor case drain flow measurement",
+          "Pilot pressure system diagnosis & orifice check",
+          "Cooler & heat exchanger efficiency testing",
+          "Complete hydraulic schematic reading & circuit tracing",
+        ]
+      },
+      {
+        icon: Cpu, title: "ELECTRICAL CONTROLS", image: serviceElectricalPath,
+        desc: "PLC programming, sensor calibration, wiring diagnostics, and control system troubleshooting.",
+        items: [
+          "PLC fault code reading & ladder logic troubleshooting",
+          "Sensor calibration — pressure, temperature, position",
+          "Wiring harness continuity testing & connector diagnosis",
+          "CAN bus communication diagnostics & network analysis",
+          "Relay & contactor testing, coil resistance measurement",
+          "Variable frequency drive (VFD) parameter setup & faults",
+          "Motor starter overload setting & thermal protection",
+          "Grounding & bonding inspection for safety compliance",
+          "Instrument panel gauge calibration & sender testing",
+          "Telematics & GPS module setup and diagnostics",
+          "Battery isolator & disconnect switch inspection",
+          "24V/12V system voltage drop testing & parasitic draw",
+        ]
+      },
+    ];
+
     const features = [
       { icon: User, text: "Face-to-face AI-powered video consultations" },
       { icon: HardHat, text: "Decades of combined specialist experience" },
       { icon: FileText, text: "Detailed diagnostic reports for your service team" },
       { icon: Shield, text: "Encrypted and secure — your data stays private" },
     ];
+
+    if (activeView === "services") {
+      return (
+        <div className="min-h-screen bg-[#111111] text-white overflow-x-hidden" data-testid="services-page">
+          <title>AMERICAN IRON | Our Services</title>
+          <nav className="fixed top-0 left-0 right-0 z-50 bg-[#111111]/90 backdrop-blur-md border-b border-[#FFCD11]/10" data-testid="nav-bar-services">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+              <button onClick={() => setActiveView("home")} className="flex items-center gap-3 hover:opacity-80 transition-opacity" data-testid="button-back-home-services">
+                <ChevronRight className="w-4 h-4 text-gray-400 rotate-180" />
+                <img src={logoPath} alt="AMERICAN IRON" className="h-10 w-auto" />
+              </button>
+              <Button
+                size="sm"
+                className="bg-[#FFCD11] text-black font-bold hover:bg-[#e6b800]"
+                onClick={() => { setActiveView("home"); setTimeout(() => document.getElementById("speak-admin-section")?.scrollIntoView({ behavior: "smooth" }), 100); }}
+                data-testid="button-services-nav-admin"
+              >
+                <MessageCircle className="w-4 h-4 mr-1" />
+                SPEAK WITH ADMIN
+              </Button>
+            </div>
+          </nav>
+
+          <div className="pt-24 pb-16 px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto">
+            <div className="text-center mb-12">
+              <p className="text-[#FFCD11] text-sm font-bold tracking-[0.2em] uppercase mb-3">COMPLETE SERVICE CATALOG</p>
+              <h1 className="text-3xl sm:text-4xl font-black text-white mb-4" data-testid="text-services-title">
+                EVERY REPAIR. EVERY SYSTEM.<br />
+                <span className="text-[#FFCD11]">WE COVER IT ALL.</span>
+              </h1>
+              <p className="text-gray-400 max-w-2xl mx-auto">
+                Our five expert divisions cover virtually every repair and diagnostic need for heavy industrial equipment. Click any section to see the full breakdown.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              {serviceDetails.map((svc, i) => (
+                <div
+                  key={i}
+                  className={`rounded-xl border transition-all duration-300 overflow-hidden ${expandedService === i ? "border-[#FFCD11]/40 bg-[#1a1a1a]" : "border-white/10 bg-[#161616] hover:border-[#FFCD11]/20"}`}
+                  data-testid={`service-detail-${i}`}
+                >
+                  <button
+                    className="w-full flex items-center gap-4 p-5 text-left"
+                    onClick={() => setExpandedService(expandedService === i ? null : i)}
+                    data-testid={`button-expand-service-${i}`}
+                  >
+                    <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 border border-white/10">
+                      <img src={svc.image} alt={svc.title} className="w-full h-full object-cover" />
+                    </div>
+                    <div className="w-10 h-10 rounded-md bg-[#FFCD11]/10 flex items-center justify-center flex-shrink-0">
+                      <svc.icon className="w-5 h-5 text-[#FFCD11]" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-base font-black text-white">{svc.title}</h3>
+                      <p className="text-gray-400 text-sm truncate">{svc.desc}</p>
+                    </div>
+                    <div className="flex-shrink-0">
+                      {expandedService === i ? (
+                        <ChevronUp className="w-5 h-5 text-[#FFCD11]" />
+                      ) : (
+                        <ChevronDown className="w-5 h-5 text-gray-500" />
+                      )}
+                    </div>
+                  </button>
+
+                  {expandedService === i && (
+                    <div className="px-5 pb-5 border-t border-white/5">
+                      <p className="text-gray-300 text-sm mb-4 pt-4">{svc.desc}</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {svc.items.map((item, j) => (
+                          <div key={j} className="flex items-start gap-2 text-sm" data-testid={`service-item-${i}-${j}`}>
+                            <CheckCircle2 className="w-4 h-4 text-[#FFCD11] flex-shrink-0 mt-0.5" />
+                            <span className="text-gray-300">{item}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-6">
+                        <Button
+                          className="bg-[#FFCD11] text-black font-bold hover:bg-[#e6b800]"
+                          onClick={() => { setActiveView("home"); setTimeout(() => document.getElementById("speak-admin-section")?.scrollIntoView({ behavior: "smooth" }), 100); }}
+                          data-testid={`button-speak-admin-${i}`}
+                        >
+                          <MessageCircle className="w-4 h-4 mr-2" />
+                          SPEAK WITH ADMIN ABOUT THIS
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-12 text-center">
+              <p className="text-gray-500 text-sm mb-4">Don't see your specific issue? Our admin will route you to the right specialist.</p>
+              <Button
+                size="lg"
+                className="h-14 px-10 text-lg font-black bg-[#FFCD11] text-black hover:bg-[#e6b800] rounded-lg shadow-lg shadow-[#FFCD11]/20"
+                onClick={() => { setActiveView("home"); setTimeout(() => document.getElementById("speak-admin-section")?.scrollIntoView({ behavior: "smooth" }), 100); }}
+                data-testid="button-services-speak-admin"
+              >
+                <MessageCircle className="w-5 h-5 mr-2" />
+                SPEAK WITH ADMIN
+              </Button>
+            </div>
+          </div>
+
+          <footer className="relative border-t border-white/5 bg-[#0d0d0d] py-10">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+                <div className="flex items-center gap-3">
+                  <img src={logoPath} alt="AMERICAN IRON" className="h-10 w-auto" />
+                  <div className="text-xs text-gray-500">
+                    <p>AI-Powered Heavy Equipment Diagnostics</p>
+                    <p className="mt-0.5">americanironus.com</p>
+                  </div>
+                </div>
+                <div className="text-xs text-gray-600">
+                  &copy; {new Date().getFullYear()} AMERICAN IRON. All rights reserved.
+                </div>
+              </div>
+            </div>
+          </footer>
+        </div>
+      );
+    }
 
     return (
       <div className="min-h-screen bg-[#111111] text-white overflow-x-hidden" data-testid="landing-page">
@@ -670,21 +895,72 @@ export default function LiveDesk() {
         <meta property="og:title" content="AMERICAN IRON | Live AI Engineer Desk" />
         <meta property="og:description" content="Real-time AI-powered heavy equipment diagnostics with live video avatars." />
 
+        {showAboutVideo && (
+          <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4" data-testid="about-video-modal">
+            <div className="relative w-full max-w-4xl">
+              <button
+                onClick={() => { setShowAboutVideo(false); if (aboutVideoRef.current) aboutVideoRef.current.pause(); }}
+                className="absolute -top-12 right-0 text-white/70 hover:text-white transition-colors flex items-center gap-2 text-sm"
+                data-testid="button-close-about-video"
+              >
+                Close <X className="w-5 h-5" />
+              </button>
+              <div className="rounded-xl overflow-hidden border border-[#FFCD11]/20 shadow-2xl shadow-[#FFCD11]/10">
+                <video
+                  ref={aboutVideoRef}
+                  autoPlay
+                  loop
+                  playsInline
+                  className="w-full h-auto"
+                  src={aboutShopVideoPath}
+                  data-testid="video-about-shop"
+                />
+              </div>
+              <div className="mt-6 text-center space-y-3">
+                <h3 className="text-xl font-black text-white">ABOUT AMERICAN IRON</h3>
+                <p className="text-gray-300 text-sm max-w-2xl mx-auto leading-relaxed">
+                  AMERICAN IRON is a full-service AI-powered diagnostic facility specializing in heavy equipment, power generation, marine engines, hydraulic systems, and electrical controls. Our virtual shop floor brings decades of real-world mechanical expertise directly to you through face-to-face AI video consultations — no appointment needed.
+                </p>
+                <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                  <Button
+                    className="bg-[#FFCD11] text-black font-bold hover:bg-[#e6b800]"
+                    onClick={() => { setShowAboutVideo(false); setTimeout(() => document.getElementById("speak-admin-section")?.scrollIntoView({ behavior: "smooth" }), 100); }}
+                    data-testid="button-about-speak-admin"
+                  >
+                    <MessageCircle className="w-4 h-4 mr-2" />
+                    SPEAK WITH ADMIN
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="border-white/20 text-white hover:bg-white/10"
+                    onClick={() => { setShowAboutVideo(false); setActiveView("services"); }}
+                    data-testid="button-about-explore"
+                  >
+                    <Search className="w-4 h-4 mr-2" />
+                    EXPLORE SERVICES
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         <nav className="fixed top-0 left-0 right-0 z-50 bg-[#111111]/90 backdrop-blur-md border-b border-[#FFCD11]/10" data-testid="nav-bar">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <img src={logoPath} alt="AMERICAN IRON" className="h-12 w-auto" data-testid="img-logo-nav" />
             </div>
             <div className="hidden md:flex items-center gap-6 text-sm text-gray-400">
-              <a href="#services" className="hover:text-[#FFCD11] transition-colors" data-testid="link-services">Services</a>
+              <button onClick={() => setShowAboutVideo(true)} className="hover:text-[#FFCD11] transition-colors" data-testid="link-about">About the Shop</button>
+              <button onClick={() => setActiveView("services")} className="hover:text-[#FFCD11] transition-colors" data-testid="link-services">Services</button>
               <a href="#why" className="hover:text-[#FFCD11] transition-colors" data-testid="link-why">Why AMERICAN IRON</a>
               <Button
                 size="sm"
                 className="bg-[#FFCD11] text-black hover:bg-[#e6b800] font-bold"
-                onClick={() => document.getElementById("walk-in-section")?.scrollIntoView({ behavior: "smooth" })}
-                data-testid="button-nav-walkin"
+                onClick={() => document.getElementById("speak-admin-section")?.scrollIntoView({ behavior: "smooth" })}
+                data-testid="button-nav-speak-admin"
               >
-                WALK IN NOW
+                SPEAK WITH ADMIN
               </Button>
             </div>
           </div>
@@ -732,19 +1008,44 @@ export default function LiveDesk() {
               </p>
             </div>
 
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-3xl mx-auto">
               <Button
                 size="lg"
-                className="h-14 px-10 text-lg font-black bg-[#FFCD11] text-black hover:bg-[#e6b800] rounded-lg shadow-lg shadow-[#FFCD11]/20"
+                className="h-14 text-xs sm:text-sm font-black bg-[#FFCD11] text-black hover:bg-[#e6b800] rounded-lg shadow-lg shadow-[#FFCD11]/20"
+                onClick={() => setShowAboutVideo(true)}
+                data-testid="button-hero-about"
+              >
+                <Play className="w-4 h-4 mr-1.5" />
+                ABOUT THE SHOP
+              </Button>
+              <Button
+                size="lg"
+                className="h-14 text-xs sm:text-sm font-black bg-[#FFCD11] text-black hover:bg-[#e6b800] rounded-lg shadow-lg shadow-[#FFCD11]/20"
+                onClick={() => document.getElementById("speak-admin-section")?.scrollIntoView({ behavior: "smooth" })}
+                data-testid="button-hero-speak-admin"
+              >
+                <MessageCircle className="w-4 h-4 mr-1.5" />
+                SPEAK WITH ADMIN
+              </Button>
+              <Button
+                size="lg"
+                className="h-14 text-xs sm:text-sm font-black bg-[#FFCD11] text-black hover:bg-[#e6b800] rounded-lg shadow-lg shadow-[#FFCD11]/20"
+                onClick={() => setActiveView("services")}
+                data-testid="button-hero-explore"
+              >
+                <Search className="w-4 h-4 mr-1.5" />
+                EXPLORE SERVICES
+              </Button>
+              <Button
+                size="lg"
+                variant="outline"
+                className="h-14 text-xs sm:text-sm font-black border-[#FFCD11]/40 text-[#FFCD11] hover:bg-[#FFCD11]/10 rounded-lg"
                 onClick={() => document.getElementById("walk-in-section")?.scrollIntoView({ behavior: "smooth" })}
                 data-testid="button-hero-walkin"
               >
+                <ArrowRight className="w-4 h-4 mr-1.5" />
                 WALK IN NOW
-                <ArrowRight className="w-5 h-5 ml-2" />
               </Button>
-              <a href="#services" className="text-gray-400 hover:text-[#FFCD11] text-sm font-medium flex items-center gap-1 transition-colors">
-                Explore Our Services <ChevronRight className="w-4 h-4" />
-              </a>
             </div>
 
             <div className="flex items-center justify-center gap-6 pt-4 text-xs text-gray-500">
@@ -782,7 +1083,8 @@ export default function LiveDesk() {
               {services.map((svc, i) => (
                 <div
                   key={i}
-                  className="group relative rounded-xl overflow-hidden border border-white/5 bg-[#1a1a1a] hover:border-[#FFCD11]/30 transition-all duration-300"
+                  className="group relative rounded-xl overflow-hidden border border-white/5 bg-[#1a1a1a] hover:border-[#FFCD11]/30 transition-all duration-300 cursor-pointer"
+                  onClick={() => { setExpandedService(i); setActiveView("services"); }}
                   data-testid={`card-service-${i}`}
                 >
                   <div className="h-44 overflow-hidden">
@@ -801,19 +1103,23 @@ export default function LiveDesk() {
                       <h3 className="text-sm font-black text-white tracking-wide">{svc.title}</h3>
                     </div>
                     <p className="text-gray-400 text-sm leading-relaxed">{svc.desc}</p>
+                    <div className="flex items-center gap-1 text-[#FFCD11] text-xs font-bold pt-1">
+                      <span>View Details</span>
+                      <ChevronRight className="w-3 h-3" />
+                    </div>
                   </div>
                 </div>
               ))}
 
               <button
                 className="relative rounded-xl overflow-hidden border border-[#FFCD11]/20 bg-gradient-to-br from-[#FFCD11]/10 to-[#1a1a1a] flex flex-col items-center justify-center p-8 text-center cursor-pointer hover:border-[#FFCD11]/40 transition-all duration-300"
-                onClick={() => document.getElementById("walk-in-section")?.scrollIntoView({ behavior: "smooth" })}
-                data-testid="card-service-walkin"
+                onClick={() => document.getElementById("speak-admin-section")?.scrollIntoView({ behavior: "smooth" })}
+                data-testid="card-service-speak-admin"
               >
                 <div className="w-14 h-14 rounded-full bg-[#FFCD11]/20 flex items-center justify-center mb-4">
-                  <ArrowRight className="w-7 h-7 text-[#FFCD11]" />
+                  <MessageCircle className="w-7 h-7 text-[#FFCD11]" />
                 </div>
-                <h3 className="text-lg font-black text-[#FFCD11] mb-2">WALK IN NOW</h3>
+                <h3 className="text-lg font-black text-[#FFCD11] mb-2">SPEAK WITH ADMIN</h3>
                 <p className="text-gray-400 text-sm">Our front desk admin will connect you with the right specialist</p>
               </button>
             </div>
@@ -834,8 +1140,8 @@ export default function LiveDesk() {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               {[
-                { step: "01", title: "WALK IN", desc: "Click the button and you're instantly connected to our AI front desk admin — no appointments, no waiting." },
-                { step: "02", title: "DESCRIBE THE ISSUE", desc: "Tell us about your equipment and the problem you're experiencing. Our admin routes you to the right specialist." },
+                { step: "01", title: "SPEAK WITH ADMIN", desc: "Click the button and you're instantly connected to our friendly AI front desk admin — she'll welcome you and guide you through the process." },
+                { step: "02", title: "DESCRIBE THE ISSUE", desc: "Tell our admin about your equipment and the problem you're experiencing. She'll route you to the right specialist." },
                 { step: "03", title: "GET YOUR DIAGNOSIS", desc: "Your specialist walks you through a real-time diagnosis and delivers a detailed report for your service team." },
               ].map((item, i) => (
                 <div key={i} className="text-center space-y-4" data-testid={`step-${i}`}>
@@ -881,19 +1187,21 @@ export default function LiveDesk() {
           </div>
         </section>
 
-        <section id="walk-in-section" className="relative py-24 overflow-hidden" data-testid="walkin-section">
+        <section id="speak-admin-section" className="relative py-24 overflow-hidden" data-testid="speak-admin-section">
           <div className="absolute inset-0 bg-gradient-to-b from-[#111111] via-[#0d0d0d] to-[#111111]" />
           <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSA2MCAwIEwgMCAwIDAgNjAiIGZpbGw9Im5vbmUiIHN0cm9rZT0icmdiYSgyNTUsMjA1LDE3LDAuMDMpIiBzdHJva2Utd2lkdGg9IjEiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IGZpbGw9InVybCgjZ3JpZCkiIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiLz48L3N2Zz4=')] opacity-50" />
 
           <div className="relative z-10 max-w-lg mx-auto px-4 sm:px-6 text-center space-y-8">
-            <img src={logoPath} alt="AMERICAN IRON" className="h-28 w-auto mx-auto" data-testid="img-logo-walkin" />
+            <div className="w-20 h-20 rounded-full bg-[#FFCD11]/10 border-2 border-[#FFCD11]/30 flex items-center justify-center mx-auto">
+              <User className="w-10 h-10 text-[#FFCD11]" />
+            </div>
 
             <div className="space-y-3">
-              <h2 className="text-2xl sm:text-3xl font-black text-white" data-testid="text-walkin-heading">
-                READY TO WALK IN?
+              <h2 className="text-2xl sm:text-3xl font-black text-white" data-testid="text-speak-admin-heading">
+                SPEAK WITH OUR ADMIN
               </h2>
               <p className="text-gray-400 text-sm leading-relaxed max-w-md mx-auto">
-                Our AI-powered front desk admin is standing by to connect you with a specialist. No appointments necessary — just walk in.
+                Meet our friendly front desk admin — she'll welcome you, learn about your equipment, and connect you with the right specialist. Cheerful, professional, and ready to help.
               </p>
             </div>
 
@@ -942,12 +1250,12 @@ export default function LiveDesk() {
                 {isConnecting ? (
                   <>
                     <Loader2 className="w-5 h-5 animate-spin mr-2" />
-                    {selectedLanguage === "ar" ? "جاري الاتصال بالاستقبال..." : "CONNECTING TO FRONT DESK..."}
+                    {selectedLanguage === "ar" ? "جاري الاتصال بالاستقبال..." : "CONNECTING TO ADMIN..."}
                   </>
                 ) : (
                   <>
-                    <ArrowRight className="w-5 h-5 mr-2" />
-                    {selectedLanguage === "ar" ? "ادخل الآن" : "WALK IN NOW"}
+                    <MessageCircle className="w-5 h-5 mr-2" />
+                    {selectedLanguage === "ar" ? "تحدث مع الإدارة" : "SPEAK WITH ADMIN"}
                   </>
                 )}
               </Button>
@@ -969,6 +1277,48 @@ export default function LiveDesk() {
                 <span>AI-Powered</span>
               </div>
             </div>
+          </div>
+        </section>
+
+        <section id="walk-in-section" className="relative py-16 overflow-hidden" data-testid="walkin-section">
+          <div className="absolute inset-0 bg-[#111111]" />
+          <div className="relative z-10 max-w-3xl mx-auto px-4 sm:px-6 text-center space-y-6">
+            <div className="flex items-center justify-center gap-3">
+              <div className="h-px flex-1 bg-gradient-to-r from-transparent to-[#FFCD11]/20" />
+              <span className="text-[#FFCD11] text-xs font-bold tracking-[0.2em]">OR</span>
+              <div className="h-px flex-1 bg-gradient-to-l from-transparent to-[#FFCD11]/20" />
+            </div>
+            <h3 className="text-xl font-black text-white">JUST WANT TO WALK IN?</h3>
+            <p className="text-gray-400 text-sm max-w-md mx-auto">
+              Skip the intro and jump straight into a session. Our admin will greet you and get started right away.
+            </p>
+            <Button
+              variant="outline"
+              size="lg"
+              className="h-12 px-8 font-black border-[#FFCD11]/30 text-[#FFCD11] hover:bg-[#FFCD11]/10 rounded-lg"
+              onClick={() => {
+                if (!consentGiven) {
+                  document.getElementById("speak-admin-section")?.scrollIntoView({ behavior: "smooth" });
+                  toast({ title: "Please check the consent box first", variant: "destructive" });
+                  return;
+                }
+                startSession();
+              }}
+              disabled={isConnecting}
+              data-testid="button-quick-walkin"
+            >
+              {isConnecting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  CONNECTING...
+                </>
+              ) : (
+                <>
+                  <ArrowRight className="w-4 h-4 mr-2" />
+                  WALK IN NOW
+                </>
+              )}
+            </Button>
           </div>
         </section>
 

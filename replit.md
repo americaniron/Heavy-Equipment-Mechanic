@@ -46,13 +46,18 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
 
 ## UI Design
 - **Landing**: Grand entrance landing page with multiple sections:
-  - Fixed nav bar with AMERICAN IRON logo, service links, "WALK IN NOW" CTA
-  - Full-screen hero with facility background, large logo, tagline, walk-in button
-  - Services grid: 5 specialist cards with images + walk-in CTA card
-  - How It Works: 3-step process (Walk In → Describe → Diagnose)
+  - Fixed nav bar with "About the Shop", "Services", "Why AMERICAN IRON", "SPEAK WITH ADMIN" button
+  - Full-screen hero with looping background video, large logo, tagline
+  - 4 hero CTA buttons: "ABOUT THE SHOP" (video modal), "SPEAK WITH ADMIN" (scroll to admin), "EXPLORE SERVICES" (services page), "WALK IN NOW" (quick start)
+  - Services grid: 5 specialist cards (clickable → detailed services page) + Speak With Admin CTA card
+  - How It Works: 3-step process (Speak With Admin → Describe → Diagnose)
   - Why AMERICAN IRON: feature list + facility image
-  - Walk In section: consent checkbox + walk-in button
+  - Speak With Admin section: admin persona icon, language selector, consent checkbox, "SPEAK WITH ADMIN" button
+  - Walk In section: secondary "JUST WANT TO WALK IN?" quick-start option
   - Footer with logo + copyright
+- **About the Shop modal**: Full-screen video modal with cinematic AI-generated facility tour video, description text, and CTA buttons
+- **Explore Services page**: Separate view with 5 expandable accordion sections, each with 12 detailed repair/diagnostic items; "SPEAK WITH ADMIN ABOUT THIS" CTA per section
+- **Admin persona**: Cheerful, welcoming woman who introduces herself by name, explains the process, and guides customers warmly
 - **Branding**: "AMERICAN IRON" always in ALL CAPS in all text/titles
 - **Logo**: attached_assets/american-iron-logo_1772935008934.png used in nav, hero, walk-in, footer
 - **Service images**: Generated facility/service images in attached_assets/
