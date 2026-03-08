@@ -173,6 +173,26 @@ export async function createAvatarSession(agentType: string = "admin", backgroun
   };
 }
 
+export async function sendAvatarSpeak(sessionToken: string, text: string): Promise<void> {
+  const res = await fetch(`${LIVEAVATAR_API}/v1/sessions/task`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${sessionToken}`,
+    },
+    body: JSON.stringify({ text, task_type: "talk" }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    console.error("LiveAvatar speak failed:", res.status, errText);
+    throw new Error(`LiveAvatar speak error: ${res.status} - ${errText}`);
+  }
+
+  const data = await res.json();
+  console.log("LiveAvatar speak task sent:", data?.data?.task_id || "ok");
+}
+
 export async function stopAvatarSession(sessionToken: string): Promise<void> {
   try {
     await fetch(`${LIVEAVATAR_API}/v1/sessions/stop`, {
