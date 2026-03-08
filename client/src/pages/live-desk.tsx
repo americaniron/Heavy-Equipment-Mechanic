@@ -406,6 +406,14 @@ export default function LiveDesk() {
           }
           conversationRef.current.push({ role: "assistant", content: introText });
 
+          try {
+            await room.localParticipant.setMicrophoneEnabled(true);
+            setIsListening(true);
+            console.log("Microphone auto-enabled after intro");
+          } catch (micErr) {
+            console.error("Failed to auto-enable microphone:", micErr);
+          }
+
           await fetch(`/api/sessions/${session.id}/message`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -524,14 +532,23 @@ export default function LiveDesk() {
         conversationRef.current.push({ role: "assistant", content: fullText });
         sendAvatarSpeakCommand(speakText);
 
+        await waitForSpeakEnd(30000);
+
         if (handoffData) {
-          await waitForSpeakEnd(30000);
           await new Promise(r => setTimeout(r, 1500));
         }
       }
 
       if (handoffData) {
         await performHandoff(handoffData);
+      } else {
+        const room = roomRef.current;
+        if (room && room.state === "connected") {
+          try {
+            await room.localParticipant.setMicrophoneEnabled(true);
+            setIsListening(true);
+          } catch {}
+        }
       }
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -567,7 +584,7 @@ export default function LiveDesk() {
 
       const room = await connectAvatar(mechType, selectedLanguage);
 
-      setTimeout(() => {
+      setTimeout(async () => {
         const mechGreeting = selectedLanguage === "ar"
           ? `مرحباً! أنا ${mechanic?.name || "المتخصص"}. لقد راجعت معلومات القبول الخاصة بك وأنا مستعد لمساعدتك في تشخيص المشكلة. لنبدأ — هل يمكنك إخباري المزيد عما تواجهه؟`
           : `Hello! I'm ${mechanic?.name || "your specialist"}. I've reviewed your intake information and I'm ready to help diagnose the issue. Let's get started — can you tell me more about what you're experiencing?`;
@@ -575,6 +592,13 @@ export default function LiveDesk() {
         conversationRef.current.push({ role: "assistant", content: mechGreeting });
         sendAvatarSpeakCommand(mechGreeting);
         setHandoffInProgress(false);
+
+        await waitForSpeakEnd(30000);
+        try {
+          await room.localParticipant.setMicrophoneEnabled(true);
+          setIsListening(true);
+          console.log("Microphone auto-enabled after mechanic greeting");
+        } catch {}
       }, 3000);
     } catch (err) {
       console.error("Handoff error:", err);
