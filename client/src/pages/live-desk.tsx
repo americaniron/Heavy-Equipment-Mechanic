@@ -23,7 +23,7 @@ import {
 import shopBackgroundPath from "@assets/shop_background.png";
 import logoPath from "@assets/american-iron-logo_1772935008934.png";
 import heroFacilityPath from "@assets/hero_facility.png";
-import workshopVideoPath from "@assets/generated_videos/workshop_aerial_view.mp4";
+import workshopVideoPath from "@assets/generated_videos/workshop_bg_compressed.mp4";
 import serviceHeavyEquipPath from "@assets/service_heavyequip.png";
 import servicePowerGenPath from "@assets/service_powergen.png";
 import serviceMarinePath from "@assets/service_marine.png";
