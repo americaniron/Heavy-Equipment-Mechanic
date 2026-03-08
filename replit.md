@@ -9,7 +9,6 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
 - **Database**: PostgreSQL with Drizzle ORM
 - **AI Engine**: OpenAI (GPT-4o) via Replit AI Integrations
 - **Video Avatars**: LiveAvatar (HeyGen) FULL mode API with LiveKit transport + browser TTS fallback
-- **Billing**: Stripe (via Replit connector)
 - **Voice**: LiveKit audio tracks via LiveAvatar + browser SpeechSynthesis fallback
 
 ## Key Files
@@ -17,7 +16,6 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
 - `server/routes.ts` - All API endpoints with session token auth
 - `server/services/ai-engine.ts` - OpenAI conversation engine (Admin + 5 Mechanic system prompts)
 - `server/services/avatar.ts` - LiveAvatar API integration (session creation, start, stop)
-- `server/services/stripe-client.ts` - Stripe client via Replit connector
 - `server/storage.ts` - Database CRUD operations
 - `server/db.ts` - Drizzle database connection
 - `client/src/pages/live-desk.tsx` - Full-screen video-first experience with LiveKit client
@@ -69,7 +67,6 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
 - `AI_INTEGRATIONS_OPENAI_API_KEY` / `AI_INTEGRATIONS_OPENAI_BASE_URL` - OpenAI via Replit
 - `HEYGEN_API_KEY` - LiveAvatar API key (from app.liveavatar.com)
 - `DID_API_KEY` - D-ID API (legacy, kept for reference)
-- Stripe credentials via Replit connector
 
 ## Features
 1. **Full-Screen Video Avatars** - LiveAvatar FULL mode with LiveKit video/audio streaming
@@ -78,9 +75,8 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
 4. **Voice Conversation** - Real-time voice via LiveKit audio tracks
 5. **Text Input** - Toggle keyboard for typing instead of speaking
 6. **File Uploads** - Photos and PDFs attached to sessions
-7. **Report Generation** - Quick Advice (free) and Pro Diagnostic ($149)
-8. **Stripe Billing** - One-time checkout for Pro reports
-9. **Share Links** - Token-based report sharing
+7. **Report Generation** - Diagnostic reports for equipment issues
+8. **Share Links** - Token-based report sharing
 10. **Session Security** - Access tokens protect all session endpoints
 11. **Browser TTS Fallback** - SpeechSynthesis when LiveKit is unavailable
 
@@ -93,8 +89,6 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
 - `GET /api/sessions/:id/files/:fileId` - Download file (requires auth)
 - `POST /api/sessions/:id/report` - Generate report
 - `GET /api/sessions/:id/report` - Get report (requires auth)
-- `POST /api/sessions/:id/checkout` - Stripe checkout
-- `GET /api/sessions/:id/payment-status` - Check payment
 - `GET /api/shared/:token` - Access shared report (public)
 - `POST /api/avatar/session` - Create LiveAvatar session (returns LiveKit connection info)
 - `POST /api/avatar/session/stop` - Stop LiveAvatar session

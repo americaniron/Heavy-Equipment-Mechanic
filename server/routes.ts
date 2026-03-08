@@ -12,8 +12,7 @@ import {
   type ConversationMessage,
 } from "./services/ai-engine";
 import { createAvatarSession, stopAvatarSession, getAvatarInfo } from "./services/avatar";
-// Stripe temporarily disabled — will re-enable when live keys are connected
-// import { getUncachableStripeClient, getStripePublishableKey } from "./services/stripe-client";
+
 import { speechToText, ensureCompatibleFormat } from "./replit_integrations/audio/client";
 
 const uploadDir = path.join(process.cwd(), "uploads");
@@ -361,24 +360,6 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/sessions/:id/checkout", async (_req, res) => {
-    res.status(503).json({ error: "Stripe payments are temporarily unavailable. Pro reports will be available soon." });
-  });
-
-  app.get("/api/sessions/:id/payment-status", async (req, res) => {
-    try {
-      const sessionId = parseInt(req.params.id);
-      const session = await storage.getSession(sessionId);
-      if (!session) return res.status(404).json({ error: "Session not found" });
-      res.json({ status: session.paymentStatus || "none" });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.get("/api/stripe/publishable-key", async (_req, res) => {
-    res.json({ key: null });
-  });
 
   app.use("/static", (await import("express")).default.static(path.join(process.cwd(), "attached_assets")));
 
