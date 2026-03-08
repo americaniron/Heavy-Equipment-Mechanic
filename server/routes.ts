@@ -13,7 +13,6 @@ import {
 } from "./services/ai-engine";
 import { createAvatarSession, stopAvatarSession, getAvatarInfo } from "./services/avatar";
 
-import { speechToText } from "./replit_integrations/audio/client";
 
 const uploadDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadDir)) {
@@ -392,10 +391,22 @@ export async function registerRoutes(
       if (!req.file) {
         return res.status(400).json({ error: "No audio file provided" });
       }
-      const transcript = await speechToText(req.file.buffer, "webm");
-      res.json({ text: transcript });
+
+      const OpenAI = await import("openai");
+      const openai = new OpenAI.default({
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+      });
+
+      const origName = req.file.originalname || "recording.webm";
+      const file = await OpenAI.toFile(req.file.buffer, origName);
+      const response = await openai.audio.transcriptions.create({
+        file,
+        model: "gpt-4o-mini-transcribe",
+      });
+      res.json({ text: response.text });
     } catch (error: any) {
-      console.error("Transcription error:", error);
+      console.error("Transcription error:", error.message);
       res.status(500).json({ error: "Transcription failed" });
     }
   });
