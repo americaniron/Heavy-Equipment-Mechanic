@@ -141,6 +141,172 @@ export default function LiveDesk() {
   const introPlayingRef = useRef(false);
   const heroVideoRef = useRef<HTMLVideoElement>(null);
 
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioStreamRef = useRef<MediaStream | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isRecordingRef = useRef(false);
+  const recordingChunksRef = useRef<Blob[]>([]);
+  const vadFrameRef = useRef<number>(0);
+  const manualStopRef = useRef(false);
+
+  const cleanupAudioNodes = useCallback(() => {
+    if (vadFrameRef.current) {
+      cancelAnimationFrame(vadFrameRef.current);
+      vadFrameRef.current = 0;
+    }
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+    if (analyserSourceRef.current) {
+      try { analyserSourceRef.current.disconnect(); } catch {}
+      analyserSourceRef.current = null;
+    }
+  }, []);
+
+  const stopVoiceCapture = useCallback(() => {
+    manualStopRef.current = true;
+    isRecordingRef.current = false;
+    cleanupAudioNodes();
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      try { mediaRecorderRef.current.stop(); } catch {}
+    }
+    mediaRecorderRef.current = null;
+    recordingChunksRef.current = [];
+    setIsListening(false);
+  }, [cleanupAudioNodes]);
+
+  const startVoiceCapture = useCallback(async () => {
+    if (isRecordingRef.current) return;
+    manualStopRef.current = false;
+
+    try {
+      if (!audioStreamRef.current || audioStreamRef.current.getTracks().every(t => t.readyState === "ended")) {
+        audioStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      }
+
+      if (!audioContextRef.current || audioContextRef.current.state === "closed") {
+        audioContextRef.current = new AudioContext();
+      }
+      if (audioContextRef.current.state === "suspended") {
+        await audioContextRef.current.resume();
+      }
+
+      cleanupAudioNodes();
+
+      const source = audioContextRef.current.createMediaStreamSource(audioStreamRef.current);
+      analyserSourceRef.current = source;
+      const analyser = audioContextRef.current.createAnalyser();
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.3;
+      source.connect(analyser);
+
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/webm")
+          ? "audio/webm"
+          : "audio/mp4";
+
+      const recorder = new MediaRecorder(audioStreamRef.current, { mimeType });
+      recordingChunksRef.current = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) recordingChunksRef.current.push(e.data);
+      };
+
+      recorder.onerror = () => {
+        isRecordingRef.current = false;
+        cleanupAudioNodes();
+        setIsListening(false);
+      };
+
+      recorder.onstop = async () => {
+        isRecordingRef.current = false;
+        cleanupAudioNodes();
+
+        if (manualStopRef.current) {
+          recordingChunksRef.current = [];
+          return;
+        }
+
+        const blob = new Blob(recordingChunksRef.current, { type: mimeType });
+        recordingChunksRef.current = [];
+
+        if (blob.size < 1000) {
+          setTimeout(() => startVoiceCapture(), 200);
+          return;
+        }
+
+        try {
+          setIsProcessing(true);
+          setIsListening(false);
+
+          const formData = new FormData();
+          formData.append("audio", blob, "recording.webm");
+          const res = await fetch("/api/transcribe", { method: "POST", body: formData });
+          if (!res.ok) throw new Error("Transcription failed");
+          const { text } = await res.json();
+
+          if (text && text.trim().length > 1) {
+            console.log("Transcribed:", text);
+            await handleUserMessage(text.trim());
+          } else {
+            setIsProcessing(false);
+            setTimeout(() => startVoiceCapture(), 200);
+          }
+        } catch (err) {
+          console.error("Transcription error:", err);
+          setIsProcessing(false);
+          setTimeout(() => startVoiceCapture(), 500);
+        }
+      };
+
+      recorder.start(250);
+      mediaRecorderRef.current = recorder;
+      isRecordingRef.current = true;
+      setIsListening(true);
+
+      let speechDetected = false;
+      let silenceStart = 0;
+      const SILENCE_THRESHOLD = 15;
+      const SPEECH_THRESHOLD = 25;
+      const SILENCE_DURATION = 1500;
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+      const checkAudio = () => {
+        if (!isRecordingRef.current || manualStopRef.current) return;
+
+        analyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+        const avg = sum / dataArray.length;
+
+        if (avg > SPEECH_THRESHOLD) {
+          speechDetected = true;
+          silenceStart = 0;
+        } else if (speechDetected && avg < SILENCE_THRESHOLD) {
+          if (!silenceStart) silenceStart = Date.now();
+          if (Date.now() - silenceStart > SILENCE_DURATION) {
+            if (recorder.state === "recording") {
+              recorder.stop();
+            }
+            return;
+          }
+        }
+
+        vadFrameRef.current = requestAnimationFrame(checkAudio);
+      };
+      vadFrameRef.current = requestAnimationFrame(checkAudio);
+
+    } catch (err) {
+      console.error("Voice capture error:", err);
+      isRecordingRef.current = false;
+      toast({ title: "Microphone error", description: "Could not access microphone.", variant: "destructive" });
+    }
+  }, [cleanupAudioNodes, toast]);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const shared = params.get("shared");
@@ -160,6 +326,15 @@ export default function LiveDesk() {
   }, []);
 
   const cleanupAvatarSession = useCallback(() => {
+    stopVoiceCapture();
+    if (audioStreamRef.current) {
+      audioStreamRef.current.getTracks().forEach(t => t.stop());
+      audioStreamRef.current = null;
+    }
+    if (audioContextRef.current && audioContextRef.current.state !== "closed") {
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
+    }
     if (roomRef.current) {
       try {
         roomRef.current.disconnect();
@@ -338,9 +513,7 @@ export default function LiveDesk() {
             setSubtitleText(message.text);
           }
         } else if (eventType === "user.transcription") {
-          if (message.text) {
-            handleUserMessage(message.text);
-          }
+          console.log("LiveAvatar user transcription (ignored, using local capture):", message.text);
         } else if (eventType === "session.stopped") {
           setAvatarReady(false);
         }
@@ -406,13 +579,8 @@ export default function LiveDesk() {
           }
           conversationRef.current.push({ role: "assistant", content: introText });
 
-          try {
-            await room.localParticipant.setMicrophoneEnabled(true);
-            setIsListening(true);
-            console.log("Microphone auto-enabled after intro");
-          } catch (micErr) {
-            console.error("Failed to auto-enable microphone:", micErr);
-          }
+          startVoiceCapture();
+          console.log("Voice capture started after intro");
 
           await fetch(`/api/sessions/${session.id}/message`, {
             method: "POST",
@@ -479,6 +647,7 @@ export default function LiveDesk() {
   const handleUserMessage = async (userMsg: string) => {
     if (!sessionData || isProcessing || !userMsg.trim()) return;
 
+    stopVoiceCapture();
     setIsProcessing(true);
     setIsListening(false);
     conversationRef.current.push({ role: "user", content: userMsg });
@@ -542,13 +711,7 @@ export default function LiveDesk() {
       if (handoffData) {
         await performHandoff(handoffData);
       } else {
-        const room = roomRef.current;
-        if (room && room.state === "connected") {
-          try {
-            await room.localParticipant.setMicrophoneEnabled(true);
-            setIsListening(true);
-          } catch {}
-        }
+        startVoiceCapture();
       }
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -594,11 +757,8 @@ export default function LiveDesk() {
         setHandoffInProgress(false);
 
         await waitForSpeakEnd(30000);
-        try {
-          await room.localParticipant.setMicrophoneEnabled(true);
-          setIsListening(true);
-          console.log("Microphone auto-enabled after mechanic greeting");
-        } catch {}
+        startVoiceCapture();
+        console.log("Voice capture started after mechanic greeting");
       }, 3000);
     } catch (err) {
       console.error("Handoff error:", err);
@@ -615,16 +775,11 @@ export default function LiveDesk() {
   };
 
   const toggleMicrophone = async () => {
-    const room = roomRef.current;
-    if (!room) return;
-
     try {
-      if (isListening) {
-        await room.localParticipant.setMicrophoneEnabled(false);
-        setIsListening(false);
+      if (isListening || isRecordingRef.current) {
+        stopVoiceCapture();
       } else {
-        await room.localParticipant.setMicrophoneEnabled(true);
-        setIsListening(true);
+        await startVoiceCapture();
       }
     } catch (err) {
       console.error("Mic toggle error:", err);

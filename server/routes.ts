@@ -386,6 +386,21 @@ export async function registerRoutes(
     }
   });
 
+  const audioUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+  app.post("/api/transcribe", audioUpload.single("audio"), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No audio file provided" });
+      }
+      const { buffer: compatBuffer, format } = await ensureCompatibleFormat(req.file.buffer);
+      const transcript = await speechToText(compatBuffer, format);
+      res.json({ text: transcript });
+    } catch (error: any) {
+      console.error("Transcription error:", error);
+      res.status(500).json({ error: "Transcription failed" });
+    }
+  });
+
   app.post("/api/avatar/session/stop", async (req, res) => {
     try {
       const { sessionToken } = req.body;
