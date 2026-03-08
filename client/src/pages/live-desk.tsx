@@ -390,11 +390,40 @@ export default function LiveDesk() {
     }
   };
 
+  const lastCueTimeRef = useRef<number>(0);
+
+  const sendAvatarListeningCue = useCallback(() => {
+    const room = roomRef.current;
+    if (!room || room.state !== "connected") return;
+    const now = Date.now();
+    if (now - lastCueTimeRef.current < 8000) return;
+    lastCueTimeRef.current = now;
+    const cues = selectedLanguage === "ar"
+      ? ["حسناً", "فهمت", "تمام", "أفهم"]
+      : ["Mm-hmm", "I see", "Got it", "Okay"];
+    const cue = cues[Math.floor(Math.random() * cues.length)];
+    try {
+      const encoder = new TextEncoder();
+      const payload = JSON.stringify({
+        event_type: "avatar.speak_text",
+        session_id: avatarSessionIdRef.current,
+        text: cue,
+      });
+      room.localParticipant.publishData(encoder.encode(payload), {
+        reliable: true,
+        topic: "agent-control",
+      });
+    } catch {}
+  }, [selectedLanguage]);
+
   const handleUserMessage = async (userMsg: string) => {
     if (!sessionData || isProcessing || !userMsg.trim()) return;
 
     setIsProcessing(true);
+    setIsListening(false);
     conversationRef.current.push({ role: "user", content: userMsg });
+
+    sendAvatarListeningCue();
 
     try {
       const response = await fetch(`/api/sessions/${sessionData.id}/message`, {
@@ -963,6 +992,8 @@ export default function LiveDesk() {
     );
   }
 
+  const avatarListening = !isTalking && !introPlaying && avatarReady && (isListening || isProcessing);
+
   return (
     <div className="h-screen w-screen bg-black flex flex-col relative overflow-hidden" data-testid="live-desk-active">
       <title>Live Session | AMERICAN IRON</title>
@@ -975,10 +1006,48 @@ export default function LiveDesk() {
 
       <div
         ref={videoContainerRef}
-        className="absolute inset-0 w-full h-full"
+        className={`absolute inset-0 w-full h-full transition-all duration-500 ${avatarListening ? "ring-2 ring-inset ring-[#FFCD11]/40 listening-glow" : ""}`}
         style={{ zIndex: 1 }}
         data-testid="video-avatar-container"
       />
+
+      {avatarListening && (
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-20 pointer-events-none" data-testid="listening-indicator">
+          <div className="flex items-center gap-2.5 px-5 py-2.5 bg-black/60 backdrop-blur-md rounded-full border border-[#FFCD11]/30">
+            <div className="flex items-end gap-[3px] h-4">
+              {[0.6, 0.9, 0.5, 1.0, 0.7].map((h, i) => (
+                <div
+                  key={`l-${i}`}
+                  className="w-[3px] bg-[#FFCD11] rounded-full waveform-bar origin-bottom"
+                  style={{
+                    height: "16px",
+                    animationDuration: `${0.5 + i * 0.1}s`,
+                    animationDelay: `${i * 0.1}s`,
+                  }}
+                />
+              ))}
+            </div>
+            <span className="text-[#FFCD11]/90 text-xs font-semibold tracking-wider uppercase">
+              {isProcessing
+                ? (selectedLanguage === "ar" ? "يفكر..." : "Thinking...")
+                : (selectedLanguage === "ar" ? "يستمع..." : "Listening...")}
+            </span>
+            <div className="flex items-end gap-[3px] h-4">
+              {[0.7, 1.0, 0.5, 0.9, 0.6].map((h, i) => (
+                <div
+                  key={`r-${i}`}
+                  className="w-[3px] bg-[#FFCD11] rounded-full waveform-bar origin-bottom"
+                  style={{
+                    height: "16px",
+                    animationDuration: `${0.5 + i * 0.1}s`,
+                    animationDelay: `${i * 0.1 + 0.05}s`,
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {!avatarReady && (
         <div
@@ -1167,8 +1236,8 @@ export default function LiveDesk() {
             </div>
 
             {isListening && (
-              <p className="text-center text-white/50 text-xs">
-                Listening... speak naturally
+              <p className="text-center text-white/50 text-xs" data-testid="text-listening-hint">
+                {selectedLanguage === "ar" ? "يستمع... تحدث بشكل طبيعي" : "Listening... speak naturally"}
               </p>
             )}
           </div>

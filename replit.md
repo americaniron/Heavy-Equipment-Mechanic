@@ -63,6 +63,11 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
   - End session (hang up) button
 - **Subtitles**: Avatar speech appears as subtitle overlay on video
 - **No chat bubbles**: Responses are spoken by avatar + shown as subtitles
+- **Listening/Attention Mode**: When customer speaks or AI processes:
+  - Animated waveform bars + "Listening.../Thinking..." indicator at top of video
+  - Golden pulsing glow border around the video container
+  - Avatar speaks brief acknowledgment cues ("Mm-hmm", "I see") with 8s throttle
+  - Enhanced persona prompts request expressive facial expressions, attentive eye contact, nodding
 
 ## Environment Variables
 - `DATABASE_URL` - PostgreSQL connection
