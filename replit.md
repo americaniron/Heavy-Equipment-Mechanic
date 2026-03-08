@@ -1,7 +1,7 @@
 # American Iron - Live AI Engineer Desk
 
 ## Overview
-A full-screen, video-first live front desk experience for heavy equipment diagnostics. Visitors "walk in" and interact face-to-face with AI-powered avatars — a Registration Admin for intake and 5 specialist Mechanics for diagnostics. No traditional chat UI — the avatar is the experience.
+A full-screen, video-first live front desk experience for heavy equipment diagnostics. Visitors "walk in" and interact face-to-face with AI-powered avatars — a Registration Admin for intake and 6 specialist divisions for diagnostics and parts assistance. No traditional chat UI — the avatar is the experience.
 
 ## Architecture
 - **Frontend**: React + Vite + Tailwind CSS + shadcn/ui (single-page, full-screen video UI)
@@ -14,7 +14,7 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
 ## Key Files
 - `shared/schema.ts` - Database schema (sessions, messages, files, reports)
 - `server/routes.ts` - All API endpoints with session token auth
-- `server/services/ai-engine.ts` - OpenAI conversation engine (Admin + 5 Mechanic system prompts)
+- `server/services/ai-engine.ts` - OpenAI conversation engine (Admin + 6 Specialist system prompts)
 - `server/services/avatar.ts` - LiveAvatar API integration (session creation, start, stop)
 - `server/storage.ts` - Database CRUD operations
 - `server/db.ts` - Drizzle database connection
@@ -26,8 +26,8 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
 - **Mode**: FULL mode (server-side LLM, avatar speaks text sent via LiveKit data channel)
 - **Flow**: Server creates session token → starts session → returns LiveKit URL + client token → client connects to LiveKit Room → subscribes to video/audio tracks → sends speak commands on `agent-control` topic
 - **Events**: `avatar.speak_text` command → `avatar.speak_started`/`avatar.speak_ended` server events → `avatar.transcription` for subtitle text
-- **English Avatars**: Silas (admin), Bryan (heavy equip), Elenora (power gen), Pedro (marine), Thaddeus (hydraulics), Anastasia (electrical)
-- **Arabic Avatars**: Fatima (admin), Khalid (heavy equip), Layla (power gen), Omar (marine), Hassan (hydraulics), Nour (electrical)
+- **English Avatars**: Silas (admin), Bryan (heavy equip), Elenora (power gen), Pedro (marine), Thaddeus (hydraulics), Anastasia (electrical), Marcus (parts)
+- **Arabic Avatars**: Fatima (admin), Khalid (heavy equip), Layla (power gen), Omar (marine), Hassan (hydraulics), Nour (electrical), Tariq (parts)
 - **Language Selection**: Customer chooses English or Arabic on landing page; language flows through session → avatar → AI prompts
 - **Background**: Mechanic shop background image (attached_assets/shop_background.png) served at /static/shop_background.png, passed to LiveAvatar API as custom background, and used as CSS fallback behind the video
 - **Fallback**: Browser SpeechSynthesis when LiveKit room is disconnected
@@ -49,14 +49,15 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
   - Fixed nav bar with "About the Shop", "Services", "Why AMERICAN IRON", "SPEAK WITH ADMIN" button
   - Full-screen hero with looping background video, large logo, tagline
   - 4 hero CTA buttons: "ABOUT THE SHOP" (video modal), "SPEAK WITH ADMIN" (scroll to admin), "EXPLORE SERVICES" (services page), "WALK IN NOW" (quick start)
-  - Services grid: 5 specialist cards (clickable → detailed services page) + Speak With Admin CTA card
+  - Services grid: 6 specialist cards (clickable → detailed services page) + Speak With Admin CTA card
   - How It Works: 3-step process (Speak With Admin → Describe → Diagnose)
   - Why AMERICAN IRON: feature list + facility image
   - Speak With Admin section: admin persona icon, language selector, consent checkbox, "SPEAK WITH ADMIN" button
   - Walk In section: secondary "JUST WANT TO WALK IN?" quick-start option
   - Footer with logo + copyright
 - **About the Shop modal**: Full-screen video modal with cinematic AI-generated facility tour video, pre-recorded AI narration audio (about_narration.mp3 with background music), description text, and CTA buttons
-- **Explore Services page**: Separate view with 5 expandable accordion sections, each with 12 detailed repair/diagnostic items; "SPEAK WITH ADMIN ABOUT THIS" CTA per section
+- **Explore Services page**: Separate view with 6 expandable accordion sections, each with 12 detailed repair/diagnostic items; "SPEAK WITH ADMIN ABOUT THIS" CTA per section
+- **Parts Assistance**: 6th specialist division — requires part number or machine serial number before providing any assistance; covers OEM/aftermarket parts for all heavy equipment manufacturers
 - **Admin persona**: Cheerful, welcoming woman who introduces herself by name, explains the process, and guides customers warmly
 - **Branding**: "AMERICAN IRON" always in ALL CAPS in all text/titles
 - **Logo**: attached_assets/american-iron-logo_1772935008934.png used in nav, hero, walk-in, footer
