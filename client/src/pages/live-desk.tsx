@@ -66,6 +66,7 @@ export default function LiveDesk() {
   const [currentAgent, setCurrentAgent] = useState<"admin" | "mechanic">("admin");
   const [mechanicType, setMechanicType] = useState<string | null>(null);
   const [handoffInProgress, setHandoffInProgress] = useState(false);
+  const [introPlaying, setIntroPlaying] = useState(false);
   const [subtitleText, setSubtitleText] = useState("");
   const [showPaywall, setShowPaywall] = useState(false);
   const [showReport, setShowReport] = useState(false);
@@ -83,6 +84,7 @@ export default function LiveDesk() {
   const conversationRef = useRef<Array<{ role: string; content: string }>>([]);
   const pendingHandoffRef = useRef<any>(null);
   const speakEndedResolveRef = useRef<(() => void) | null>(null);
+  const introPlayingRef = useRef(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -319,18 +321,39 @@ export default function LiveDesk() {
 
       try {
         const room = await connectAvatar("admin");
-        setShowTextInput(true);
 
         setTimeout(async () => {
-          const welcomeText = "Welcome to American Iron! I'm here to help you with your equipment. What can I help you with today?";
-          setSubtitleText(welcomeText);
-          conversationRef.current.push({ role: "assistant", content: welcomeText });
-          sendAvatarSpeakCommand(welcomeText);
+          setIntroPlaying(true);
+          introPlayingRef.current = true;
+
+          const introScript = [
+            "Welcome to American Iron! We're your one-stop shop for heavy equipment diagnostics and expert mechanical support.",
+            "Here's how it works. You tell me a little about your equipment and the issue you're experiencing, and I'll connect you with one of our five specialist mechanics.",
+            "We have experts in heavy equipment like excavators and bulldozers, power generation systems, marine engines, hydraulic systems, and electrical controls.",
+            "Each mechanic has decades of hands-on experience and is ready to walk you through a real-time diagnosis, right here, face to face.",
+            "After your consultation, you'll receive a diagnostic report you can take straight to your service team. Now, let me know what's going on with your equipment, and we'll get started!"
+          ];
+
+          for (let i = 0; i < introScript.length; i++) {
+            if (!introPlayingRef.current) break;
+            setSubtitleText(introScript[i]);
+            sendAvatarSpeakCommand(introScript[i]);
+            await waitForSpeakEnd(30000);
+            if (!introPlayingRef.current) break;
+            await new Promise(r => setTimeout(r, 500));
+          }
+
+          if (introPlayingRef.current) {
+            setIntroPlaying(false);
+            introPlayingRef.current = false;
+            setShowTextInput(true);
+          }
+          conversationRef.current.push({ role: "assistant", content: introScript.join(" ") });
 
           await fetch(`/api/sessions/${session.id}/message`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ content: "[Session started - Admin greeting]" }),
+            body: JSON.stringify({ content: "[Session started - Admin greeting and intro]" }),
           }).catch(() => {});
         }, 3000);
       } catch (avatarErr: any) {
@@ -746,8 +769,33 @@ export default function LiveDesk() {
       </div>
 
       {subtitleText && (
-        <div className="absolute bottom-32 left-0 right-0 z-20 flex justify-center px-4 pointer-events-none">
-          <div className="max-w-2xl w-full">
+        <div className="absolute bottom-32 left-0 right-0 z-20 flex justify-center px-4" style={{ pointerEvents: "none" }}>
+          <div className="max-w-2xl w-full space-y-2">
+            {introPlaying && (
+              <div className="flex items-center justify-between" style={{ pointerEvents: "auto" }}>
+                <Badge variant="outline" className="bg-blue-500/20 text-blue-300 border-blue-500/30 text-xs">
+                  Introduction
+                </Badge>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-white/60 hover:text-white text-xs h-7 px-3"
+                  data-testid="button-skip-intro"
+                  onClick={() => {
+                    setIntroPlaying(false);
+                    introPlayingRef.current = false;
+                    setShowTextInput(true);
+                    setSubtitleText("What can I help you with today?");
+                    if (speakEndedResolveRef.current) {
+                      speakEndedResolveRef.current();
+                      speakEndedResolveRef.current = null;
+                    }
+                  }}
+                >
+                  Skip Intro <ChevronRight className="w-3 h-3 ml-1" />
+                </Button>
+              </div>
+            )}
             <div className="bg-black/70 backdrop-blur-sm text-white text-sm px-4 py-3 rounded-lg leading-relaxed" data-testid="text-subtitle">
               {subtitleText}
             </div>
@@ -755,7 +803,7 @@ export default function LiveDesk() {
         </div>
       )}
 
-      <div className="absolute bottom-0 left-0 right-0 z-20">
+      <div className={`absolute bottom-0 left-0 right-0 z-20 transition-opacity duration-500 ${introPlaying ? "opacity-0 pointer-events-none" : "opacity-100"}`}>
         <div className="bg-gradient-to-t from-black/80 via-black/50 to-transparent pt-8 pb-6 px-4">
           <div className="max-w-xl mx-auto space-y-3">
             {showTextInput && (
