@@ -55,7 +55,7 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
   - Speak With Admin section: admin persona icon, language selector, consent checkbox, "SPEAK WITH ADMIN" button
   - Walk In section: secondary "JUST WANT TO WALK IN?" quick-start option
   - Footer with logo + copyright
-- **About the Shop modal**: Full-screen video modal with cinematic AI-generated facility tour video, description text, and CTA buttons
+- **About the Shop modal**: Full-screen video modal with cinematic AI-generated facility tour video, pre-recorded AI narration audio (about_narration.mp3 with background music), description text, and CTA buttons
 - **Explore Services page**: Separate view with 5 expandable accordion sections, each with 12 detailed repair/diagnostic items; "SPEAK WITH ADMIN ABOUT THIS" CTA per section
 - **Admin persona**: Cheerful, welcoming woman who introduces herself by name, explains the process, and guides customers warmly
 - **Branding**: "AMERICAN IRON" always in ALL CAPS in all text/titles
