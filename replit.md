@@ -32,8 +32,20 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
 - **Background**: Mechanic shop background image (attached_assets/shop_background.png) served at /static/shop_background.png, passed to LiveAvatar API as custom background, and used as CSS fallback behind the video
 - **Fallback**: Browser SpeechSynthesis when LiveKit room is disconnected
 
+## Visual Theme
+- **Caterpillar-inspired**: CAT yellow (#FFCD11) as primary, near-black backgrounds, warm industrial tones
+- **Light mode**: Warm off-white backgrounds (hue 45), CAT yellow primary with dark foreground text
+- **Dark mode**: Near-black with warm undertone (hue 40), bright CAT yellow accents
+- **Landing page**: Deep black (#1a1a1a) with CAT yellow glow effects and accent stripe
+
+## Intro Sequence
+- Admin avatar delivers full welcome monologue as ONE speak command (no sentence-by-sentence pauses)
+- "Introduction" badge + "Skip Intro" button shown during playback
+- Controls hidden until intro finishes or is skipped
+- 90-second timeout on waitForSpeakEnd for full intro
+
 ## UI Design
-- **Landing**: Dark cinematic page with "Walk In" button and consent checkbox
+- **Landing**: Dark cinematic page with CAT yellow accents, "Walk In" button and consent checkbox
 - **Active Session**: Full-screen video of avatar, floating controls at bottom
   - Large mic button for voice input via LiveKit
   - Keyboard toggle for text input

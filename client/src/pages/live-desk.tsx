@@ -137,6 +137,10 @@ export default function LiveDesk() {
       utterance.onend = () => {
         setIsTalking(false);
         setTimeout(() => setSubtitleText(""), 2000);
+        if (speakEndedResolveRef.current) {
+          speakEndedResolveRef.current();
+          speakEndedResolveRef.current = null;
+        }
       };
       const voices = window.speechSynthesis.getVoices();
       const preferred = voices.find(v => v.name.includes("Google") && v.lang.startsWith("en")) || voices.find(v => v.lang.startsWith("en"));
@@ -326,29 +330,22 @@ export default function LiveDesk() {
           setIntroPlaying(true);
           introPlayingRef.current = true;
 
-          const introScript = [
-            "Welcome to American Iron! We're your one-stop shop for heavy equipment diagnostics and expert mechanical support.",
-            "Here's how it works. You tell me a little about your equipment and the issue you're experiencing, and I'll connect you with one of our five specialist mechanics.",
-            "We have experts in heavy equipment like excavators and bulldozers, power generation systems, marine engines, hydraulic systems, and electrical controls.",
-            "Each mechanic has decades of hands-on experience and is ready to walk you through a real-time diagnosis, right here, face to face.",
-            "After your consultation, you'll receive a diagnostic report you can take straight to your service team. Now, let me know what's going on with your equipment, and we'll get started!"
-          ];
+          const introText = "Welcome to American Iron! We're your one-stop shop for heavy equipment diagnostics and expert mechanical support. " +
+            "Here's how it works. You tell me a little about your equipment and the issue you're experiencing, and I'll connect you with one of our five specialist mechanics. " +
+            "We have experts in heavy equipment like excavators and bulldozers, power generation systems, marine engines, hydraulic systems, and electrical controls. " +
+            "Each mechanic has decades of hands-on experience and is ready to walk you through a real-time diagnosis, right here, face to face. " +
+            "After your consultation, you'll receive a diagnostic report you can take straight to your service team. Now, let me know what's going on with your equipment, and we'll get started!";
 
-          for (let i = 0; i < introScript.length; i++) {
-            if (!introPlayingRef.current) break;
-            setSubtitleText(introScript[i]);
-            sendAvatarSpeakCommand(introScript[i]);
-            await waitForSpeakEnd(30000);
-            if (!introPlayingRef.current) break;
-            await new Promise(r => setTimeout(r, 500));
-          }
+          setSubtitleText(introText);
+          sendAvatarSpeakCommand(introText);
+          await waitForSpeakEnd(90000);
 
           if (introPlayingRef.current) {
             setIntroPlaying(false);
             introPlayingRef.current = false;
             setShowTextInput(true);
           }
-          conversationRef.current.push({ role: "assistant", content: introScript.join(" ") });
+          conversationRef.current.push({ role: "assistant", content: introText });
 
           await fetch(`/api/sessions/${session.id}/message`, {
             method: "POST",
@@ -609,25 +606,26 @@ export default function LiveDesk() {
 
   if (!sessionData) {
     return (
-      <div className="min-h-screen bg-[#0a0e17] flex flex-col items-center justify-center relative overflow-hidden">
+      <div className="min-h-screen bg-[#1a1a1a] flex flex-col items-center justify-center relative overflow-hidden">
         <title>Live AI Engineer Desk | American Iron</title>
         <meta name="description" content="Connect with AI-powered mechanics for real-time heavy equipment diagnostics." />
         <meta property="og:title" content="Live AI Engineer Desk | American Iron" />
         <meta property="og:description" content="Real-time AI-powered heavy equipment diagnostics with live video avatars." />
 
-        <div className="absolute inset-0 bg-gradient-to-b from-primary/5 via-transparent to-transparent" />
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-primary/5 rounded-full blur-3xl" />
+        <div className="absolute inset-0 bg-gradient-to-b from-[#FFCD11]/8 via-transparent to-transparent" />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-[#FFCD11]/5 rounded-full blur-3xl" />
+        <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-[#FFCD11]/40 to-transparent" />
 
         <div className="relative z-10 max-w-md w-full px-6 space-y-8">
           <div className="text-center space-y-4">
-            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 flex items-center justify-center mx-auto backdrop-blur-sm">
-              <Wrench className="w-10 h-10 text-primary" />
+            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-[#FFCD11]/25 to-[#FFCD11]/5 border border-[#FFCD11]/30 flex items-center justify-center mx-auto backdrop-blur-sm">
+              <Wrench className="w-10 h-10 text-[#FFCD11]" />
             </div>
             <div>
               <h1 className="text-3xl font-bold text-white tracking-tight" data-testid="text-brand-name">
                 American Iron
               </h1>
-              <p className="text-primary/80 text-sm font-medium mt-1">Live AI Engineer Desk</p>
+              <p className="text-[#FFCD11]/80 text-sm font-medium mt-1">Live AI Engineer Desk</p>
             </div>
             <p className="text-gray-400 text-sm leading-relaxed max-w-sm mx-auto" data-testid="text-page-title">
               Speak face-to-face with our AI-powered front desk admin and specialist mechanics.
@@ -635,14 +633,14 @@ export default function LiveDesk() {
             </p>
           </div>
 
-          <div className="bg-white/5 backdrop-blur-sm rounded-xl border border-white/10 p-5 space-y-4">
+          <div className="bg-white/5 backdrop-blur-sm rounded-xl border border-[#FFCD11]/15 p-5 space-y-4">
             <div className="flex items-start gap-3">
               <Checkbox
                 id="consent"
                 checked={consentGiven}
                 onCheckedChange={(c) => setConsentGiven(c as boolean)}
                 data-testid="checkbox-consent"
-                className="mt-0.5 border-white/30 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                className="mt-0.5 border-[#FFCD11]/40 data-[state=checked]:bg-[#FFCD11] data-[state=checked]:border-[#FFCD11] data-[state=checked]:text-black"
               />
               <label htmlFor="consent" className="text-xs text-gray-400 leading-relaxed cursor-pointer">
                 I consent to having my conversation transcribed for report generation
@@ -730,8 +728,8 @@ export default function LiveDesk() {
         <div className="bg-gradient-to-b from-black/70 via-black/30 to-transparent p-4 pb-8">
           <div className="flex items-center justify-between pointer-events-auto">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-md bg-white/10 backdrop-blur-sm flex items-center justify-center border border-white/20">
-                <Wrench className="w-4 h-4 text-white" />
+              <div className="w-8 h-8 rounded-md bg-[#FFCD11]/15 backdrop-blur-sm flex items-center justify-center border border-[#FFCD11]/30">
+                <Wrench className="w-4 h-4 text-[#FFCD11]" />
               </div>
               <div>
                 <p className="text-white text-sm font-semibold">American Iron</p>
@@ -833,7 +831,7 @@ export default function LiveDesk() {
               <Button
                 size="icon"
                 variant={isListening ? "default" : "secondary"}
-                className={`h-14 w-14 rounded-full ${isListening ? "bg-primary ring-4 ring-primary/30" : "bg-white/10 hover:bg-white/20 border border-white/20"}`}
+                className={`h-14 w-14 rounded-full ${isListening ? "bg-[#FFCD11] text-black ring-4 ring-[#FFCD11]/30" : "bg-white/10 hover:bg-white/20 border border-white/20"}`}
                 onClick={toggleMicrophone}
                 disabled={!avatarReady}
                 data-testid="button-microphone"
