@@ -45,7 +45,17 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
 - 90-second timeout on waitForSpeakEnd for full intro
 
 ## UI Design
-- **Landing**: Dark cinematic page with CAT yellow accents, "Walk In" button and consent checkbox
+- **Landing**: Grand entrance landing page with multiple sections:
+  - Fixed nav bar with AMERICAN IRON logo, service links, "WALK IN NOW" CTA
+  - Full-screen hero with facility background, large logo, tagline, walk-in button
+  - Services grid: 5 specialist cards with images + walk-in CTA card
+  - How It Works: 3-step process (Walk In → Describe → Diagnose)
+  - Why AMERICAN IRON: feature list + facility image
+  - Walk In section: consent checkbox + walk-in button
+  - Footer with logo + copyright
+- **Branding**: "AMERICAN IRON" always in ALL CAPS in all text/titles
+- **Logo**: attached_assets/american-iron-logo_1772935008934.png used in nav, hero, walk-in, footer
+- **Service images**: Generated facility/service images in attached_assets/
 - **Active Session**: Full-screen video of avatar, floating controls at bottom
   - Large mic button for voice input via LiveKit
   - Keyboard toggle for text input

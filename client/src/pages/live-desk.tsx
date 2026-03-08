@@ -17,9 +17,17 @@ import {
 import {
   Mic, MicOff, Send, Upload, FileText, Phone, Shield,
   Loader2, Wrench, Zap, Anchor, Droplets, Cpu, User,
-  ChevronRight, X, Download, Share2, AlertTriangle, Volume2, Keyboard
+  ChevronRight, X, Download, Share2, AlertTriangle, Volume2, Keyboard,
+  HardHat, Cog, ArrowRight, CheckCircle2, Star
 } from "lucide-react";
 import shopBackgroundPath from "@assets/shop_background.png";
+import logoPath from "@assets/american-iron-logo_1772935008934.png";
+import heroFacilityPath from "@assets/hero_facility.png";
+import serviceHeavyEquipPath from "@assets/service_heavyequip.png";
+import servicePowerGenPath from "@assets/service_powergen.png";
+import serviceMarinePath from "@assets/service_marine.png";
+import serviceHydraulicsPath from "@assets/service_hydraulics.png";
+import serviceElectricalPath from "@assets/service_electrical.png";
 
 interface SessionData {
   id: number;
@@ -564,14 +572,14 @@ export default function LiveDesk() {
     const sr = sharedReport.report;
     return (
       <div className="min-h-screen bg-background flex flex-col">
-        <title>Shared Report | American Iron</title>
+        <title>Shared Report | AMERICAN IRON</title>
         <header className="border-b border-border/50 px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center">
               <Wrench className="w-4 h-4 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-sm font-semibold">American Iron</h1>
+              <h1 className="text-sm font-semibold">AMERICAN IRON</h1>
               <p className="text-xs text-muted-foreground">Diagnostic Report</p>
             </div>
           </div>
@@ -605,81 +613,321 @@ export default function LiveDesk() {
   }
 
   if (!sessionData) {
+    const services = [
+      { icon: Wrench, title: "HEAVY EQUIPMENT", desc: "Excavators, bulldozers, loaders, and earthmoving machinery diagnostics", image: serviceHeavyEquipPath },
+      { icon: Zap, title: "POWER GENERATION", desc: "Generators, turbines, and power distribution system analysis", image: servicePowerGenPath },
+      { icon: Anchor, title: "MARINE ENGINES", desc: "Marine diesel, propulsion systems, and marine electrical diagnostics", image: serviceMarinePath },
+      { icon: Droplets, title: "HYDRAULIC SYSTEMS", desc: "Pumps, cylinders, valves, and complete hydraulic circuit analysis", image: serviceHydraulicsPath },
+      { icon: Cpu, title: "ELECTRICAL CONTROLS", desc: "PLCs, wiring, sensors, and control system troubleshooting", image: serviceElectricalPath },
+    ];
+
+    const features = [
+      { icon: User, text: "Face-to-face AI-powered video consultations" },
+      { icon: HardHat, text: "Decades of combined specialist experience" },
+      { icon: FileText, text: "Detailed diagnostic reports for your service team" },
+      { icon: Shield, text: "Encrypted and secure — your data stays private" },
+    ];
+
     return (
-      <div className="min-h-screen bg-[#1a1a1a] flex flex-col items-center justify-center relative overflow-hidden">
-        <title>Live AI Engineer Desk | American Iron</title>
-        <meta name="description" content="Connect with AI-powered mechanics for real-time heavy equipment diagnostics." />
-        <meta property="og:title" content="Live AI Engineer Desk | American Iron" />
+      <div className="min-h-screen bg-[#111111] text-white overflow-x-hidden" data-testid="landing-page">
+        <title>AMERICAN IRON | Live AI Engineer Desk</title>
+        <meta name="description" content="Walk into AMERICAN IRON — AI-powered heavy equipment diagnostics with live video specialists." />
+        <meta property="og:title" content="AMERICAN IRON | Live AI Engineer Desk" />
         <meta property="og:description" content="Real-time AI-powered heavy equipment diagnostics with live video avatars." />
 
-        <div className="absolute inset-0 bg-gradient-to-b from-[#FFCD11]/8 via-transparent to-transparent" />
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-[#FFCD11]/5 rounded-full blur-3xl" />
-        <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-[#FFCD11]/40 to-transparent" />
-
-        <div className="relative z-10 max-w-md w-full px-6 space-y-8">
-          <div className="text-center space-y-4">
-            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-[#FFCD11]/25 to-[#FFCD11]/5 border border-[#FFCD11]/30 flex items-center justify-center mx-auto backdrop-blur-sm">
-              <Wrench className="w-10 h-10 text-[#FFCD11]" />
+        <nav className="fixed top-0 left-0 right-0 z-50 bg-[#111111]/90 backdrop-blur-md border-b border-[#FFCD11]/10" data-testid="nav-bar">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <img src={logoPath} alt="AMERICAN IRON" className="h-12 w-auto" data-testid="img-logo-nav" />
             </div>
-            <div>
-              <h1 className="text-3xl font-bold text-white tracking-tight" data-testid="text-brand-name">
-                American Iron
+            <div className="hidden md:flex items-center gap-6 text-sm text-gray-400">
+              <a href="#services" className="hover:text-[#FFCD11] transition-colors" data-testid="link-services">Services</a>
+              <a href="#why" className="hover:text-[#FFCD11] transition-colors" data-testid="link-why">Why AMERICAN IRON</a>
+              <Button
+                size="sm"
+                className="bg-[#FFCD11] text-black hover:bg-[#e6b800] font-bold"
+                onClick={() => document.getElementById("walk-in-section")?.scrollIntoView({ behavior: "smooth" })}
+                data-testid="button-nav-walkin"
+              >
+                WALK IN NOW
+              </Button>
+            </div>
+          </div>
+        </nav>
+
+        <section className="relative min-h-screen flex items-center justify-center pt-16" data-testid="hero-section">
+          <div className="absolute inset-0">
+            <img src={heroFacilityPath} alt="AMERICAN IRON Facility" className="w-full h-full object-cover opacity-30" />
+            <div className="absolute inset-0 bg-gradient-to-b from-[#111111] via-[#111111]/60 to-[#111111]" />
+            <div className="absolute inset-0 bg-gradient-to-r from-[#111111] via-transparent to-[#111111]" />
+          </div>
+
+          <div className="absolute top-0 left-0 right-0 h-1 bg-[#FFCD11]" />
+
+          <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 text-center space-y-8">
+            <img
+              src={logoPath}
+              alt="AMERICAN IRON"
+              className="h-40 sm:h-56 w-auto mx-auto drop-shadow-2xl"
+              data-testid="img-logo-hero"
+            />
+
+            <div className="space-y-4">
+              <p className="text-[#FFCD11] text-sm sm:text-base font-bold tracking-[0.3em] uppercase" data-testid="text-tagline">
+                LIVE AI ENGINEER DESK
+              </p>
+              <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-white leading-tight" data-testid="text-brand-name">
+                YOUR EQUIPMENT.<br />OUR EXPERTISE.<br />
+                <span className="text-[#FFCD11]">REAL-TIME DIAGNOSTICS.</span>
               </h1>
-              <p className="text-[#FFCD11]/80 text-sm font-medium mt-1">Live AI Engineer Desk</p>
-            </div>
-            <p className="text-gray-400 text-sm leading-relaxed max-w-sm mx-auto" data-testid="text-page-title">
-              Speak face-to-face with our AI-powered front desk admin and specialist mechanics.
-              Real-time video diagnostics for your heavy equipment.
-            </p>
-          </div>
-
-          <div className="bg-white/5 backdrop-blur-sm rounded-xl border border-[#FFCD11]/15 p-5 space-y-4">
-            <div className="flex items-start gap-3">
-              <Checkbox
-                id="consent"
-                checked={consentGiven}
-                onCheckedChange={(c) => setConsentGiven(c as boolean)}
-                data-testid="checkbox-consent"
-                className="mt-0.5 border-[#FFCD11]/40 data-[state=checked]:bg-[#FFCD11] data-[state=checked]:border-[#FFCD11] data-[state=checked]:text-black"
-              />
-              <label htmlFor="consent" className="text-xs text-gray-400 leading-relaxed cursor-pointer">
-                I consent to having my conversation transcribed for report generation
-                and understand that AI guidance is informational, not a substitute for certified inspection.
-              </label>
+              <p className="text-gray-400 text-base sm:text-lg max-w-2xl mx-auto leading-relaxed" data-testid="text-page-title">
+                Walk into our virtual repair facility and speak face-to-face with AI-powered specialist mechanics.
+                Get expert diagnostics for heavy equipment, power generation, marine, hydraulic, and electrical systems.
+              </p>
             </div>
 
-            <Button
-              className="w-full h-12 text-base font-semibold"
-              onClick={startSession}
-              disabled={!consentGiven || isConnecting}
-              data-testid="button-start-session"
-            >
-              {isConnecting ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin mr-2" />
-                  Connecting to Front Desk...
-                </>
-              ) : (
-                <>
-                  <Phone className="w-5 h-5 mr-2" />
-                  Walk In
-                </>
-              )}
-            </Button>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <Button
+                size="lg"
+                className="h-14 px-10 text-lg font-black bg-[#FFCD11] text-black hover:bg-[#e6b800] rounded-lg shadow-lg shadow-[#FFCD11]/20"
+                onClick={() => document.getElementById("walk-in-section")?.scrollIntoView({ behavior: "smooth" })}
+                data-testid="button-hero-walkin"
+              >
+                WALK IN NOW
+                <ArrowRight className="w-5 h-5 ml-2" />
+              </Button>
+              <a href="#services" className="text-gray-400 hover:text-[#FFCD11] text-sm font-medium flex items-center gap-1 transition-colors">
+                Explore Our Services <ChevronRight className="w-4 h-4" />
+              </a>
+            </div>
+
+            <div className="flex items-center justify-center gap-6 pt-4 text-xs text-gray-500">
+              <div className="flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-[#FFCD11]" />
+                <span>No Appointment Needed</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-[#FFCD11]" />
+                <span>Instant AI Diagnosis</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-[#FFCD11]" />
+                <span>Expert Report Included</span>
+              </div>
+            </div>
           </div>
 
-          <div className="flex items-center justify-center gap-2 text-xs text-gray-500">
-            <Shield className="w-3.5 h-3.5" />
-            <span>Encrypted. Secure. AI-Powered.</span>
+          <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-[#111111] to-transparent" />
+        </section>
+
+        <section id="services" className="relative py-20 bg-[#111111]" data-testid="services-section">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center mb-16">
+              <p className="text-[#FFCD11] text-sm font-bold tracking-[0.2em] uppercase mb-3">OUR SPECIALTIES</p>
+              <h2 className="text-3xl sm:text-4xl font-black text-white" data-testid="text-services-heading">
+                FIVE EXPERT DIVISIONS.<br />ONE POWERFUL FACILITY.
+              </h2>
+              <p className="text-gray-400 mt-4 max-w-xl mx-auto">
+                Each specialist brings decades of real-world experience to diagnose your equipment issues in real time.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {services.map((svc, i) => (
+                <div
+                  key={i}
+                  className="group relative rounded-xl overflow-hidden border border-white/5 bg-[#1a1a1a] hover:border-[#FFCD11]/30 transition-all duration-300"
+                  data-testid={`card-service-${i}`}
+                >
+                  <div className="h-44 overflow-hidden">
+                    <img
+                      src={svc.image}
+                      alt={svc.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-70 group-hover:opacity-90"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#1a1a1a] via-[#1a1a1a]/50 to-transparent" />
+                  </div>
+                  <div className="relative p-5 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-md bg-[#FFCD11]/10 flex items-center justify-center">
+                        <svc.icon className="w-4 h-4 text-[#FFCD11]" />
+                      </div>
+                      <h3 className="text-sm font-black text-white tracking-wide">{svc.title}</h3>
+                    </div>
+                    <p className="text-gray-400 text-sm leading-relaxed">{svc.desc}</p>
+                  </div>
+                </div>
+              ))}
+
+              <button
+                className="relative rounded-xl overflow-hidden border border-[#FFCD11]/20 bg-gradient-to-br from-[#FFCD11]/10 to-[#1a1a1a] flex flex-col items-center justify-center p-8 text-center cursor-pointer hover:border-[#FFCD11]/40 transition-all duration-300"
+                onClick={() => document.getElementById("walk-in-section")?.scrollIntoView({ behavior: "smooth" })}
+                data-testid="card-service-walkin"
+              >
+                <div className="w-14 h-14 rounded-full bg-[#FFCD11]/20 flex items-center justify-center mb-4">
+                  <ArrowRight className="w-7 h-7 text-[#FFCD11]" />
+                </div>
+                <h3 className="text-lg font-black text-[#FFCD11] mb-2">WALK IN NOW</h3>
+                <p className="text-gray-400 text-sm">Our front desk admin will connect you with the right specialist</p>
+              </button>
+            </div>
           </div>
-        </div>
+        </section>
+
+        <section className="relative py-20 overflow-hidden" data-testid="how-it-works-section">
+          <div className="absolute inset-0 bg-gradient-to-b from-[#111111] via-[#1a1a1a] to-[#111111]" />
+          <div className="absolute left-0 top-1/2 -translate-y-1/2 w-96 h-96 bg-[#FFCD11]/3 rounded-full blur-3xl" />
+
+          <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6">
+            <div className="text-center mb-16">
+              <p className="text-[#FFCD11] text-sm font-bold tracking-[0.2em] uppercase mb-3">HOW IT WORKS</p>
+              <h2 className="text-3xl sm:text-4xl font-black text-white" data-testid="text-how-heading">
+                THREE STEPS TO A DIAGNOSIS
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              {[
+                { step: "01", title: "WALK IN", desc: "Click the button and you're instantly connected to our AI front desk admin — no appointments, no waiting." },
+                { step: "02", title: "DESCRIBE THE ISSUE", desc: "Tell us about your equipment and the problem you're experiencing. Our admin routes you to the right specialist." },
+                { step: "03", title: "GET YOUR DIAGNOSIS", desc: "Your specialist walks you through a real-time diagnosis and delivers a detailed report for your service team." },
+              ].map((item, i) => (
+                <div key={i} className="text-center space-y-4" data-testid={`step-${i}`}>
+                  <div className="text-5xl font-black text-[#FFCD11]/20">{item.step}</div>
+                  <h3 className="text-lg font-black text-white">{item.title}</h3>
+                  <p className="text-gray-400 text-sm leading-relaxed">{item.desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section id="why" className="relative py-20 bg-[#111111]" data-testid="why-section">
+          <div className="max-w-5xl mx-auto px-4 sm:px-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+              <div className="space-y-8">
+                <div>
+                  <p className="text-[#FFCD11] text-sm font-bold tracking-[0.2em] uppercase mb-3">WHY AMERICAN IRON</p>
+                  <h2 className="text-3xl sm:text-4xl font-black text-white leading-tight" data-testid="text-why-heading">
+                    BUILT FOR THE PEOPLE WHO BUILD THE WORLD
+                  </h2>
+                </div>
+
+                <div className="space-y-5">
+                  {features.map((feat, i) => (
+                    <div key={i} className="flex items-start gap-4" data-testid={`feature-${i}`}>
+                      <div className="w-10 h-10 rounded-lg bg-[#FFCD11]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <feat.icon className="w-5 h-5 text-[#FFCD11]" />
+                      </div>
+                      <p className="text-gray-300 text-sm leading-relaxed pt-2">{feat.text}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="relative">
+                <div className="rounded-xl overflow-hidden border border-white/10">
+                  <img src={heroFacilityPath} alt="AMERICAN IRON Facility" className="w-full h-auto" />
+                </div>
+                <div className="absolute -bottom-4 -right-4 w-24 h-24 bg-[#FFCD11]/10 rounded-full blur-2xl" />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="walk-in-section" className="relative py-24 overflow-hidden" data-testid="walkin-section">
+          <div className="absolute inset-0 bg-gradient-to-b from-[#111111] via-[#0d0d0d] to-[#111111]" />
+          <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSA2MCAwIEwgMCAwIDAgNjAiIGZpbGw9Im5vbmUiIHN0cm9rZT0icmdiYSgyNTUsMjA1LDE3LDAuMDMpIiBzdHJva2Utd2lkdGg9IjEiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IGZpbGw9InVybCgjZ3JpZCkiIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiLz48L3N2Zz4=')] opacity-50" />
+
+          <div className="relative z-10 max-w-lg mx-auto px-4 sm:px-6 text-center space-y-8">
+            <img src={logoPath} alt="AMERICAN IRON" className="h-28 w-auto mx-auto" data-testid="img-logo-walkin" />
+
+            <div className="space-y-3">
+              <h2 className="text-2xl sm:text-3xl font-black text-white" data-testid="text-walkin-heading">
+                READY TO WALK IN?
+              </h2>
+              <p className="text-gray-400 text-sm leading-relaxed max-w-md mx-auto">
+                Our AI-powered front desk admin is standing by to connect you with a specialist. No appointments necessary — just walk in.
+              </p>
+            </div>
+
+            <div className="bg-white/5 backdrop-blur-sm rounded-xl border border-[#FFCD11]/15 p-6 space-y-5">
+              <div className="flex items-start gap-3">
+                <Checkbox
+                  id="consent"
+                  checked={consentGiven}
+                  onCheckedChange={(c) => setConsentGiven(c as boolean)}
+                  data-testid="checkbox-consent"
+                  className="mt-0.5 border-[#FFCD11]/40 data-[state=checked]:bg-[#FFCD11] data-[state=checked]:border-[#FFCD11] data-[state=checked]:text-black"
+                />
+                <label htmlFor="consent" className="text-xs text-gray-400 leading-relaxed cursor-pointer text-left">
+                  I consent to having my conversation transcribed for report generation
+                  and understand that AI guidance is informational, not a substitute for certified inspection.
+                </label>
+              </div>
+
+              <Button
+                className="w-full h-14 text-lg font-black bg-[#FFCD11] text-black hover:bg-[#e6b800] rounded-lg shadow-lg shadow-[#FFCD11]/20"
+                onClick={startSession}
+                disabled={!consentGiven || isConnecting}
+                data-testid="button-start-session"
+              >
+                {isConnecting ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                    CONNECTING TO FRONT DESK...
+                  </>
+                ) : (
+                  <>
+                    <ArrowRight className="w-5 h-5 mr-2" />
+                    WALK IN NOW
+                  </>
+                )}
+              </Button>
+            </div>
+
+            <div className="flex items-center justify-center gap-4 text-xs text-gray-500">
+              <div className="flex items-center gap-1.5">
+                <Shield className="w-3.5 h-3.5 text-[#FFCD11]/60" />
+                <span>Encrypted</span>
+              </div>
+              <span className="text-gray-700">|</span>
+              <div className="flex items-center gap-1.5">
+                <Shield className="w-3.5 h-3.5 text-[#FFCD11]/60" />
+                <span>Secure</span>
+              </div>
+              <span className="text-gray-700">|</span>
+              <div className="flex items-center gap-1.5">
+                <Zap className="w-3.5 h-3.5 text-[#FFCD11]/60" />
+                <span>AI-Powered</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <footer className="relative border-t border-white/5 bg-[#0d0d0d] py-10" data-testid="footer">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+              <div className="flex items-center gap-3">
+                <img src={logoPath} alt="AMERICAN IRON" className="h-10 w-auto" data-testid="img-logo-footer" />
+                <div className="text-xs text-gray-500">
+                  <p>AI-Powered Heavy Equipment Diagnostics</p>
+                  <p className="mt-0.5">americanironus.com</p>
+                </div>
+              </div>
+              <div className="text-xs text-gray-600">
+                &copy; {new Date().getFullYear()} AMERICAN IRON. All rights reserved.
+              </div>
+            </div>
+          </div>
+        </footer>
       </div>
     );
   }
 
   return (
     <div className="h-screen w-screen bg-black flex flex-col relative overflow-hidden" data-testid="live-desk-active">
-      <title>Live Session | American Iron</title>
+      <title>Live Session | AMERICAN IRON</title>
 
       <div
         className="absolute inset-0 w-full h-full bg-cover bg-center bg-no-repeat"
@@ -732,7 +980,7 @@ export default function LiveDesk() {
                 <Wrench className="w-4 h-4 text-[#FFCD11]" />
               </div>
               <div>
-                <p className="text-white text-sm font-semibold">American Iron</p>
+                <p className="text-white text-sm font-semibold">AMERICAN IRON</p>
                 <p className="text-white/60 text-xs" data-testid="text-current-agent">
                   {currentAgent === "admin"
                     ? "Registration Admin"
