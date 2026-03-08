@@ -96,9 +96,40 @@ export default function LiveDesk() {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [sharedReport, setSharedReport] = useState<{ report: ReportData; session: any } | null>(null);
   const [showAboutVideo, setShowAboutVideo] = useState(false);
+  const [aboutNarrating, setAboutNarrating] = useState(false);
   const [activeView, setActiveView] = useState<"home" | "services">("home");
   const [expandedService, setExpandedService] = useState<number | null>(null);
   const aboutVideoRef = useRef<HTMLVideoElement>(null);
+  const aboutNarrationRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  const aboutNarrationText = "Welcome to American Iron — your full-service, AI-powered diagnostic facility for heavy industrial equipment. Our virtual shop floor covers five expert divisions: Heavy Equipment, Power Generation, Marine Engines, Hydraulic Systems, and Electrical Controls. Whether you're dealing with an excavator that won't start, a generator running rough, or a hydraulic system losing pressure — our AI-powered specialist mechanics are here to help. Walk in, speak face-to-face with our friendly front desk admin, and she'll connect you with the right expert. No appointments needed. Real-time diagnostics. Detailed reports delivered on the spot. American Iron — built for the people who build the world.";
+
+  const startAboutNarration = useCallback(() => {
+    if (!('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(aboutNarrationText);
+    utterance.rate = 0.95;
+    utterance.pitch = 1.0;
+    utterance.volume = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const preferred = voices.find(v => v.name.includes("Google") && v.lang.startsWith("en") && v.name.includes("Female"))
+      || voices.find(v => v.name.includes("Google") && v.lang.startsWith("en"))
+      || voices.find(v => v.lang.startsWith("en"));
+    if (preferred) utterance.voice = preferred;
+    utterance.onstart = () => setAboutNarrating(true);
+    utterance.onend = () => setAboutNarrating(false);
+    utterance.onerror = () => setAboutNarrating(false);
+    aboutNarrationRef.current = utterance;
+    window.speechSynthesis.speak(utterance);
+  }, []);
+
+  const stopAboutNarration = useCallback(() => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    setAboutNarrating(false);
+    aboutNarrationRef.current = null;
+  }, []);
 
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const roomRef = useRef<Room | null>(null);
@@ -898,23 +929,41 @@ export default function LiveDesk() {
         {showAboutVideo && (
           <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4" data-testid="about-video-modal">
             <div className="relative w-full max-w-4xl">
-              <button
-                onClick={() => { setShowAboutVideo(false); if (aboutVideoRef.current) aboutVideoRef.current.pause(); }}
-                className="absolute -top-12 right-0 text-white/70 hover:text-white transition-colors flex items-center gap-2 text-sm"
-                data-testid="button-close-about-video"
-              >
-                Close <X className="w-5 h-5" />
-              </button>
-              <div className="rounded-xl overflow-hidden border border-[#FFCD11]/20 shadow-2xl shadow-[#FFCD11]/10">
+              <div className="absolute -top-12 right-0 flex items-center gap-4">
+                <button
+                  onClick={() => { if (aboutNarrating) stopAboutNarration(); else startAboutNarration(); }}
+                  className="text-white/70 hover:text-white transition-colors flex items-center gap-1.5 text-sm"
+                  data-testid="button-toggle-narration"
+                >
+                  <Volume2 className={`w-4 h-4 ${aboutNarrating ? "text-[#FFCD11]" : ""}`} />
+                  {aboutNarrating ? "Mute" : "Listen"}
+                </button>
+                <button
+                  onClick={() => { setShowAboutVideo(false); stopAboutNarration(); if (aboutVideoRef.current) aboutVideoRef.current.pause(); }}
+                  className="text-white/70 hover:text-white transition-colors flex items-center gap-1.5 text-sm"
+                  data-testid="button-close-about-video"
+                >
+                  Close <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="rounded-xl overflow-hidden border border-[#FFCD11]/20 shadow-2xl shadow-[#FFCD11]/10 relative">
                 <video
                   ref={aboutVideoRef}
                   autoPlay
                   loop
+                  muted
                   playsInline
                   className="w-full h-auto"
                   src={aboutShopVideoPath}
                   data-testid="video-about-shop"
+                  onPlay={() => { setTimeout(() => startAboutNarration(), 500); }}
                 />
+                {aboutNarrating && (
+                  <div className="absolute bottom-4 left-4 right-4 flex items-center gap-2 bg-black/60 rounded-lg px-3 py-2">
+                    <Volume2 className="w-4 h-4 text-[#FFCD11] flex-shrink-0 animate-pulse" />
+                    <span className="text-white/80 text-xs">Narrating...</span>
+                  </div>
+                )}
               </div>
               <div className="mt-6 text-center space-y-3">
                 <h3 className="text-xl font-black text-white">ABOUT AMERICAN IRON</h3>
@@ -924,7 +973,7 @@ export default function LiveDesk() {
                 <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
                   <Button
                     className="bg-[#FFCD11] text-black font-bold hover:bg-[#e6b800]"
-                    onClick={() => { setShowAboutVideo(false); setTimeout(() => document.getElementById("speak-admin-section")?.scrollIntoView({ behavior: "smooth" }), 100); }}
+                    onClick={() => { setShowAboutVideo(false); stopAboutNarration(); setTimeout(() => document.getElementById("speak-admin-section")?.scrollIntoView({ behavior: "smooth" }), 100); }}
                     data-testid="button-about-speak-admin"
                   >
                     <MessageCircle className="w-4 h-4 mr-2" />
@@ -933,7 +982,7 @@ export default function LiveDesk() {
                   <Button
                     variant="outline"
                     className="border-white/20 text-white hover:bg-white/10"
-                    onClick={() => { setShowAboutVideo(false); setActiveView("services"); }}
+                    onClick={() => { setShowAboutVideo(false); stopAboutNarration(); setActiveView("services"); }}
                     data-testid="button-about-explore"
                   >
                     <Search className="w-4 h-4 mr-2" />
