@@ -1,9 +1,10 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
+import bcrypt from "bcryptjs";
 import { storage } from "./storage";
 import {
   streamAdminResponse, streamMechanicResponse,
@@ -44,10 +45,249 @@ const upload = multer({
   limits: { fileSize: 20 * 1024 * 1024 },
 });
 
+const customerSessions = new Map<string, number>();
+
+function requireAuth(req: Request, res: Response, next: NextFunction) {
+  const token = req.headers["x-auth-token"] as string;
+  if (!token || !customerSessions.has(token)) {
+    return res.status(401).json({ error: "Authentication required" });
+  }
+  (req as any).customerId = customerSessions.get(token);
+  next();
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+
+  app.post("/api/auth/register", async (req, res) => {
+    try {
+      const { email, password, firstName, lastName, company, phone } = req.body;
+      if (!email || !password || !firstName || !lastName) {
+        return res.status(400).json({ error: "Email, password, first name, and last name are required" });
+      }
+      const existing = await storage.getCustomerByEmail(email.toLowerCase());
+      if (existing) {
+        return res.status(409).json({ error: "An account with this email already exists" });
+      }
+      const passwordHash = await bcrypt.hash(password, 10);
+      const customer = await storage.createCustomer({
+        email: email.toLowerCase(),
+        passwordHash,
+        firstName,
+        lastName,
+        company: company || null,
+        phone: phone || null,
+        role: "user",
+        status: "active",
+      });
+      const authToken = crypto.randomBytes(32).toString("hex");
+      customerSessions.set(authToken, customer.id);
+      const { passwordHash: _, ...safe } = customer;
+      res.json({ ...safe, authToken });
+    } catch (error: any) {
+      console.error("Registration error:", error);
+      res.status(500).json({ error: "Registration failed" });
+    }
+  });
+
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      if (!email || !password) {
+        return res.status(400).json({ error: "Email and password are required" });
+      }
+      const customer = await storage.getCustomerByEmail(email.toLowerCase());
+      if (!customer) {
+        return res.status(401).json({ error: "Invalid email or password" });
+      }
+      const valid = await bcrypt.compare(password, customer.passwordHash);
+      if (!valid) {
+        return res.status(401).json({ error: "Invalid email or password" });
+      }
+      const authToken = crypto.randomBytes(32).toString("hex");
+      customerSessions.set(authToken, customer.id);
+      const { passwordHash: _, ...safe } = customer;
+      res.json({ ...safe, authToken });
+    } catch (error: any) {
+      console.error("Login error:", error);
+      res.status(500).json({ error: "Login failed" });
+    }
+  });
+
+  app.get("/api/auth/me", requireAuth, async (req, res) => {
+    try {
+      const customer = await storage.getCustomerById((req as any).customerId);
+      if (!customer) return res.status(404).json({ error: "Customer not found" });
+      const { passwordHash: _, ...safe } = customer;
+      res.json(safe);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/auth/logout", (req, res) => {
+    const token = req.headers["x-auth-token"] as string;
+    if (token) customerSessions.delete(token);
+    res.json({ success: true });
+  });
+
+  app.get("/api/portal/dashboard", requireAuth, async (req, res) => {
+    try {
+      const cid = (req as any).customerId;
+      const [equip, srs, tickets, invs, sessions_list] = await Promise.all([
+        storage.getEquipment(cid),
+        storage.getServiceRequests(cid),
+        storage.getSupportTickets(cid),
+        storage.getInvoices(cid),
+        storage.getSessionsByCustomer(cid),
+      ]);
+      res.json({
+        equipmentCount: equip.length,
+        activeEquipment: equip.filter(e => e.status === "active").length,
+        openServiceRequests: srs.filter(s => s.status === "open" || s.status === "in_progress").length,
+        totalServiceRequests: srs.length,
+        openTickets: tickets.filter(t => t.status === "open").length,
+        pendingInvoices: invs.filter(i => i.status === "pending").length,
+        totalSessions: sessions_list.length,
+        recentServiceRequests: srs.slice(0, 5),
+        recentSessions: sessions_list.slice(0, 5),
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/portal/equipment", requireAuth, async (req, res) => {
+    try {
+      const items = await storage.getEquipment((req as any).customerId);
+      res.json(items);
+    } catch (error: any) { res.status(500).json({ error: error.message }); }
+  });
+  app.post("/api/portal/equipment", requireAuth, async (req, res) => {
+    try {
+      const item = await storage.createEquipment({ ...req.body, customerId: (req as any).customerId });
+      res.json(item);
+    } catch (error: any) { res.status(500).json({ error: error.message }); }
+  });
+  app.patch("/api/portal/equipment/:id", requireAuth, async (req, res) => {
+    try {
+      const existing = await storage.getEquipmentById(Number(req.params.id));
+      if (!existing || existing.customerId !== (req as any).customerId) return res.status(404).json({ error: "Equipment not found" });
+      const item = await storage.updateEquipment(Number(req.params.id), req.body);
+      res.json(item);
+    } catch (error: any) { res.status(500).json({ error: error.message }); }
+  });
+  app.delete("/api/portal/equipment/:id", requireAuth, async (req, res) => {
+    try {
+      const existing = await storage.getEquipmentById(Number(req.params.id));
+      if (!existing || existing.customerId !== (req as any).customerId) return res.status(404).json({ error: "Equipment not found" });
+      await storage.deleteEquipment(Number(req.params.id));
+      res.json({ success: true });
+    } catch (error: any) { res.status(500).json({ error: error.message }); }
+  });
+
+  app.get("/api/portal/service-requests", requireAuth, async (req, res) => {
+    try {
+      const items = await storage.getServiceRequests((req as any).customerId);
+      res.json(items);
+    } catch (error: any) { res.status(500).json({ error: error.message }); }
+  });
+  app.post("/api/portal/service-requests", requireAuth, async (req, res) => {
+    try {
+      const item = await storage.createServiceRequest({ ...req.body, customerId: (req as any).customerId });
+      res.json(item);
+    } catch (error: any) { res.status(500).json({ error: error.message }); }
+  });
+  app.patch("/api/portal/service-requests/:id", requireAuth, async (req, res) => {
+    try {
+      const existing = await storage.getServiceRequestById(Number(req.params.id));
+      if (!existing || existing.customerId !== (req as any).customerId) return res.status(404).json({ error: "Service request not found" });
+      const item = await storage.updateServiceRequest(Number(req.params.id), req.body);
+      res.json(item);
+    } catch (error: any) { res.status(500).json({ error: error.message }); }
+  });
+
+  app.get("/api/portal/work-orders", requireAuth, async (req, res) => {
+    try {
+      const items = await storage.getWorkOrders((req as any).customerId);
+      res.json(items);
+    } catch (error: any) { res.status(500).json({ error: error.message }); }
+  });
+
+  app.get("/api/portal/maintenance", requireAuth, async (req, res) => {
+    try {
+      const items = await storage.getMaintenanceSchedules((req as any).customerId);
+      res.json(items);
+    } catch (error: any) { res.status(500).json({ error: error.message }); }
+  });
+  app.post("/api/portal/maintenance", requireAuth, async (req, res) => {
+    try {
+      const item = await storage.createMaintenanceSchedule({ ...req.body, customerId: (req as any).customerId });
+      res.json(item);
+    } catch (error: any) { res.status(500).json({ error: error.message }); }
+  });
+
+  app.get("/api/portal/support-tickets", requireAuth, async (req, res) => {
+    try {
+      const items = await storage.getSupportTickets((req as any).customerId);
+      res.json(items);
+    } catch (error: any) { res.status(500).json({ error: error.message }); }
+  });
+  app.post("/api/portal/support-tickets", requireAuth, async (req, res) => {
+    try {
+      const item = await storage.createSupportTicket({ ...req.body, customerId: (req as any).customerId });
+      res.json(item);
+    } catch (error: any) { res.status(500).json({ error: error.message }); }
+  });
+
+  app.get("/api/portal/documents", requireAuth, async (req, res) => {
+    try {
+      const items = await storage.getDocuments((req as any).customerId);
+      res.json(items);
+    } catch (error: any) { res.status(500).json({ error: error.message }); }
+  });
+
+  app.get("/api/portal/invoices", requireAuth, async (req, res) => {
+    try {
+      const items = await storage.getInvoices((req as any).customerId);
+      res.json(items);
+    } catch (error: any) { res.status(500).json({ error: error.message }); }
+  });
+
+  app.patch("/api/portal/profile", requireAuth, async (req, res) => {
+    try {
+      const cid = (req as any).customerId;
+      const { firstName, lastName, company, phone } = req.body;
+      const updated = await storage.updateCustomer(cid, { firstName, lastName, company, phone });
+      if (!updated) return res.status(404).json({ error: "Customer not found" });
+      const { passwordHash: _, ...safe } = updated;
+      res.json(safe);
+    } catch (error: any) { res.status(500).json({ error: error.message }); }
+  });
+
+  app.post("/api/portal/escalation", requireAuth, async (req, res) => {
+    try {
+      const cid = (req as any).customerId;
+      const ticket = await storage.createSupportTicket({
+        customerId: cid,
+        subject: req.body.subject || "Escalation to Human Expert",
+        description: req.body.description || "",
+        priority: req.body.priority || "high",
+        category: "escalation",
+        status: "open",
+      });
+      res.json(ticket);
+    } catch (error: any) { res.status(500).json({ error: error.message }); }
+  });
+
+  app.get("/api/portal/cases", requireAuth, async (req, res) => {
+    try {
+      const sessions_list = await storage.getSessionsByCustomer((req as any).customerId);
+      res.json(sessions_list);
+    } catch (error: any) { res.status(500).json({ error: error.message }); }
+  });
 
   app.post("/api/sessions", async (req, res) => {
     try {

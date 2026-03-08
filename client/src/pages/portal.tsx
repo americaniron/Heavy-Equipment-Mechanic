@@ -1,0 +1,1451 @@
+import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient } from "@/lib/queryClient";
+import { useAuth } from "@/lib/auth";
+import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  LayoutDashboard, Truck, Search, Wrench, CalendarClock, Package, FileText,
+  DollarSign, Headphones, Settings, Bot, Stethoscope, BookOpen, AlertTriangle,
+  ShoppingCart, ClipboardList, TrendingUp, History, Video, PhoneCall,
+  Menu, X, LogOut, Plus, ChevronRight, Loader2, Eye, Trash2, Edit,
+  Activity, Bell, Clock, CheckCircle2, XCircle, ArrowRight
+} from "lucide-react";
+import logoImg from "@assets/american-iron-logo_1772935008934.png";
+
+type SectionId =
+  | "dashboard" | "equipment" | "parts" | "service" | "maintenance"
+  | "orders" | "documents" | "billing" | "support" | "admin"
+  | "ai-intake" | "ai-diagnosis" | "ai-troubleshooting" | "ai-faultcodes"
+  | "ai-parts" | "ai-planning" | "ai-predictive" | "ai-history"
+  | "ai-live" | "ai-escalation";
+
+interface NavItem {
+  id: SectionId;
+  label: string;
+  icon: any;
+}
+
+const portalNav: NavItem[] = [
+  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { id: "equipment", label: "My Equipment", icon: Truck },
+  { id: "parts", label: "Parts", icon: Search },
+  { id: "service", label: "Service", icon: Wrench },
+  { id: "maintenance", label: "Maintenance", icon: CalendarClock },
+  { id: "orders", label: "Orders & Shipping", icon: Package },
+  { id: "documents", label: "Documents", icon: FileText },
+  { id: "billing", label: "Billing & Account", icon: DollarSign },
+  { id: "support", label: "Support Center", icon: Headphones },
+  { id: "admin", label: "Admin", icon: Settings },
+];
+
+const aiNav: NavItem[] = [
+  { id: "ai-intake", label: "AI Intake / Triage", icon: Bot },
+  { id: "ai-diagnosis", label: "Diagnosis Engine", icon: Stethoscope },
+  { id: "ai-troubleshooting", label: "Guided Troubleshooting", icon: BookOpen },
+  { id: "ai-faultcodes", label: "Fault Code Center", icon: AlertTriangle },
+  { id: "ai-parts", label: "Recommended Parts", icon: ShoppingCart },
+  { id: "ai-planning", label: "Repair Planning", icon: ClipboardList },
+  { id: "ai-predictive", label: "Predictive Maintenance", icon: TrendingUp },
+  { id: "ai-history", label: "Case History", icon: History },
+  { id: "ai-live", label: "Live AI Mechanic", icon: Video },
+  { id: "ai-escalation", label: "Escalation to Human Expert", icon: PhoneCall },
+];
+
+const sectionTitles: Record<SectionId, string> = {
+  dashboard: "Dashboard",
+  equipment: "My Equipment",
+  parts: "Parts Lookup",
+  service: "Service Requests",
+  maintenance: "Maintenance Schedules",
+  orders: "Orders & Shipping",
+  documents: "Documents",
+  billing: "Billing & Account",
+  support: "Support Center",
+  admin: "Account Settings",
+  "ai-intake": "AI Intake / Triage",
+  "ai-diagnosis": "Diagnosis Engine",
+  "ai-troubleshooting": "Guided Troubleshooting",
+  "ai-faultcodes": "Fault Code Center",
+  "ai-parts": "Recommended Parts",
+  "ai-planning": "Repair Planning",
+  "ai-predictive": "Predictive Maintenance",
+  "ai-history": "Case History",
+  "ai-live": "Live AI Mechanic",
+  "ai-escalation": "Escalation to Human Expert",
+};
+
+function useAuthFetch(url: string, authToken: string | null, enabled = true) {
+  return useQuery({
+    queryKey: [url],
+    queryFn: async () => {
+      const res = await fetch(url, {
+        headers: { "x-auth-token": authToken || "" },
+      });
+      if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
+      return res.json();
+    },
+    enabled: enabled && !!authToken,
+  });
+}
+
+function useAuthMutation(method: string, url: string, authToken: string | null, invalidateKeys: string[]) {
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: async (data: any) => {
+      const res = await fetch(url, {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          "x-auth-token": authToken || "",
+        },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || res.statusText);
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      invalidateKeys.forEach(key => queryClient.invalidateQueries({ queryKey: [key] }));
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+}
+
+function DashboardSection({ authToken }: { authToken: string | null }) {
+  const { data, isLoading } = useAuthFetch("/api/portal/dashboard", authToken);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map(i => (
+            <Card key={i} className="bg-[#1a1a1a] border-[#333]">
+              <CardContent className="p-6"><Skeleton className="h-16 w-full" /></CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const stats = data || { equipmentCount: 0, openServiceRequests: 0, pendingInvoices: 0, openTickets: 0, recentServiceRequests: [] };
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card className="bg-[#1a1a1a] border-[#333]">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div>
+                <p className="text-gray-400 text-sm">Equipment</p>
+                <p className="text-3xl font-bold text-white" data-testid="stat-equipment-count">{stats.equipmentCount}</p>
+              </div>
+              <Truck className="h-8 w-8 text-[#FFCD11]" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-[#1a1a1a] border-[#333]">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div>
+                <p className="text-gray-400 text-sm">Open Cases</p>
+                <p className="text-3xl font-bold text-white" data-testid="stat-open-cases">{stats.openServiceRequests}</p>
+              </div>
+              <Wrench className="h-8 w-8 text-[#FFCD11]" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-[#1a1a1a] border-[#333]">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div>
+                <p className="text-gray-400 text-sm">Pending Invoices</p>
+                <p className="text-3xl font-bold text-white" data-testid="stat-pending-invoices">{stats.pendingInvoices}</p>
+              </div>
+              <DollarSign className="h-8 w-8 text-[#FFCD11]" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-[#1a1a1a] border-[#333]">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div>
+                <p className="text-gray-400 text-sm">Open Tickets</p>
+                <p className="text-3xl font-bold text-white" data-testid="stat-alerts">{stats.openTickets}</p>
+              </div>
+              <Bell className="h-8 w-8 text-[#FFCD11]" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="bg-[#1a1a1a] border-[#333]">
+        <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+          <CardTitle className="text-white">Recent Activity</CardTitle>
+          <Activity className="h-5 w-5 text-[#FFCD11]" />
+        </CardHeader>
+        <CardContent>
+          {stats.recentServiceRequests && stats.recentServiceRequests.length > 0 ? (
+            <div className="space-y-3">
+              {stats.recentServiceRequests.map((item: any, i: number) => (
+                <div key={i} className="flex items-center gap-3 p-3 rounded-md bg-[#222]" data-testid={`activity-item-${i}`}>
+                  <Clock className="h-4 w-4 text-gray-400 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white text-sm truncate">{item.message || item.title}</p>
+                    <p className="text-gray-500 text-xs">{item.date || item.createdAt}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-gray-500 text-center py-8" data-testid="text-no-activity">No recent activity. Start by adding equipment or creating a service request.</p>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function EquipmentSection({ authToken }: { authToken: string | null }) {
+  const { data: equipmentList, isLoading } = useAuthFetch("/api/portal/equipment", authToken);
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [form, setForm] = useState({ name: "", type: "", make: "", model: "", year: "", serialNumber: "", smuHours: "", warrantyExpiry: "", notes: "" });
+  const { toast } = useToast();
+
+  const createMutation = useAuthMutation("POST", "/api/portal/equipment", authToken, ["/api/portal/equipment", "/api/portal/dashboard"]);
+  const updateMutation = useAuthMutation("PUT", `/api/portal/equipment/${editingId}`, authToken, ["/api/portal/equipment", "/api/portal/dashboard"]);
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/portal/equipment/${id}`, {
+        method: "DELETE",
+        headers: { "x-auth-token": authToken || "" },
+      });
+      if (!res.ok) throw new Error("Delete failed");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/portal/equipment"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/portal/dashboard"] });
+      toast({ title: "Equipment deleted" });
+    },
+  });
+
+  const resetForm = () => {
+    setForm({ name: "", type: "", make: "", model: "", year: "", serialNumber: "", smuHours: "", warrantyExpiry: "", notes: "" });
+    setEditingId(null);
+    setShowForm(false);
+  };
+
+  const handleSubmit = async () => {
+    if (!form.name) {
+      toast({ title: "Name is required", variant: "destructive" });
+      return;
+    }
+    if (editingId) {
+      await updateMutation.mutateAsync(form);
+      toast({ title: "Equipment updated" });
+    } else {
+      await createMutation.mutateAsync(form);
+      toast({ title: "Equipment added" });
+    }
+    resetForm();
+  };
+
+  const startEdit = (eq: any) => {
+    setForm({
+      name: eq.name || "", type: eq.type || "", make: eq.make || "", model: eq.model || "",
+      year: eq.year || "", serialNumber: eq.serialNumber || "", smuHours: eq.smuHours || "",
+      warrantyExpiry: eq.warrantyExpiry || "", notes: eq.notes || "",
+    });
+    setEditingId(eq.id);
+    setShowForm(true);
+  };
+
+  if (isLoading) {
+    return <div className="space-y-4">{[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full" />)}</div>;
+  }
+
+  const items = equipmentList || [];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <p className="text-gray-400">{items.length} machine{items.length !== 1 ? "s" : ""} registered</p>
+        <Button className="bg-[#FFCD11] text-black" onClick={() => { resetForm(); setShowForm(true); }} data-testid="button-add-equipment">
+          <Plus className="h-4 w-4 mr-1" /> Add Equipment
+        </Button>
+      </div>
+
+      {showForm && (
+        <Card className="bg-[#1a1a1a] border-[#333]">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-white text-lg">{editingId ? "Edit Equipment" : "Add Equipment"}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {(["name", "type", "make", "model", "year", "serialNumber", "smuHours", "warrantyExpiry"] as const).map(field => (
+                <div key={field}>
+                  <Label className="text-gray-300 text-sm capitalize">{field.replace(/([A-Z])/g, " $1")}</Label>
+                  <Input
+                    value={form[field]}
+                    onChange={e => setForm(f => ({ ...f, [field]: e.target.value }))}
+                    className="bg-[#222] border-[#444] text-white mt-1"
+                    placeholder={field}
+                    data-testid={`input-equipment-${field}`}
+                  />
+                </div>
+              ))}
+            </div>
+            <div>
+              <Label className="text-gray-300 text-sm">Notes</Label>
+              <Textarea
+                value={form.notes}
+                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                className="bg-[#222] border-[#444] text-white mt-1"
+                data-testid="input-equipment-notes"
+              />
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <Button className="bg-[#FFCD11] text-black" onClick={handleSubmit} disabled={createMutation.isPending || updateMutation.isPending} data-testid="button-save-equipment">
+                {(createMutation.isPending || updateMutation.isPending) && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+                {editingId ? "Update" : "Save"}
+              </Button>
+              <Button variant="outline" className="border-[#444] text-gray-300" onClick={resetForm} data-testid="button-cancel-equipment">Cancel</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {items.length === 0 ? (
+        <Card className="bg-[#1a1a1a] border-[#333]">
+          <CardContent className="p-8 text-center">
+            <Truck className="h-12 w-12 text-gray-600 mx-auto mb-3" />
+            <p className="text-gray-400" data-testid="text-no-equipment">No equipment registered yet. Add your first machine to get started.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-2">
+          {items.map((eq: any) => (
+            <Card key={eq.id} className="bg-[#1a1a1a] border-[#333]" data-testid={`card-equipment-${eq.id}`}>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white font-semibold">{eq.name}</p>
+                    <p className="text-gray-400 text-sm">
+                      {[eq.make, eq.model, eq.year].filter(Boolean).join(" · ") || "No details"}
+                      {eq.serialNumber && <span> · S/N: {eq.serialNumber}</span>}
+                    </p>
+                  </div>
+                  <div className="flex gap-1">
+                    <Badge className="text-xs" variant="secondary">{eq.status || "active"}</Badge>
+                    <Button size="icon" variant="ghost" onClick={() => startEdit(eq)} data-testid={`button-edit-equipment-${eq.id}`}><Edit className="h-4 w-4 text-gray-400" /></Button>
+                    <Button size="icon" variant="ghost" onClick={() => deleteMutation.mutate(eq.id)} data-testid={`button-delete-equipment-${eq.id}`}><Trash2 className="h-4 w-4 text-gray-400" /></Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PartsSection({ authToken }: { authToken: string | null }) {
+  const [serial, setSerial] = useState("");
+  const [searchTriggered, setSearchTriggered] = useState(false);
+  const { data, isLoading } = useAuthFetch(`/api/portal/parts?serial=${encodeURIComponent(serial)}`, authToken, searchTriggered && !!serial);
+
+  const handleSearch = () => {
+    if (serial.trim()) {
+      setSearchTriggered(true);
+      queryClient.invalidateQueries({ queryKey: [`/api/portal/parts?serial=${encodeURIComponent(serial)}`] });
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card className="bg-[#1a1a1a] border-[#333]">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-white">Serial-Based Parts Lookup</CardTitle>
+          <CardDescription className="text-gray-400">Enter a serial number or prefix to find compatible parts</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-2 flex-wrap">
+            <Input
+              value={serial}
+              onChange={e => { setSerial(e.target.value); setSearchTriggered(false); }}
+              className="bg-[#222] border-[#444] text-white flex-1 min-w-[200px]"
+              placeholder="Enter serial number..."
+              onKeyDown={e => e.key === "Enter" && handleSearch()}
+              data-testid="input-parts-serial"
+            />
+            <Button className="bg-[#FFCD11] text-black" onClick={handleSearch} data-testid="button-search-parts">
+              <Search className="h-4 w-4 mr-1" /> Search
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {isLoading && <div className="flex justify-center py-8"><Loader2 className="h-8 w-8 animate-spin text-[#FFCD11]" /></div>}
+
+      {searchTriggered && !isLoading && data && (
+        <div className="space-y-2">
+          {(Array.isArray(data) ? data : []).length > 0 ? (
+            (data as any[]).map((part: any, i: number) => (
+              <Card key={i} className="bg-[#1a1a1a] border-[#333]" data-testid={`card-part-${i}`}>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div>
+                      <p className="text-white font-semibold">{part.partNumber || part.name}</p>
+                      <p className="text-gray-400 text-sm">{part.description || "No description"}</p>
+                    </div>
+                    {part.price && <Badge className="bg-[#FFCD11] text-black">${part.price}</Badge>}
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          ) : (
+            <Card className="bg-[#1a1a1a] border-[#333]">
+              <CardContent className="p-8 text-center">
+                <p className="text-gray-400" data-testid="text-no-parts">No parts found for this serial number. Try a different search.</p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {!searchTriggered && !isLoading && (
+        <Card className="bg-[#1a1a1a] border-[#333]">
+          <CardContent className="p-8 text-center">
+            <Search className="h-12 w-12 text-gray-600 mx-auto mb-3" />
+            <p className="text-gray-400" data-testid="text-parts-prompt">Enter a serial number above to search for compatible parts.</p>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function ServiceSection({ authToken }: { authToken: string | null }) {
+  const { data: requests, isLoading } = useAuthFetch("/api/portal/service-requests", authToken);
+  const { data: workOrders } = useAuthFetch("/api/portal/work-orders", authToken);
+  const { data: equipmentList } = useAuthFetch("/api/portal/equipment", authToken);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ type: "diagnostic", priority: "normal", description: "", faultCodes: "", equipmentId: "" });
+  const { toast } = useToast();
+
+  const createMutation = useAuthMutation("POST", "/api/portal/service-requests", authToken, ["/api/portal/service-requests", "/api/portal/dashboard"]);
+
+  const handleSubmit = async () => {
+    if (!form.description) {
+      toast({ title: "Description is required", variant: "destructive" });
+      return;
+    }
+    await createMutation.mutateAsync({
+      ...form,
+      equipmentId: form.equipmentId ? parseInt(form.equipmentId) : null,
+    });
+    toast({ title: "Service request created" });
+    setForm({ type: "diagnostic", priority: "normal", description: "", faultCodes: "", equipmentId: "" });
+    setShowForm(false);
+  };
+
+  const items = requests || [];
+  const orders = workOrders || [];
+  const eqList = equipmentList || [];
+
+  const priorityColor: Record<string, string> = { urgent: "bg-red-600", high: "bg-orange-500", normal: "bg-blue-500", low: "bg-gray-500" };
+  const statusColor: Record<string, string> = { open: "bg-blue-600", "in-progress": "bg-yellow-600", completed: "bg-green-600", closed: "bg-gray-600" };
+
+  if (isLoading) return <div className="space-y-3">{[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full" />)}</div>;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <p className="text-gray-400">{items.length} service request{items.length !== 1 ? "s" : ""}</p>
+        <Button className="bg-[#FFCD11] text-black" onClick={() => setShowForm(!showForm)} data-testid="button-new-service">
+          <Plus className="h-4 w-4 mr-1" /> New Request
+        </Button>
+      </div>
+
+      {showForm && (
+        <Card className="bg-[#1a1a1a] border-[#333]">
+          <CardHeader className="pb-2"><CardTitle className="text-white text-lg">New Service Request</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <Label className="text-gray-300 text-sm">Type</Label>
+                <Select value={form.type} onValueChange={v => setForm(f => ({ ...f, type: v }))}>
+                  <SelectTrigger className="bg-[#222] border-[#444] text-white mt-1" data-testid="select-service-type"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="breakdown">Breakdown</SelectItem>
+                    <SelectItem value="maintenance">Maintenance</SelectItem>
+                    <SelectItem value="diagnostic">Diagnostic</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-gray-300 text-sm">Priority</Label>
+                <Select value={form.priority} onValueChange={v => setForm(f => ({ ...f, priority: v }))}>
+                  <SelectTrigger className="bg-[#222] border-[#444] text-white mt-1" data-testid="select-service-priority"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="normal">Normal</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="urgent">Urgent</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-gray-300 text-sm">Equipment</Label>
+                <Select value={form.equipmentId} onValueChange={v => setForm(f => ({ ...f, equipmentId: v }))}>
+                  <SelectTrigger className="bg-[#222] border-[#444] text-white mt-1" data-testid="select-service-equipment"><SelectValue placeholder="Select..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    {eqList.map((eq: any) => (
+                      <SelectItem key={eq.id} value={String(eq.id)}>{eq.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div>
+              <Label className="text-gray-300 text-sm">Description *</Label>
+              <Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="bg-[#222] border-[#444] text-white mt-1" data-testid="input-service-description" />
+            </div>
+            <div>
+              <Label className="text-gray-300 text-sm">Fault Codes</Label>
+              <Input value={form.faultCodes} onChange={e => setForm(f => ({ ...f, faultCodes: e.target.value }))} className="bg-[#222] border-[#444] text-white mt-1" placeholder="e.g., P0420, P0301" data-testid="input-service-faultcodes" />
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <Button className="bg-[#FFCD11] text-black" onClick={handleSubmit} disabled={createMutation.isPending} data-testid="button-submit-service">
+                {createMutation.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />} Submit
+              </Button>
+              <Button variant="outline" className="border-[#444] text-gray-300" onClick={() => setShowForm(false)}>Cancel</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {items.length === 0 ? (
+        <Card className="bg-[#1a1a1a] border-[#333]"><CardContent className="p-8 text-center">
+          <Wrench className="h-12 w-12 text-gray-600 mx-auto mb-3" />
+          <p className="text-gray-400" data-testid="text-no-service">No service requests yet. Create one to get started.</p>
+        </CardContent></Card>
+      ) : (
+        <div className="space-y-2">
+          {items.map((sr: any) => (
+            <Card key={sr.id} className="bg-[#1a1a1a] border-[#333]" data-testid={`card-service-${sr.id}`}>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white font-semibold">#{sr.id} — {sr.type}</p>
+                    <p className="text-gray-400 text-sm truncate">{sr.description || "No description"}</p>
+                    {sr.faultCodes && <p className="text-gray-500 text-xs mt-1">Fault codes: {sr.faultCodes}</p>}
+                  </div>
+                  <div className="flex gap-1 flex-wrap">
+                    <Badge className={`text-xs text-white ${priorityColor[sr.priority] || "bg-gray-500"}`}>{sr.priority}</Badge>
+                    <Badge className={`text-xs text-white ${statusColor[sr.status] || "bg-gray-500"}`}>{sr.status}</Badge>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {orders.length > 0 && (
+        <div className="mt-6">
+          <h3 className="text-white font-semibold mb-3">Work Orders</h3>
+          <div className="space-y-2">
+            {orders.map((wo: any) => (
+              <Card key={wo.id} className="bg-[#1a1a1a] border-[#333]" data-testid={`card-workorder-${wo.id}`}>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div>
+                      <p className="text-white">Work Order #{wo.id}</p>
+                      <p className="text-gray-400 text-sm">{wo.technicianNotes || "No notes"}</p>
+                    </div>
+                    <Badge className={`text-xs text-white ${statusColor[wo.status] || "bg-gray-500"}`}>{wo.status}</Badge>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MaintenanceSection({ authToken }: { authToken: string | null }) {
+  const { data: schedules, isLoading } = useAuthFetch("/api/portal/maintenance", authToken);
+  const { data: equipmentList } = useAuthFetch("/api/portal/equipment", authToken);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ serviceType: "", intervalHours: "", lastServiceDate: "", nextServiceDate: "", equipmentId: "" });
+  const { toast } = useToast();
+  const createMutation = useAuthMutation("POST", "/api/portal/maintenance", authToken, ["/api/portal/maintenance"]);
+
+  const handleSubmit = async () => {
+    if (!form.serviceType || !form.equipmentId) {
+      toast({ title: "Service type and equipment are required", variant: "destructive" });
+      return;
+    }
+    await createMutation.mutateAsync({ ...form, equipmentId: parseInt(form.equipmentId) });
+    toast({ title: "Maintenance schedule created" });
+    setForm({ serviceType: "", intervalHours: "", lastServiceDate: "", nextServiceDate: "", equipmentId: "" });
+    setShowForm(false);
+  };
+
+  const items = schedules || [];
+  const eqList = equipmentList || [];
+
+  if (isLoading) return <div className="space-y-3">{[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full" />)}</div>;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <p className="text-gray-400">{items.length} schedule{items.length !== 1 ? "s" : ""}</p>
+        <Button className="bg-[#FFCD11] text-black" onClick={() => setShowForm(!showForm)} data-testid="button-add-maintenance">
+          <Plus className="h-4 w-4 mr-1" /> Add Schedule
+        </Button>
+      </div>
+
+      {showForm && (
+        <Card className="bg-[#1a1a1a] border-[#333]">
+          <CardHeader className="pb-2"><CardTitle className="text-white text-lg">New PM Schedule</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Label className="text-gray-300 text-sm">Equipment *</Label>
+                <Select value={form.equipmentId} onValueChange={v => setForm(f => ({ ...f, equipmentId: v }))}>
+                  <SelectTrigger className="bg-[#222] border-[#444] text-white mt-1" data-testid="select-maintenance-equipment"><SelectValue placeholder="Select..." /></SelectTrigger>
+                  <SelectContent>
+                    {eqList.map((eq: any) => <SelectItem key={eq.id} value={String(eq.id)}>{eq.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-gray-300 text-sm">Service Type *</Label>
+                <Input value={form.serviceType} onChange={e => setForm(f => ({ ...f, serviceType: e.target.value }))} className="bg-[#222] border-[#444] text-white mt-1" placeholder="e.g., Oil Change" data-testid="input-maintenance-type" />
+              </div>
+              <div>
+                <Label className="text-gray-300 text-sm">Interval Hours</Label>
+                <Input value={form.intervalHours} onChange={e => setForm(f => ({ ...f, intervalHours: e.target.value }))} className="bg-[#222] border-[#444] text-white mt-1" placeholder="250" data-testid="input-maintenance-interval" />
+              </div>
+              <div>
+                <Label className="text-gray-300 text-sm">Last Service Date</Label>
+                <Input type="date" value={form.lastServiceDate} onChange={e => setForm(f => ({ ...f, lastServiceDate: e.target.value }))} className="bg-[#222] border-[#444] text-white mt-1" data-testid="input-maintenance-last" />
+              </div>
+              <div>
+                <Label className="text-gray-300 text-sm">Next Service Date</Label>
+                <Input type="date" value={form.nextServiceDate} onChange={e => setForm(f => ({ ...f, nextServiceDate: e.target.value }))} className="bg-[#222] border-[#444] text-white mt-1" data-testid="input-maintenance-next" />
+              </div>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <Button className="bg-[#FFCD11] text-black" onClick={handleSubmit} disabled={createMutation.isPending} data-testid="button-submit-maintenance">
+                {createMutation.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />} Save
+              </Button>
+              <Button variant="outline" className="border-[#444] text-gray-300" onClick={() => setShowForm(false)}>Cancel</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {items.length === 0 ? (
+        <Card className="bg-[#1a1a1a] border-[#333]"><CardContent className="p-8 text-center">
+          <CalendarClock className="h-12 w-12 text-gray-600 mx-auto mb-3" />
+          <p className="text-gray-400" data-testid="text-no-maintenance">No maintenance schedules yet.</p>
+        </CardContent></Card>
+      ) : (
+        <div className="space-y-2">
+          {items.map((s: any) => (
+            <Card key={s.id} className="bg-[#1a1a1a] border-[#333]" data-testid={`card-maintenance-${s.id}`}>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white font-semibold">{s.serviceType}</p>
+                    <p className="text-gray-400 text-sm">
+                      {s.intervalHours && `Every ${s.intervalHours}h`}
+                      {s.nextServiceDate && ` · Next: ${s.nextServiceDate}`}
+                    </p>
+                  </div>
+                  <Badge variant="secondary" className="text-xs">{s.status}</Badge>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OrdersSection() {
+  return (
+    <div className="space-y-4">
+      <Card className="bg-[#1a1a1a] border-[#333]">
+        <CardContent className="p-8 text-center">
+          <Package className="h-12 w-12 text-gray-600 mx-auto mb-3" />
+          <p className="text-white font-semibold mb-2">Order Tracking</p>
+          <p className="text-gray-400" data-testid="text-no-orders">No active orders. Orders will appear here when parts or services are purchased.</p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function DocumentsSection({ authToken }: { authToken: string | null }) {
+  const { data: docs, isLoading } = useAuthFetch("/api/portal/documents", authToken);
+  const categories = ["manuals", "invoices", "reports", "warranties"];
+  const [filter, setFilter] = useState("all");
+
+  if (isLoading) return <div className="space-y-3">{[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full" />)}</div>;
+
+  const items = docs || [];
+  const filtered = filter === "all" ? items : items.filter((d: any) => d.type === filter);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2 flex-wrap">
+        <Button variant={filter === "all" ? "default" : "outline"} className={filter === "all" ? "bg-[#FFCD11] text-black" : "border-[#444] text-gray-300"} onClick={() => setFilter("all")} data-testid="button-filter-all">All</Button>
+        {categories.map(cat => (
+          <Button key={cat} variant={filter === cat ? "default" : "outline"} className={filter === cat ? "bg-[#FFCD11] text-black" : "border-[#444] text-gray-300"} onClick={() => setFilter(cat)} data-testid={`button-filter-${cat}`}>
+            {cat.charAt(0).toUpperCase() + cat.slice(1)}
+          </Button>
+        ))}
+      </div>
+
+      {filtered.length === 0 ? (
+        <Card className="bg-[#1a1a1a] border-[#333]"><CardContent className="p-8 text-center">
+          <FileText className="h-12 w-12 text-gray-600 mx-auto mb-3" />
+          <p className="text-gray-400" data-testid="text-no-documents">No documents found.</p>
+        </CardContent></Card>
+      ) : (
+        <div className="space-y-2">
+          {filtered.map((doc: any) => (
+            <Card key={doc.id} className="bg-[#1a1a1a] border-[#333]" data-testid={`card-document-${doc.id}`}>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-3">
+                    <FileText className="h-5 w-5 text-[#FFCD11] shrink-0" />
+                    <div>
+                      <p className="text-white">{doc.title}</p>
+                      <p className="text-gray-500 text-xs">{doc.type} {doc.fileSize && `· ${doc.fileSize}`}</p>
+                    </div>
+                  </div>
+                  <Badge variant="secondary" className="text-xs">{doc.type}</Badge>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BillingSection({ authToken }: { authToken: string | null }) {
+  const { data: invoices, isLoading } = useAuthFetch("/api/portal/invoices", authToken);
+
+  if (isLoading) return <div className="space-y-3">{[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full" />)}</div>;
+
+  const items = invoices || [];
+  const total = items.reduce((sum: number, inv: any) => sum + parseFloat(inv.amount || "0"), 0);
+  const paid = items.filter((inv: any) => inv.status === "paid").reduce((sum: number, inv: any) => sum + parseFloat(inv.amount || "0"), 0);
+  const outstanding = total - paid;
+
+  const statusStyle: Record<string, string> = { paid: "bg-green-600", pending: "bg-yellow-600", overdue: "bg-red-600" };
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card className="bg-[#1a1a1a] border-[#333]"><CardContent className="p-4">
+          <p className="text-gray-400 text-sm">Total</p>
+          <p className="text-2xl font-bold text-white" data-testid="stat-total-billing">${total.toFixed(2)}</p>
+        </CardContent></Card>
+        <Card className="bg-[#1a1a1a] border-[#333]"><CardContent className="p-4">
+          <p className="text-gray-400 text-sm">Paid</p>
+          <p className="text-2xl font-bold text-green-400" data-testid="stat-paid-billing">${paid.toFixed(2)}</p>
+        </CardContent></Card>
+        <Card className="bg-[#1a1a1a] border-[#333]"><CardContent className="p-4">
+          <p className="text-gray-400 text-sm">Outstanding</p>
+          <p className="text-2xl font-bold text-yellow-400" data-testid="stat-outstanding-billing">${outstanding.toFixed(2)}</p>
+        </CardContent></Card>
+      </div>
+
+      {items.length === 0 ? (
+        <Card className="bg-[#1a1a1a] border-[#333]"><CardContent className="p-8 text-center">
+          <DollarSign className="h-12 w-12 text-gray-600 mx-auto mb-3" />
+          <p className="text-gray-400" data-testid="text-no-invoices">No invoices yet.</p>
+        </CardContent></Card>
+      ) : (
+        <div className="space-y-2">
+          {items.map((inv: any) => (
+            <Card key={inv.id} className="bg-[#1a1a1a] border-[#333]" data-testid={`card-invoice-${inv.id}`}>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white font-semibold">Invoice #{inv.id}</p>
+                    <p className="text-gray-400 text-sm">{inv.description || "No description"} {inv.dueDate && `· Due: ${inv.dueDate}`}</p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-white font-bold">${parseFloat(inv.amount || "0").toFixed(2)}</p>
+                    <Badge className={`text-xs text-white ${statusStyle[inv.status] || "bg-gray-500"}`}>{inv.status}</Badge>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SupportSection({ authToken }: { authToken: string | null }) {
+  const { data: tickets, isLoading } = useAuthFetch("/api/portal/support-tickets", authToken);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ subject: "", description: "", priority: "normal", category: "" });
+  const { toast } = useToast();
+  const createMutation = useAuthMutation("POST", "/api/portal/support-tickets", authToken, ["/api/portal/support-tickets"]);
+
+  const handleSubmit = async () => {
+    if (!form.subject) {
+      toast({ title: "Subject is required", variant: "destructive" });
+      return;
+    }
+    await createMutation.mutateAsync(form);
+    toast({ title: "Support ticket created" });
+    setForm({ subject: "", description: "", priority: "normal", category: "" });
+    setShowForm(false);
+  };
+
+  const items = tickets || [];
+
+  if (isLoading) return <div className="space-y-3">{[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full" />)}</div>;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <p className="text-gray-400">{items.length} ticket{items.length !== 1 ? "s" : ""}</p>
+        <Button className="bg-[#FFCD11] text-black" onClick={() => setShowForm(!showForm)} data-testid="button-new-ticket">
+          <Plus className="h-4 w-4 mr-1" /> New Ticket
+        </Button>
+      </div>
+
+      {showForm && (
+        <Card className="bg-[#1a1a1a] border-[#333]">
+          <CardHeader className="pb-2"><CardTitle className="text-white text-lg">New Support Ticket</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <div>
+              <Label className="text-gray-300 text-sm">Subject *</Label>
+              <Input value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))} className="bg-[#222] border-[#444] text-white mt-1" data-testid="input-ticket-subject" />
+            </div>
+            <div>
+              <Label className="text-gray-300 text-sm">Description</Label>
+              <Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="bg-[#222] border-[#444] text-white mt-1" data-testid="input-ticket-description" />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Label className="text-gray-300 text-sm">Priority</Label>
+                <Select value={form.priority} onValueChange={v => setForm(f => ({ ...f, priority: v }))}>
+                  <SelectTrigger className="bg-[#222] border-[#444] text-white mt-1" data-testid="select-ticket-priority"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="normal">Normal</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="urgent">Urgent</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-gray-300 text-sm">Category</Label>
+                <Select value={form.category} onValueChange={v => setForm(f => ({ ...f, category: v }))}>
+                  <SelectTrigger className="bg-[#222] border-[#444] text-white mt-1" data-testid="select-ticket-category"><SelectValue placeholder="Select..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="general">General</SelectItem>
+                    <SelectItem value="billing">Billing</SelectItem>
+                    <SelectItem value="technical">Technical</SelectItem>
+                    <SelectItem value="parts">Parts</SelectItem>
+                    <SelectItem value="service">Service</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <Button className="bg-[#FFCD11] text-black" onClick={handleSubmit} disabled={createMutation.isPending} data-testid="button-submit-ticket">
+                {createMutation.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />} Submit
+              </Button>
+              <Button variant="outline" className="border-[#444] text-gray-300" onClick={() => setShowForm(false)}>Cancel</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {items.length === 0 ? (
+        <Card className="bg-[#1a1a1a] border-[#333]"><CardContent className="p-8 text-center">
+          <Headphones className="h-12 w-12 text-gray-600 mx-auto mb-3" />
+          <p className="text-gray-400" data-testid="text-no-tickets">No support tickets. Create one if you need help.</p>
+        </CardContent></Card>
+      ) : (
+        <div className="space-y-2">
+          {items.map((t: any) => (
+            <Card key={t.id} className="bg-[#1a1a1a] border-[#333]" data-testid={`card-ticket-${t.id}`}>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white font-semibold">{t.subject}</p>
+                    <p className="text-gray-400 text-sm truncate">{t.description || "No description"}</p>
+                  </div>
+                  <div className="flex gap-1 flex-wrap">
+                    <Badge variant="secondary" className="text-xs">{t.priority}</Badge>
+                    <Badge variant="secondary" className="text-xs">{t.status}</Badge>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AdminSection({ authToken, customer }: { authToken: string | null; customer: any }) {
+  const [form, setForm] = useState({
+    firstName: customer?.firstName || "",
+    lastName: customer?.lastName || "",
+    company: customer?.company || "",
+    phone: customer?.phone || "",
+  });
+  const { toast } = useToast();
+  const updateMutation = useAuthMutation("PATCH", "/api/portal/profile", authToken, []);
+
+  const handleSave = async () => {
+    await updateMutation.mutateAsync(form);
+    toast({ title: "Profile updated" });
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card className="bg-[#1a1a1a] border-[#333]">
+        <CardHeader className="pb-2"><CardTitle className="text-white">Profile Settings</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <Label className="text-gray-300 text-sm">First Name</Label>
+              <Input value={form.firstName} onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))} className="bg-[#222] border-[#444] text-white mt-1" data-testid="input-admin-firstname" />
+            </div>
+            <div>
+              <Label className="text-gray-300 text-sm">Last Name</Label>
+              <Input value={form.lastName} onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))} className="bg-[#222] border-[#444] text-white mt-1" data-testid="input-admin-lastname" />
+            </div>
+            <div>
+              <Label className="text-gray-300 text-sm">Company</Label>
+              <Input value={form.company} onChange={e => setForm(f => ({ ...f, company: e.target.value }))} className="bg-[#222] border-[#444] text-white mt-1" data-testid="input-admin-company" />
+            </div>
+            <div>
+              <Label className="text-gray-300 text-sm">Phone</Label>
+              <Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className="bg-[#222] border-[#444] text-white mt-1" data-testid="input-admin-phone" />
+            </div>
+          </div>
+          <div>
+            <Label className="text-gray-300 text-sm">Email</Label>
+            <Input value={customer?.email || ""} disabled className="bg-[#222] border-[#444] text-gray-500 mt-1" data-testid="input-admin-email" />
+          </div>
+          <Button className="bg-[#FFCD11] text-black" onClick={handleSave} disabled={updateMutation.isPending} data-testid="button-save-profile">
+            {updateMutation.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />} Save Changes
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-[#1a1a1a] border-[#333]">
+        <CardHeader className="pb-2"><CardTitle className="text-white">Account Info</CardTitle></CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <span className="text-gray-400">Role</span>
+              <Badge variant="secondary" data-testid="badge-role">{customer?.role || "user"}</Badge>
+            </div>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <span className="text-gray-400">Status</span>
+              <Badge className="bg-green-600 text-white text-xs" data-testid="badge-status">{customer?.status || "active"}</Badge>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function AIIntakeSection({ setLocation }: { setLocation: (path: string) => void }) {
+  return (
+    <div className="space-y-4">
+      <Card className="bg-[#1a1a1a] border-[#333]">
+        <CardContent className="p-8 text-center">
+          <Bot className="h-16 w-16 text-[#FFCD11] mx-auto mb-4" />
+          <h3 className="text-white text-xl font-bold mb-2">AI Virtual Mechanic Intake</h3>
+          <p className="text-gray-400 mb-6">Start a new AI diagnostic session. Our AI mechanic will guide you through troubleshooting your equipment issues.</p>
+          <div className="flex gap-3 justify-center flex-wrap">
+            <Button className="bg-[#FFCD11] text-black" onClick={() => setLocation("/live-desk")} data-testid="button-start-ai-session">
+              <Bot className="h-4 w-4 mr-2" /> Start New AI Session
+            </Button>
+            <Button variant="outline" className="border-[#444] text-gray-300" onClick={() => setLocation("/live-desk")} data-testid="button-goto-livedesk">
+              <Video className="h-4 w-4 mr-2" /> Go to Live Desk
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function AIDiagnosisSection({ authToken }: { authToken: string | null }) {
+  const { data: cases } = useAuthFetch("/api/portal/cases", authToken);
+  const sessions = (cases || []).filter((c: any) => c.diagnosisResult || c.status === "diagnosed");
+
+  return (
+    <div className="space-y-4">
+      <Card className="bg-[#1a1a1a] border-[#333]">
+        <CardHeader className="pb-2"><CardTitle className="text-white">Past Diagnoses</CardTitle></CardHeader>
+        <CardContent>
+          {sessions.length === 0 ? (
+            <div className="text-center py-6">
+              <Stethoscope className="h-12 w-12 text-gray-600 mx-auto mb-3" />
+              <p className="text-gray-400" data-testid="text-no-diagnoses">No diagnosis results yet. Complete an AI session to see results here.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {sessions.map((s: any) => (
+                <div key={s.id} className="p-3 rounded-md bg-[#222]" data-testid={`diagnosis-${s.id}`}>
+                  <p className="text-white font-semibold">{s.equipmentType || "Unknown Equipment"} — {s.make} {s.model}</p>
+                  <p className="text-gray-400 text-sm">{s.problemSummary || "No summary"}</p>
+                  {s.faultCodes && <p className="text-yellow-400 text-xs mt-1">Fault Codes: {s.faultCodes}</p>}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function AITroubleshootingSection() {
+  return (
+    <div className="space-y-4">
+      <Card className="bg-[#1a1a1a] border-[#333]">
+        <CardContent className="p-8 text-center">
+          <BookOpen className="h-12 w-12 text-[#FFCD11] mx-auto mb-3" />
+          <h3 className="text-white text-xl font-bold mb-2">Guided Troubleshooting</h3>
+          <p className="text-gray-400" data-testid="text-troubleshooting-info">Step-by-step repair instructions from your AI sessions will appear here. Start a diagnostic session with the AI mechanic to get personalized troubleshooting guides.</p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function AIFaultCodeSection() {
+  const [code, setCode] = useState("");
+  const [result, setResult] = useState<any>(null);
+  const [searching, setSearching] = useState(false);
+
+  const handleLookup = async () => {
+    if (!code.trim()) return;
+    setSearching(true);
+    try {
+      const res = await fetch(`/api/portal/fault-codes?code=${encodeURIComponent(code)}`);
+      if (res.ok) {
+        setResult(await res.json());
+      } else {
+        setResult({ error: "Code not found" });
+      }
+    } catch {
+      setResult({ error: "Lookup failed" });
+    }
+    setSearching(false);
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card className="bg-[#1a1a1a] border-[#333]">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-white">Fault Code Lookup</CardTitle>
+          <CardDescription className="text-gray-400">Enter a DTC or fault code to get interpretation</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-2 flex-wrap">
+            <Input value={code} onChange={e => setCode(e.target.value)} className="bg-[#222] border-[#444] text-white flex-1 min-w-[200px]" placeholder="e.g., P0420, SPN 3251" onKeyDown={e => e.key === "Enter" && handleLookup()} data-testid="input-fault-code" />
+            <Button className="bg-[#FFCD11] text-black" onClick={handleLookup} disabled={searching} data-testid="button-lookup-fault">
+              {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4 mr-1" />} Lookup
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {result && (
+        <Card className="bg-[#1a1a1a] border-[#333]">
+          <CardContent className="p-4">
+            {result.error ? (
+              <p className="text-gray-400" data-testid="text-fault-error">{result.error}</p>
+            ) : (
+              <div data-testid="fault-code-result">
+                <p className="text-[#FFCD11] font-bold text-lg">{result.code || code}</p>
+                <p className="text-white mt-1">{result.description || result.meaning || "Interpretation available after AI analysis"}</p>
+                {result.severity && <Badge className="mt-2 text-xs" variant="secondary">{result.severity}</Badge>}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function AIPartsSection({ authToken }: { authToken: string | null }) {
+  const { data: cases } = useAuthFetch("/api/portal/cases", authToken);
+
+  return (
+    <div className="space-y-4">
+      <Card className="bg-[#1a1a1a] border-[#333]">
+        <CardContent className="p-8 text-center">
+          <ShoppingCart className="h-12 w-12 text-[#FFCD11] mx-auto mb-3" />
+          <h3 className="text-white text-xl font-bold mb-2">AI-Recommended Parts</h3>
+          <p className="text-gray-400" data-testid="text-ai-parts-info">Parts recommendations from AI diagnostic sessions will be listed here. Complete an AI session to receive tailored part suggestions for your equipment.</p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function AIRepairPlanningSection() {
+  return (
+    <div className="space-y-4">
+      <Card className="bg-[#1a1a1a] border-[#333]">
+        <CardContent className="p-8 text-center">
+          <ClipboardList className="h-12 w-12 text-[#FFCD11] mx-auto mb-3" />
+          <h3 className="text-white text-xl font-bold mb-2">Repair Planning</h3>
+          <p className="text-gray-400" data-testid="text-repair-planning-info">Labor estimates, required tools, and downtime projections from AI sessions will appear here. Start a diagnostic to generate a repair plan.</p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function AIPredictiveSection() {
+  return (
+    <div className="space-y-4">
+      <Card className="bg-[#1a1a1a] border-[#333]">
+        <CardContent className="p-8 text-center">
+          <TrendingUp className="h-12 w-12 text-[#FFCD11] mx-auto mb-3" />
+          <h3 className="text-white text-xl font-bold mb-2">Predictive Maintenance</h3>
+          <p className="text-gray-400" data-testid="text-predictive-info">Risk alerts and upcoming failure predictions based on your equipment data and AI analysis. Add equipment and complete diagnostics to enable predictions.</p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function AICaseHistorySection({ authToken }: { authToken: string | null }) {
+  const { data: cases, isLoading } = useAuthFetch("/api/portal/cases", authToken);
+
+  if (isLoading) return <div className="space-y-3">{[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full" />)}</div>;
+
+  const items = cases || [];
+
+  return (
+    <div className="space-y-4">
+      <p className="text-gray-400">{items.length} past session{items.length !== 1 ? "s" : ""}</p>
+      {items.length === 0 ? (
+        <Card className="bg-[#1a1a1a] border-[#333]"><CardContent className="p-8 text-center">
+          <History className="h-12 w-12 text-gray-600 mx-auto mb-3" />
+          <p className="text-gray-400" data-testid="text-no-cases">No AI sessions yet. Start one from the Intake section.</p>
+        </CardContent></Card>
+      ) : (
+        <div className="space-y-2">
+          {items.map((c: any) => (
+            <Card key={c.id} className="bg-[#1a1a1a] border-[#333]" data-testid={`card-case-${c.id}`}>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white font-semibold">
+                      Session #{c.id} — {c.equipmentType || "General"} {c.make || ""} {c.model || ""}
+                    </p>
+                    <p className="text-gray-400 text-sm truncate">{c.problemSummary || "No summary"}</p>
+                    <p className="text-gray-500 text-xs mt-1">{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ""}</p>
+                  </div>
+                  <Badge variant="secondary" className="text-xs">{c.status}</Badge>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AILiveMechanicSection({ setLocation }: { setLocation: (path: string) => void }) {
+  return (
+    <div className="space-y-4">
+      <Card className="bg-[#1a1a1a] border-[#FFCD11]">
+        <CardContent className="p-8 text-center">
+          <Video className="h-16 w-16 text-[#FFCD11] mx-auto mb-4" />
+          <h3 className="text-white text-2xl font-bold mb-2">Live AI Mechanic</h3>
+          <p className="text-gray-400 mb-6">Connect with our AI-powered virtual mechanic avatar for real-time diagnostic support. Get instant guidance on equipment issues through live video interaction.</p>
+          <Button className="bg-[#FFCD11] text-black font-bold text-lg px-8" onClick={() => setLocation("/live-desk")} data-testid="button-live-mechanic">
+            <Video className="h-5 w-5 mr-2" /> Launch Live AI Mechanic
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function AIEscalationSection({ authToken }: { authToken: string | null }) {
+  const [form, setForm] = useState({ subject: "", description: "", priority: "normal", equipmentInfo: "" });
+  const { toast } = useToast();
+  const [submitted, setSubmitted] = useState(false);
+
+  const escalateMutation = useAuthMutation("POST", "/api/portal/escalation", authToken, []);
+
+  const handleSubmit = async () => {
+    if (!form.subject) {
+      toast({ title: "Subject is required", variant: "destructive" });
+      return;
+    }
+    try {
+      await escalateMutation.mutateAsync(form);
+      toast({ title: "Escalation submitted. A human expert will review your request." });
+      setSubmitted(true);
+    } catch {
+      // error handled by mutation
+    }
+  };
+
+  if (submitted) {
+    return (
+      <Card className="bg-[#1a1a1a] border-[#333]"><CardContent className="p-8 text-center">
+        <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto mb-4" />
+        <h3 className="text-white text-xl font-bold mb-2">Escalation Submitted</h3>
+        <p className="text-gray-400" data-testid="text-escalation-success">Your request has been submitted. A human expert will reach out to you shortly.</p>
+        <Button className="mt-4 bg-[#FFCD11] text-black" onClick={() => { setSubmitted(false); setForm({ subject: "", description: "", priority: "normal", equipmentInfo: "" }); }}>Submit Another</Button>
+      </CardContent></Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <Card className="bg-[#1a1a1a] border-[#333]">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-white">Request Human Expert</CardTitle>
+          <CardDescription className="text-gray-400">Need a real mechanic? Submit an escalation request and our team will follow up.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div>
+            <Label className="text-gray-300 text-sm">Subject *</Label>
+            <Input value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))} className="bg-[#222] border-[#444] text-white mt-1" data-testid="input-escalation-subject" />
+          </div>
+          <div>
+            <Label className="text-gray-300 text-sm">Description</Label>
+            <Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="bg-[#222] border-[#444] text-white mt-1" data-testid="input-escalation-description" />
+          </div>
+          <div>
+            <Label className="text-gray-300 text-sm">Equipment Info</Label>
+            <Input value={form.equipmentInfo} onChange={e => setForm(f => ({ ...f, equipmentInfo: e.target.value }))} className="bg-[#222] border-[#444] text-white mt-1" placeholder="Make, model, serial..." data-testid="input-escalation-equipment" />
+          </div>
+          <div>
+            <Label className="text-gray-300 text-sm">Priority</Label>
+            <Select value={form.priority} onValueChange={v => setForm(f => ({ ...f, priority: v }))}>
+              <SelectTrigger className="bg-[#222] border-[#444] text-white mt-1" data-testid="select-escalation-priority"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="normal">Normal</SelectItem>
+                <SelectItem value="high">High</SelectItem>
+                <SelectItem value="urgent">Urgent</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button className="bg-[#FFCD11] text-black" onClick={handleSubmit} disabled={escalateMutation.isPending} data-testid="button-submit-escalation">
+            {escalateMutation.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+            <PhoneCall className="h-4 w-4 mr-1" /> Submit Escalation
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+export default function PortalPage() {
+  const { customer, authToken, logout, isAuthenticated, isLoading: authLoading } = useAuth();
+  const [, setLocation] = useLocation();
+  const [activeSection, setActiveSection] = useState<SectionId>("dashboard");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      setLocation("/login");
+    }
+  }, [authLoading, isAuthenticated, setLocation]);
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#111111] flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-[#FFCD11]" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) return null;
+
+  const renderSection = () => {
+    switch (activeSection) {
+      case "dashboard": return <DashboardSection authToken={authToken} />;
+      case "equipment": return <EquipmentSection authToken={authToken} />;
+      case "parts": return <PartsSection authToken={authToken} />;
+      case "service": return <ServiceSection authToken={authToken} />;
+      case "maintenance": return <MaintenanceSection authToken={authToken} />;
+      case "orders": return <OrdersSection />;
+      case "documents": return <DocumentsSection authToken={authToken} />;
+      case "billing": return <BillingSection authToken={authToken} />;
+      case "support": return <SupportSection authToken={authToken} />;
+      case "admin": return <AdminSection authToken={authToken} customer={customer} />;
+      case "ai-intake": return <AIIntakeSection setLocation={setLocation} />;
+      case "ai-diagnosis": return <AIDiagnosisSection authToken={authToken} />;
+      case "ai-troubleshooting": return <AITroubleshootingSection />;
+      case "ai-faultcodes": return <AIFaultCodeSection />;
+      case "ai-parts": return <AIPartsSection authToken={authToken} />;
+      case "ai-planning": return <AIRepairPlanningSection />;
+      case "ai-predictive": return <AIPredictiveSection />;
+      case "ai-history": return <AICaseHistorySection authToken={authToken} />;
+      case "ai-live": return <AILiveMechanicSection setLocation={setLocation} />;
+      case "ai-escalation": return <AIEscalationSection authToken={authToken} />;
+      default: return <DashboardSection authToken={authToken} />;
+    }
+  };
+
+  const handleNav = (id: SectionId) => {
+    setActiveSection(id);
+    setSidebarOpen(false);
+  };
+
+  return (
+    <div className="min-h-screen bg-[#111111] flex">
+      {sidebarOpen && (
+        <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
+      )}
+
+      <aside
+        className={`fixed lg:sticky top-0 left-0 z-50 h-screen w-64 bg-[#1a1a1a] border-r border-[#333] flex flex-col transition-transform duration-200 ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+        }`}
+        data-testid="sidebar"
+      >
+        <div className="p-4 border-b border-[#333] flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <img src={logoImg} alt="AMERICAN IRON" className="h-8" data-testid="img-sidebar-logo" />
+            <span className="text-[#FFCD11] font-bold text-sm">AMERICAN IRON</span>
+          </div>
+          <Button size="icon" variant="ghost" className="lg:hidden text-gray-400" onClick={() => setSidebarOpen(false)} data-testid="button-close-sidebar">
+            <X className="h-5 w-5" />
+          </Button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto py-2">
+          <div className="px-4 py-2">
+            <p className="text-[#FFCD11] text-xs font-bold tracking-wider">CUSTOMER PORTAL</p>
+          </div>
+          {portalNav.map(item => (
+            <button
+              key={item.id}
+              onClick={() => handleNav(item.id)}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
+                activeSection === item.id
+                  ? "text-[#FFCD11] bg-[#FFCD11]/10 border-r-2 border-[#FFCD11]"
+                  : "text-gray-400 hover:text-white hover:bg-[#222]"
+              }`}
+              data-testid={`nav-${item.id}`}
+            >
+              <item.icon className="h-4 w-4 shrink-0" />
+              <span>{item.label}</span>
+            </button>
+          ))}
+
+          <div className="px-4 py-2 mt-4">
+            <p className="text-[#FFCD11] text-xs font-bold tracking-wider">AI VIRTUAL MECHANIC</p>
+          </div>
+          {aiNav.map(item => (
+            <button
+              key={item.id}
+              onClick={() => handleNav(item.id)}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
+                activeSection === item.id
+                  ? "text-[#FFCD11] bg-[#FFCD11]/10 border-r-2 border-[#FFCD11]"
+                  : "text-gray-400 hover:text-white hover:bg-[#222]"
+              }`}
+              data-testid={`nav-${item.id}`}
+            >
+              <item.icon className="h-4 w-4 shrink-0" />
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="p-4 border-t border-[#333]">
+          <div className="mb-3">
+            <p className="text-white text-sm font-semibold" data-testid="text-customer-name">{customer?.firstName} {customer?.lastName}</p>
+            {customer?.company && <p className="text-gray-500 text-xs" data-testid="text-customer-company">{customer.company}</p>}
+          </div>
+          <Button variant="outline" className="w-full border-[#444] text-gray-300" onClick={logout} data-testid="button-logout">
+            <LogOut className="h-4 w-4 mr-2" /> Logout
+          </Button>
+        </div>
+      </aside>
+
+      <div className="flex-1 flex flex-col min-w-0">
+        <header className="sticky top-0 z-30 bg-[#111111] border-b border-[#333] px-4 py-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-3">
+              <Button size="icon" variant="ghost" className="lg:hidden text-gray-400" onClick={() => setSidebarOpen(true)} data-testid="button-open-sidebar">
+                <Menu className="h-5 w-5" />
+              </Button>
+              <div>
+                <div className="flex items-center gap-2 text-gray-500 text-xs">
+                  <span>Portal</span>
+                  <ChevronRight className="h-3 w-3" />
+                  <span className="text-white">{sectionTitles[activeSection]}</span>
+                </div>
+                <h1 className="text-white text-lg font-bold" data-testid="text-section-title">{sectionTitles[activeSection]}</h1>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge className="bg-[#FFCD11] text-black text-xs" data-testid="badge-customer-name">
+                {customer?.firstName} {customer?.lastName}
+              </Badge>
+            </div>
+          </div>
+        </header>
+
+        <main className="flex-1 overflow-y-auto p-4 lg:p-6">
+          {renderSection()}
+        </main>
+      </div>
+    </div>
+  );
+}

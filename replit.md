@@ -1,7 +1,7 @@
 # American Iron - Live AI Engineer Desk
 
 ## Overview
-A full-screen, video-first live front desk experience for heavy equipment diagnostics. Visitors "walk in" and interact face-to-face with AI-powered avatars — a Registration Admin for intake and 6 specialist divisions for diagnostics and parts assistance. No traditional chat UI — the avatar is the experience.
+A full-screen, video-first live front desk experience for heavy equipment diagnostics. Visitors "walk in" and interact face-to-face with AI-powered avatars — a Registration Admin for intake and 6 specialist divisions for diagnostics and parts assistance. Includes a full Customer Portal and AI Virtual Mechanic Portal requiring registration.
 
 ## Architecture
 - **Frontend**: React + Vite + Tailwind CSS + shadcn/ui (single-page, full-screen video UI)
@@ -10,92 +10,67 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
 - **AI Engine**: OpenAI (GPT-4o) via Replit AI Integrations
 - **Video Avatars**: LiveAvatar (HeyGen) FULL mode API with LiveKit transport + browser TTS fallback
 - **Voice**: LiveKit audio tracks via LiveAvatar + browser SpeechSynthesis fallback
+- **Auth**: Token-based auth with bcryptjs password hashing
 
 ## Key Files
-- `shared/schema.ts` - Database schema (sessions, messages, files, reports)
-- `server/routes.ts` - All API endpoints with session token auth
+- `shared/schema.ts` - Database schema (sessions, messages, files, reports, customers, equipment, serviceRequests, workOrders, maintenanceSchedules, supportTickets, documents, invoices)
+- `server/routes.ts` - All API endpoints with session token auth + portal auth
 - `server/services/ai-engine.ts` - OpenAI conversation engine (Admin + 6 Specialist system prompts)
 - `server/services/avatar.ts` - LiveAvatar API integration (session creation, start, stop)
-- `server/storage.ts` - Database CRUD operations
+- `server/storage.ts` - Database CRUD operations for all tables
 - `server/db.ts` - Drizzle database connection
 - `client/src/pages/live-desk.tsx` - Full-screen video-first experience with LiveKit client
-- `client/src/App.tsx` - Router (/ and /live-desk both go to LiveDesk)
+- `client/src/pages/auth.tsx` - Login/Register page with AMERICAN IRON branding
+- `client/src/pages/portal.tsx` - Full Customer Portal + AI Virtual Mechanic Portal (20 sections)
+- `client/src/lib/auth.tsx` - AuthProvider context with login/register/logout
+- `client/src/App.tsx` - Router with routes for /, /live-desk, /login, /register, /portal
+
+## Customer Portal & AI Mechanic Portal
+- **Auth**: Token-based (x-auth-token header), bcryptjs password hashing, shared registration
+- **Customer Portal Sections**: Dashboard, My Equipment, Parts, Service, Maintenance, Orders & Shipping, Documents, Billing & Account, Support Center, Admin
+- **AI Virtual Mechanic Sections**: AI Intake/Triage, Diagnosis Engine, Guided Troubleshooting, Fault Code Center, Recommended Parts, Repair Planning, Predictive Maintenance, Case History, Live AI Mechanic, Escalation to Human Expert
+- **Sidebar Navigation**: Collapsible dark sidebar with two section groups, mobile-responsive with hamburger toggle
+- **Ownership checks**: All CRUD operations verify customer ownership before update/delete
+
+## Portal API Endpoints
+- `POST /api/auth/register` - Create customer account
+- `POST /api/auth/login` - Verify credentials, return auth token
+- `GET /api/auth/me` - Get current customer (requires x-auth-token)
+- `POST /api/auth/logout` - Clear session
+- `GET /api/portal/dashboard` - Aggregated stats (equipment, cases, invoices, tickets)
+- `GET/POST/PATCH/DELETE /api/portal/equipment` - Equipment CRUD
+- `GET/POST/PATCH /api/portal/service-requests` - Service request CRUD
+- `GET /api/portal/work-orders` - Work orders
+- `GET/POST /api/portal/maintenance` - Maintenance schedules
+- `GET/POST /api/portal/support-tickets` - Support tickets
+- `GET /api/portal/documents` - Documents
+- `GET /api/portal/invoices` - Invoices
+- `PATCH /api/portal/profile` - Update customer profile
+- `POST /api/portal/escalation` - Escalation to human expert (creates support ticket)
+- `GET /api/portal/cases` - AI session history
 
 ## LiveAvatar Integration
 - **API**: `https://api.liveavatar.com` using HEYGEN_API_KEY
 - **Mode**: FULL mode (server-side LLM, avatar speaks text sent via LiveKit data channel)
 - **Flow**: Server creates session token → starts session → returns LiveKit URL + client token → client connects to LiveKit Room → subscribes to video/audio tracks → sends speak commands on `agent-control` topic
 - **Events**: `avatar.speak_text` command → `avatar.speak_started`/`avatar.speak_ended` server events → `avatar.transcription` for subtitle text
-- **Voice Input**: Client-side MediaRecorder captures user mic audio with VAD (silence detection) → sends to `/api/transcribe` endpoint → OpenAI Whisper STT → transcribed text fed to `handleUserMessage` → GPT-4o response → `avatar.speak_text` command. LiveAvatar FULL mode's built-in STT is not used (unreliable `user.transcription` events).
+- **Voice Input**: Client-side MediaRecorder captures user mic audio with VAD (silence detection) → sends to `/api/transcribe` endpoint → OpenAI Whisper STT → transcribed text fed to `handleUserMessage` → GPT-4o response → `avatar.speak_text` command
 - **English Avatars**: Silas (admin), Bryan (heavy equip), Elenora (power gen), Pedro (marine), Thaddeus (hydraulics), Anastasia (electrical), Marcus (parts)
 - **Arabic Avatars**: Fatima (admin), Khalid (heavy equip), Layla (power gen), Omar (marine), Hassan (hydraulics), Nour (electrical), Tariq (parts)
-- **Language Selection**: Customer chooses English or Arabic on landing page; language flows through session → avatar → AI prompts
-- **Background**: Mechanic shop background image (attached_assets/shop_background.png) served at /static/shop_background.png, passed to LiveAvatar API as custom background, and used as CSS fallback behind the video
-- **Fallback**: Browser SpeechSynthesis when LiveKit room is disconnected
 
 ## Visual Theme
-- **Caterpillar-inspired**: CAT yellow (#FFCD11) as primary, near-black backgrounds, warm industrial tones
-- **Light mode**: Warm off-white backgrounds (hue 45), CAT yellow primary with dark foreground text
-- **Dark mode**: Near-black with warm undertone (hue 40), bright CAT yellow accents
-- **Landing page**: Deep black (#1a1a1a) with CAT yellow glow effects and accent stripe
-
-## Intro Sequence
-- Admin avatar delivers full welcome monologue as ONE speak command (no sentence-by-sentence pauses)
-- "Introduction" badge + "Skip Intro" button shown during playback
-- Controls hidden until intro finishes or is skipped
-- 90-second timeout on waitForSpeakEnd for full intro
-
-## UI Design
-- **Landing**: Grand entrance landing page with multiple sections:
-  - Fixed nav bar with "About the Shop", "Services", "Why AMERICAN IRON", "SPEAK WITH ADMIN" button
-  - Full-screen hero with looping background video, large logo, tagline
-  - 4 hero CTA buttons: "ABOUT THE SHOP" (video modal), "SPEAK WITH ADMIN" (scroll to admin), "EXPLORE SERVICES" (services page), "WALK IN NOW" (quick start)
-  - Services grid: 6 specialist cards (clickable → detailed services page) + Speak With Admin CTA card
-  - How It Works: 3-step process (Speak With Admin → Describe → Diagnose)
-  - Why AMERICAN IRON: feature list + facility image
-  - Speak With Admin section: admin persona icon, language selector, consent checkbox, "SPEAK WITH ADMIN" button
-  - Walk In section: secondary "JUST WANT TO WALK IN?" quick-start option
-  - Footer with logo + copyright
-- **About the Shop modal**: Full-screen video modal with cinematic AI-generated facility tour video, pre-recorded AI narration audio (about_narration.mp3 with background music), description text, and CTA buttons
-- **Explore Services page**: Separate view with 6 expandable accordion sections, each with 12 detailed repair/diagnostic items; "SPEAK WITH ADMIN ABOUT THIS" CTA per section
-- **Parts Assistance**: 6th specialist division — requires part number or machine serial number before providing any assistance; covers OEM/aftermarket parts for all heavy equipment manufacturers
-- **Admin persona**: Cheerful, welcoming woman who introduces herself by name, explains the process, and guides customers warmly
-- **Branding**: "AMERICAN IRON" always in ALL CAPS in all text/titles
-- **Logo**: attached_assets/american-iron-logo_1772935008934.png used in nav, hero, walk-in, footer
-- **Service images**: Generated facility/service images in attached_assets/
-- **Active Session**: Full-screen video of avatar, floating controls at bottom
-  - Large mic button for voice input via LiveKit
-  - Keyboard toggle for text input
-  - Actions menu (upload files, generate report, share)
-  - End session (hang up) button
-- **Subtitles**: Avatar speech appears as subtitle overlay on video
-- **No chat bubbles**: Responses are spoken by avatar + shown as subtitles
-- **Listening/Attention Mode**: When customer speaks or AI processes:
-  - Animated waveform bars + "Listening.../Thinking..." indicator at top of video
-  - Golden pulsing glow border around the video container
-  - Avatar speaks brief acknowledgment cues ("Mm-hmm", "I see") with 8s throttle
-  - Enhanced persona prompts request expressive facial expressions, attentive eye contact, nodding
+- **Caterpillar-inspired**: CAT yellow (#FFCD11) as primary, near-black backgrounds (#111111, #1a1a1a, #222)
+- **Dark theme**: Near-black with warm undertone, bright CAT yellow accents
+- **"AMERICAN IRON" always in ALL CAPS**
 
 ## Environment Variables
 - `DATABASE_URL` - PostgreSQL connection
 - `AI_INTEGRATIONS_OPENAI_API_KEY` / `AI_INTEGRATIONS_OPENAI_BASE_URL` - OpenAI via Replit
 - `HEYGEN_API_KEY` - LiveAvatar API key (from app.liveavatar.com)
 - `DID_API_KEY` - D-ID API (legacy, kept for reference)
+- `SESSION_SECRET` - For session management
 
-## Features
-1. **Full-Screen Video Avatars** - LiveAvatar FULL mode with LiveKit video/audio streaming
-2. **Registration Admin** - AI agent that collects intake info, classifies visit, assigns specialist
-3. **5 Specialist Mechanics** - Heavy Equipment, Power Gen, Marine, Hydraulics, Electrical
-4. **Voice Conversation** - Real-time voice via LiveKit audio tracks
-5. **Text Input** - Toggle keyboard for typing instead of speaking
-6. **File Uploads** - Photos and PDFs attached to sessions
-7. **Report Generation** - Diagnostic reports for equipment issues
-8. **Share Links** - Token-based report sharing
-10. **Session Security** - Access tokens protect all session endpoints
-11. **Browser TTS Fallback** - SpeechSynthesis when LiveKit is unavailable
-12. **Multi-Language Support** - English and Arabic with separate avatar characters and localized AI prompts
-
-## API Endpoints
+## Session API Endpoints
 - `POST /api/sessions` - Create session (returns accessToken)
 - `GET /api/sessions/:id` - Get session (requires x-session-token header)
 - `POST /api/sessions/:id/message` - Send message (SSE streaming)
@@ -105,5 +80,5 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
 - `POST /api/sessions/:id/report` - Generate report
 - `GET /api/sessions/:id/report` - Get report (requires auth)
 - `GET /api/shared/:token` - Access shared report (public)
-- `POST /api/avatar/session` - Create LiveAvatar session (returns LiveKit connection info)
+- `POST /api/avatar/session` - Create LiveAvatar session
 - `POST /api/avatar/session/stop` - Stop LiveAvatar session
