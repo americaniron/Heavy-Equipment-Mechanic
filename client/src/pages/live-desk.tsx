@@ -375,24 +375,26 @@ export default function LiveDesk() {
       setSessionData(session);
       setCurrentAgent("admin");
 
+      const introText = selectedLanguage === "ar"
+        ? "مرحباً بكم في أمريكان أيرون! نحن وجهتكم الأولى لتشخيص المعدات الثقيلة والدعم الميكانيكي المتخصص. " +
+          "إليكم كيف يعمل النظام. أخبروني قليلاً عن معداتكم والمشكلة التي تواجهونها، وسأوصلكم بأحد ميكانيكيينا المتخصصين الخمسة. " +
+          "لدينا خبراء في المعدات الثقيلة مثل الحفارات والبلدوزرات، وأنظمة توليد الطاقة، والمحركات البحرية، والأنظمة الهيدروليكية، والتحكم الكهربائي. " +
+          "كل ميكانيكي لديه عقود من الخبرة العملية ومستعد لإرشادكم في تشخيص فوري هنا وجهاً لوجه. " +
+          "بعد استشارتكم ستحصلون على تقرير تشخيصي يمكنكم تقديمه مباشرة لفريق الصيانة. الآن أخبروني ما المشكلة مع معداتكم ولنبدأ!"
+        : "Welcome to American Iron! We're your one-stop shop for heavy equipment diagnostics and expert mechanical support. " +
+          "Here's how it works. You tell me a little about your equipment and the issue you're experiencing, and I'll connect you with one of our five specialist mechanics. " +
+          "We have experts in heavy equipment like excavators and bulldozers, power generation systems, marine engines, hydraulic systems, and electrical controls. " +
+          "Each mechanic has decades of hands-on experience and is ready to walk you through a real-time diagnosis, right here, face to face. " +
+          "After your consultation, you'll receive a diagnostic report you can take straight to your service team. Now, let me know what's going on with your equipment, and we'll get started!";
+
+      let avatarConnected = false;
       try {
         const room = await connectAvatar("admin", selectedLanguage);
+        avatarConnected = true;
 
         setTimeout(async () => {
           setIntroPlaying(true);
           introPlayingRef.current = true;
-
-          const introText = selectedLanguage === "ar"
-            ? "مرحباً بكم في أمريكان أيرون! نحن وجهتكم الأولى لتشخيص المعدات الثقيلة والدعم الميكانيكي المتخصص. " +
-              "إليكم كيف يعمل النظام. أخبروني قليلاً عن معداتكم والمشكلة التي تواجهونها، وسأوصلكم بأحد ميكانيكيينا المتخصصين الخمسة. " +
-              "لدينا خبراء في المعدات الثقيلة مثل الحفارات والبلدوزرات، وأنظمة توليد الطاقة، والمحركات البحرية، والأنظمة الهيدروليكية، والتحكم الكهربائي. " +
-              "كل ميكانيكي لديه عقود من الخبرة العملية ومستعد لإرشادكم في تشخيص فوري هنا وجهاً لوجه. " +
-              "بعد استشارتكم ستحصلون على تقرير تشخيصي يمكنكم تقديمه مباشرة لفريق الصيانة. الآن أخبروني ما المشكلة مع معداتكم ولنبدأ!"
-            : "Welcome to American Iron! We're your one-stop shop for heavy equipment diagnostics and expert mechanical support. " +
-              "Here's how it works. You tell me a little about your equipment and the issue you're experiencing, and I'll connect you with one of our five specialist mechanics. " +
-              "We have experts in heavy equipment like excavators and bulldozers, power generation systems, marine engines, hydraulic systems, and electrical controls. " +
-              "Each mechanic has decades of hands-on experience and is ready to walk you through a real-time diagnosis, right here, face to face. " +
-              "After your consultation, you'll receive a diagnostic report you can take straight to your service team. Now, let me know what's going on with your equipment, and we'll get started!";
 
           setSubtitleText(introText);
           sendAvatarSpeakCommand(introText);
@@ -412,9 +414,27 @@ export default function LiveDesk() {
           }).catch(() => {});
         }, 3000);
       } catch (avatarErr: any) {
-        console.error("Avatar connection failed:", avatarErr);
-        toast({ title: "Avatar connection issue", description: "Could not connect to live avatar. Please try again.", variant: "destructive" });
-        setSessionData(null);
+        console.error("Avatar connection failed, using text mode:", avatarErr);
+        toast({ title: "Video avatar unavailable", description: "Continuing in text mode with voice.", variant: "default" });
+
+        setIntroPlaying(true);
+        introPlayingRef.current = true;
+        setSubtitleText(introText);
+        speakWithBrowser(introText);
+        await waitForSpeakEnd(90000);
+
+        if (introPlayingRef.current) {
+          setIntroPlaying(false);
+          introPlayingRef.current = false;
+          setShowTextInput(true);
+        }
+        conversationRef.current.push({ role: "assistant", content: introText });
+
+        await fetch(`/api/sessions/${session.id}/message`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: "[Session started - Admin greeting (text mode)]" }),
+        }).catch(() => {});
       }
     } catch (err: any) {
       toast({ title: "Connection failed", description: err.message || "Could not start session.", variant: "destructive" });
