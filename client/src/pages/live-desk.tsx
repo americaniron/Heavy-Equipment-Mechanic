@@ -699,13 +699,13 @@ export default function LiveDesk() {
               muted
               playsInline
               aria-hidden="true"
-              className="w-full h-full object-cover opacity-30"
+              className="w-full h-full object-cover opacity-60"
               data-testid="video-hero-bg"
               poster={heroFacilityPath}
               src={workshopVideoPath}
             />
-            <div className="absolute inset-0 bg-gradient-to-b from-[#111111] via-[#111111]/60 to-[#111111]" />
-            <div className="absolute inset-0 bg-gradient-to-r from-[#111111] via-transparent to-[#111111]" />
+            <div className="absolute inset-0 bg-gradient-to-b from-[#111111]/80 via-[#111111]/30 to-[#111111]/80" />
+            <div className="absolute inset-0 bg-gradient-to-r from-[#111111]/60 via-transparent to-[#111111]/60" />
           </div>
 
           <div className="absolute top-0 left-0 right-0 h-1 bg-[#FFCD11]" />
