@@ -909,8 +909,8 @@ export default function LiveDesk() {
                           onClick={() => { setActiveView("home"); setTimeout(() => document.getElementById("speak-admin-section")?.scrollIntoView({ behavior: "smooth" }), 100); }}
                           data-testid={`button-speak-admin-${i}`}
                         >
-                          <MessageCircle className="w-4 h-4 mr-2" />
-                          SPEAK WITH ADMIN ABOUT THIS
+                          {svc.title === "PARTS ASSISTANCE" ? <Search className="w-4 h-4 mr-2" /> : <MessageCircle className="w-4 h-4 mr-2" />}
+                          {svc.title === "PARTS ASSISTANCE" ? "EXPLORE NOW" : "SPEAK WITH ADMIN ABOUT THIS"}
                         </Button>
                       </div>
                     </div>
