@@ -1029,15 +1029,18 @@ export default function LiveDesk() {
                 <ChevronRight className="w-4 h-4 text-gray-400 rotate-180" />
                 <img src={logoPath} alt="AMERICAN IRON" className="h-10 w-auto" />
               </button>
-              <Button
-                size="sm"
-                className="bg-[#FFCD11] text-black font-bold hover:bg-[#e6b800]"
-                onClick={() => { setActiveView("home"); setTimeout(() => document.getElementById("speak-admin-section")?.scrollIntoView({ behavior: "smooth" }), 100); }}
-                data-testid="button-services-nav-admin"
-              >
-                <MessageCircle className="w-4 h-4 mr-1" />
-                SPEAK WITH ADMIN
-              </Button>
+              <div className="flex items-center gap-3">
+                <a href="/portal" className="text-sm text-gray-400 hover:text-[#FFCD11] transition-colors font-medium" data-testid="link-portal-services">Customer Portal</a>
+                <Button
+                  size="sm"
+                  className="bg-[#FFCD11] text-black font-bold hover:bg-[#e6b800]"
+                  onClick={() => { setActiveView("home"); setTimeout(() => document.getElementById("speak-admin-section")?.scrollIntoView({ behavior: "smooth" }), 100); }}
+                  data-testid="button-services-nav-admin"
+                >
+                  <MessageCircle className="w-4 h-4 mr-1" />
+                  SPEAK WITH ADMIN
+                </Button>
+              </div>
             </div>
           </nav>
 
@@ -1229,6 +1232,7 @@ export default function LiveDesk() {
               <button onClick={() => setShowAboutVideo(true)} className="hover:text-[#FFCD11] transition-colors" data-testid="link-about">About the Shop</button>
               <button onClick={() => setActiveView("services")} className="hover:text-[#FFCD11] transition-colors" data-testid="link-services">Services</button>
               <a href="#why" className="hover:text-[#FFCD11] transition-colors" data-testid="link-why">Why AMERICAN IRON</a>
+              <a href="/portal" className="hover:text-[#FFCD11] transition-colors font-medium" data-testid="link-portal">Customer Portal</a>
               <Button
                 size="sm"
                 className="bg-[#FFCD11] text-black hover:bg-[#e6b800] font-bold"
