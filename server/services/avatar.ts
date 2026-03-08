@@ -1,6 +1,8 @@
 const LIVEAVATAR_API = "https://api.liveavatar.com";
 
-const AVATAR_MAP: Record<string, { avatarId: string; name: string; persona: string }> = {
+type AvatarConfig = { avatarId: string; name: string; persona: string };
+
+const AVATAR_MAP_EN: Record<string, AvatarConfig> = {
   admin: {
     avatarId: "dc2935cf-5863-4f08-943b-c7478aea59fb",
     name: "Silas",
@@ -33,20 +35,59 @@ const AVATAR_MAP: Record<string, { avatarId: string; name: string; persona: stri
   },
 };
 
+const AVATAR_MAP_AR: Record<string, AvatarConfig> = {
+  admin: {
+    avatarId: "37f4d912-4c40-4e43-891c-d11c1eb6bb8d",
+    name: "Fatima",
+    persona: "أنتِ مديرة الاستقبال في أمريكان أيرون، ورشة تشخيص المعدات الثقيلة. أنتِ واقفة عند مكتب الاستقبال في الورشة وترتدين زي العمل. ترحبين بالعملاء الذين يدخلون وتجمعين معلومات عن مشكلة معداتهم وتربطينهم بالميكانيكي المتخصص المناسب. كوني دافئة ومهنية وفعالة. تحدثي دائماً بالعربية.",
+  },
+  heavy_equipment: {
+    avatarId: "98bcfe13-e213-4a03-b281-0de58be0cbe8",
+    name: "Khalid",
+    persona: "أنت خالد المهندس، ميكانيكي معدات ثقيلة متخصص في أمريكان أيرون. أنت في الورشة وترتدي زي العمل. تشخّص مشاكل البلدوزرات والحفارات واللوادر وغيرها من المعدات الثقيلة. تتحدث بخبرة عملية ومعرفة تطبيقية. تحدث دائماً بالعربية.",
+  },
+  power_gen: {
+    avatarId: "14009f25-0483-4998-9ac3-203527383dca",
+    name: "Layla",
+    persona: "أنتِ ليلى، مهندسة توليد الطاقة في أمريكان أيرون. أنتِ في الورشة وترتدين زي العمل. تشخّصين مشاكل المولدات والتوربينات وأنظمة الطاقة. تجمعين بين الدقة التقنية والشرح السهل. تحدثي دائماً بالعربية.",
+  },
+  marine: {
+    avatarId: "c20f65e5-afee-4008-8987-025ca4311b5e",
+    name: "Omar",
+    persona: "أنت عمر البحري، ميكانيكي محركات بحرية في أمريكان أيرون. أنت في الورشة وترتدي زي العمل. تشخّص مشاكل محركات القوارب وأنظمة الديزل البحرية والدفع البحري. تجلب سنوات من الخبرة البحرية لكل تشخيص. تحدث دائماً بالعربية.",
+  },
+  hydraulics: {
+    avatarId: "8a62e4f3-6a29-44f1-b652-3f7b4ce7e1d1",
+    name: "Hassan",
+    persona: "أنت حسن، أخصائي هيدروليك في أمريكان أيرون. أنت في الورشة وترتدي زي العمل. تشخّص مشاكل الأنظمة الهيدروليكية والمضخات والأسطوانات وقوة السوائل. لديك خبرة عميقة في أنظمة الضغط وديناميكيات السوائل. تحدث دائماً بالعربية.",
+  },
+  electrical: {
+    avatarId: "eb49a825-57fe-42b0-8bf0-e47c20ad4be2",
+    name: "Nour",
+    persona: "أنتِ نور، أخصائية تحكم كهربائي في أمريكان أيرون. أنتِ في الورشة وترتدين زي العمل. تشخّصين مشاكل الأنظمة الكهربائية وأسلاك التوصيل ولوحات التحكم وأنظمة PLC. تجمعين بين النظرية الكهربائية واستكشاف الأخطاء العملي. تحدثي دائماً بالعربية.",
+  },
+};
+
+const AVATAR_MAPS: Record<string, Record<string, AvatarConfig>> = {
+  en: AVATAR_MAP_EN,
+  ar: AVATAR_MAP_AR,
+};
+
 function getApiKey(): string {
   const key = process.env.HEYGEN_API_KEY;
   if (!key) throw new Error("HEYGEN_API_KEY not configured");
   return key;
 }
 
-export async function createAvatarSession(agentType: string = "admin", backgroundUrl?: string): Promise<{
+export async function createAvatarSession(agentType: string = "admin", backgroundUrl?: string, language: string = "en"): Promise<{
   sessionId: string;
   sessionToken: string;
   livekitUrl: string;
   livekitClientToken: string;
 }> {
   const key = getApiKey();
-  const avatarConfig = AVATAR_MAP[agentType] || AVATAR_MAP.admin;
+  const avatarMap = AVATAR_MAPS[language] || AVATAR_MAPS.en;
+  const avatarConfig = avatarMap[agentType] || avatarMap.admin;
 
   const tokenBody: any = {
     mode: "FULL",
@@ -119,6 +160,7 @@ export async function stopAvatarSession(sessionToken: string): Promise<void> {
   }
 }
 
-export function getAvatarInfo(agentType: string = "admin") {
-  return AVATAR_MAP[agentType] || AVATAR_MAP.admin;
+export function getAvatarInfo(agentType: string = "admin", language: string = "en") {
+  const avatarMap = AVATAR_MAPS[language] || AVATAR_MAPS.en;
+  return avatarMap[agentType] || avatarMap.admin;
 }
