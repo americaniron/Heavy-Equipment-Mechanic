@@ -1624,46 +1624,49 @@ export default function LiveDesk() {
   const avatarListening = !isTalking && !introPlaying && avatarReady && (isListening || isProcessing);
 
   return (
-    <div className="h-screen w-screen bg-black flex flex-col relative overflow-hidden" data-testid="live-desk-active">
+    <div className="h-screen w-screen bg-[#1a1a1a] flex flex-col relative overflow-hidden" data-testid="live-desk-active">
       <title>Live Session | AMERICAN IRON</title>
 
       <div
-        className="absolute inset-0 w-full h-full bg-cover bg-center bg-no-repeat"
+        className="absolute inset-0 w-full h-full bg-cover bg-center bg-no-repeat opacity-[0.06]"
         style={{ backgroundImage: `url(${shopBackgroundPath})` }}
         data-testid="shop-background"
       />
 
-      <div
-        ref={videoContainerRef}
-        className={`absolute inset-0 w-full h-full transition-all duration-500 ${avatarListening ? "ring-2 ring-inset ring-[#FFCD11]/40 listening-glow" : ""}`}
-        style={{ zIndex: 1 }}
-        data-testid="video-avatar-container"
-      />
-
-      {avatarReady && (
+      <div className="absolute inset-0 flex items-center justify-center z-[1]" style={{ paddingTop: "64px", paddingBottom: "140px" }}>
         <div
-          className="absolute bottom-28 left-4 z-20 pointer-events-none"
-          data-testid="avatar-name-tag"
+          className={`relative w-full max-w-3xl mx-4 rounded-2xl overflow-hidden shadow-2xl transition-all duration-500 ${avatarListening ? "ring-2 ring-[#FFCD11]/50 shadow-[0_0_40px_rgba(255,205,17,0.15)]" : "ring-1 ring-white/10"}`}
+          style={{ aspectRatio: "16/9" }}
+          data-testid="video-call-frame"
         >
-          <div className="bg-white rounded-lg shadow-xl overflow-hidden" style={{ minWidth: "140px" }}>
-            <div className="bg-[#FFCD11] px-3 py-1">
-              <p className="text-[10px] font-black text-black tracking-widest text-center uppercase">AMERICAN IRON</p>
+          <div
+            ref={videoContainerRef}
+            className="absolute inset-0 w-full h-full"
+            data-testid="video-avatar-container"
+          />
+
+          {avatarReady && (
+            <div
+              className="absolute bottom-3 left-3 z-10 pointer-events-none"
+              data-testid="avatar-name-tag"
+            >
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-black/60 backdrop-blur-sm rounded-lg">
+                <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                <span className="text-white text-sm font-medium" data-testid="text-name-tag-name">
+                  {currentAgent === "admin"
+                    ? "Sarah"
+                    : currentMechanic?.name || "Specialist"}
+                </span>
+                <span className="text-white/50 text-xs">
+                  {currentAgent === "admin"
+                    ? "Front Desk"
+                    : currentMechanic?.title || "Mechanic"}
+                </span>
+              </div>
             </div>
-            <div className="px-3 py-2 bg-white text-center">
-              <p className="text-base font-bold text-gray-900 leading-tight" data-testid="text-name-tag-name">
-                {currentAgent === "admin"
-                  ? "Sarah"
-                  : currentMechanic?.name || "Specialist"}
-              </p>
-              <p className="text-[10px] text-gray-500 mt-0.5 uppercase tracking-wide">
-                {currentAgent === "admin"
-                  ? "Front Desk"
-                  : currentMechanic?.title || "Mechanic"}
-              </p>
-            </div>
-          </div>
+          )}
         </div>
-      )}
+      </div>
 
       {avatarListening && (
         <div className="absolute top-20 left-1/2 -translate-x-1/2 z-20 pointer-events-none" data-testid="listening-indicator">
@@ -1704,16 +1707,13 @@ export default function LiveDesk() {
       )}
 
       {!avatarReady && (
-        <div
-          className="absolute inset-0 flex items-center justify-center z-10 bg-cover bg-center bg-no-repeat"
-          style={{ backgroundImage: `linear-gradient(to bottom, rgba(10,14,23,0.7), rgba(6,10,20,0.85)), url(${shopBackgroundPath})` }}
-        >
-          <div className="text-center space-y-4">
-            <div className="w-24 h-24 rounded-full bg-primary/10 border-2 border-primary/30 flex items-center justify-center mx-auto animate-pulse">
+        <div className="absolute inset-0 flex items-center justify-center z-10">
+          <div className="text-center space-y-4 bg-[#222]/80 backdrop-blur-md rounded-2xl p-10 border border-white/10 shadow-2xl max-w-sm mx-4">
+            <div className="w-20 h-20 rounded-full bg-[#FFCD11]/10 border-2 border-[#FFCD11]/30 flex items-center justify-center mx-auto animate-pulse">
               {currentAgent === "admin" ? (
-                <User className="w-12 h-12 text-primary/60" />
+                <User className="w-10 h-10 text-[#FFCD11]/60" />
               ) : (
-                currentMechanic ? <currentMechanic.icon className="w-12 h-12 text-primary/60" /> : <Wrench className="w-12 h-12 text-primary/60" />
+                currentMechanic ? <currentMechanic.icon className="w-10 h-10 text-[#FFCD11]/60" /> : <Wrench className="w-10 h-10 text-[#FFCD11]/60" />
               )}
             </div>
             <div>
@@ -1728,13 +1728,13 @@ export default function LiveDesk() {
                   : "Registration Admin"}
               </p>
             </div>
-            <Loader2 className="w-6 h-6 animate-spin text-primary mx-auto" />
+            <Loader2 className="w-6 h-6 animate-spin text-[#FFCD11] mx-auto" />
           </div>
         </div>
       )}
 
       <div className="absolute top-0 left-0 right-0 z-20 pointer-events-none">
-        <div className="bg-gradient-to-b from-black/70 via-black/30 to-transparent p-4 pb-8">
+        <div className="bg-[#1a1a1a] border-b border-white/10 p-3 px-4">
           <div className="flex items-center justify-between pointer-events-auto">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-md bg-[#FFCD11]/15 backdrop-blur-sm flex items-center justify-center border border-[#FFCD11]/30">
@@ -1776,7 +1776,7 @@ export default function LiveDesk() {
       </div>
 
       {subtitleText && (
-        <div className="absolute bottom-32 left-0 right-0 z-20 flex justify-center px-4" style={{ pointerEvents: "none" }}>
+        <div className="absolute bottom-36 left-0 right-0 z-20 flex justify-center px-4" style={{ pointerEvents: "none" }}>
           <div className="max-w-2xl w-full space-y-2">
             {introPlaying && (
               <div className="flex items-center justify-between" style={{ pointerEvents: "auto" }}>
@@ -1811,7 +1811,7 @@ export default function LiveDesk() {
       )}
 
       <div className={`absolute bottom-0 left-0 right-0 z-20 transition-opacity duration-500 ${introPlaying ? "opacity-0 pointer-events-none" : "opacity-100"}`}>
-        <div className="bg-gradient-to-t from-black/80 via-black/50 to-transparent pt-8 pb-6 px-4">
+        <div className="bg-[#1a1a1a] border-t border-white/10 pt-4 pb-5 px-4">
           <div className="max-w-xl mx-auto space-y-3">
             {showTextInput && (
               <div className="flex items-center gap-2">
