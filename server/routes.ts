@@ -667,14 +667,30 @@ export async function registerRoutes(
   app.post("/api/sessions/:id/report", async (req, res) => {
     try {
       const sessionId = parseInt(req.params.id);
+      if (isNaN(sessionId)) return res.status(400).json({ error: "Invalid session ID" });
+
+      if (!validateSessionAccess(req, sessionId)) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+
       const session = await storage.getSession(sessionId);
       if (!session) return res.status(404).json({ error: "Session not found" });
 
+      const existingReport = await storage.getReport(sessionId);
+      if (existingReport) {
+        console.log(`Report already exists for session ${sessionId}, returning existing`);
+        return res.json(existingReport);
+      }
+
       const messages = await storage.getMessages(sessionId);
-      const chatHistory: ConversationMessage[] = messages.map((m) => ({
-        role: m.role as "user" | "assistant",
-        content: m.content,
-      }));
+      console.log(`Generating report for session ${sessionId}: ${messages.length} messages found`);
+      
+      const chatHistory: ConversationMessage[] = messages
+        .filter((m) => m.role === "user" || m.role === "assistant")
+        .map((m) => ({
+          role: m.role as "user" | "assistant",
+          content: m.content,
+        }));
 
       const intakeJson = session.intakeJson as Record<string, unknown> | null;
       const reportType = session.visitType === "pro" ? "pro" : "quick_advice";
@@ -689,12 +705,19 @@ export async function registerRoutes(
       let reportContent: Record<string, unknown>;
       let svgDiagram = "";
 
+      console.log(`Calling AI to generate ${reportType} report for session ${sessionId}...`);
+
       if (reportType === "pro") {
         const result = await generateProReport(chatHistory, intakeJson);
         reportContent = result.report;
         svgDiagram = result.svg;
       } else {
         reportContent = await generateQuickAdviceReport(chatHistory, intakeJson);
+      }
+
+      if (reportContent.error) {
+        console.error(`AI report generation returned error for session ${sessionId}:`, reportContent.error);
+        return res.status(502).json({ error: "Failed to generate report. Please try again." });
       }
 
       const shareToken = crypto.randomBytes(16).toString("hex");
@@ -706,6 +729,8 @@ export async function registerRoutes(
         svgDiagram,
         shareToken,
       });
+
+      console.log(`Report created successfully for session ${sessionId}, id: ${report.id}`);
 
       await storage.updateSession(sessionId, {
         shareToken,
@@ -720,8 +745,8 @@ export async function registerRoutes(
 
       res.json(report);
     } catch (error: any) {
-      console.error("Report generation error:", error);
-      res.status(500).json({ error: error.message });
+      console.error("Report generation error:", error?.message, error?.stack);
+      res.status(500).json({ error: "Failed to generate report. Please try again." });
     }
   });
 

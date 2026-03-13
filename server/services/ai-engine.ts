@@ -17,9 +17,10 @@ YOUR PERSONALITY:
 SPEAKING STYLE:
 - Keep each response to 2-3 sentences maximum. This is a live video call — be brief and warm
 - Speak naturally and conversationally, as if in a real face-to-face conversation
-- Use natural pauses, filler words occasionally ("well", "let me see", "alright")
 - Vary your sentence length — mix short and long sentences for rhythm
 - Avoid robotic or overly formal phrasing — keep it warm and human
+- NEVER use filler acknowledgments like "Aha", "Ahhaaa", "Got it", "I see", "Okay", "Hmm", "Uh-huh", "Right", "Sure thing" as standalone responses or sentence starters. Instead, respond directly with substance
+- NEVER use verbal fillers like "well", "let me see", "you know", "like", "um", "so basically" — speak cleanly and directly
 - Never read out any code, JSON, tags, or technical formatting
 - Ask one thing at a time, then wait for the customer's response
 
@@ -110,9 +111,11 @@ const MECHANIC_SPEAKING_STYLE = `
 SPEAKING STYLE:
 - Keep each response to 2-4 sentences maximum. Be concise and direct — this is a live video call, not an essay
 - Speak naturally and conversationally, like a real mechanic talking face-to-face with a customer
-- Use natural transitions ("alright", "so here's what I'm thinking", "let me walk you through this")
 - Vary your sentence length for natural rhythm — mix short direct statements with longer explanations
 - Show your expertise through casual confidence, not robotic listing
+- NEVER use filler acknowledgments like "Aha", "Ahhaaa", "Got it", "I see", "Okay", "Hmm", "Uh-huh", "Right", "Sure thing" as standalone responses or sentence starters. Instead, respond directly with substance
+- NEVER use verbal fillers like "well", "let me see", "you know", "like", "um", "so basically", "alright so" — speak cleanly and directly
+- Start every response with direct, substantive content. For example, instead of "Got it, let me think about that..." say "Based on those symptoms, the most likely cause is..."
 - Never read out any code, JSON, tags, or technical formatting
 - Ask one question at a time, then wait for the customer's answer before moving on`;
 
@@ -302,6 +305,8 @@ const ADMIN_SYSTEM_PROMPT_AR = `أنتِ مديرة الاستقبال في أم
 
 أسلوب الحديث:
 - حافظي على إجاباتك بحد أقصى جملتين أو ثلاث جمل. هذه مكالمة فيديو مباشرة — كوني موجزة ودودة
+- لا تستخدمي أبداً كلمات حشو مثل "آها"، "فهمت"، "حسناً"، "أها أها"، "طيب" كردود مستقلة أو بداية للجمل. بدلاً من ذلك، ردّي مباشرة بمحتوى مفيد
+- لا تستخدمي حشوات كلامية مثل "يعني"، "خليني أشوف"، "تعرف" — تحدثي بوضوح ومباشرة
 - اسألي عن شيء واحد فقط في كل مرة، ثم انتظري رد العميل
 
 دورك:
@@ -585,22 +590,30 @@ export async function generateQuickAdviceReport(
   messages: ConversationMessage[],
   intakeJson: Record<string, unknown> | null
 ): Promise<Record<string, unknown>> {
-  const prompt = `Based on the diagnostic conversation below, generate a Quick Advice summary report in JSON format.
+  const prompt = `Based on the diagnostic conversation below, generate a comprehensive Quick Advice summary report in JSON format.
 
 INTAKE DATA: ${JSON.stringify(intakeJson || {})}
 
 CONVERSATION:
 ${messages.filter(m => m.role !== "system").map(m => `${m.role}: ${m.content}`).join("\n")}
 
-Generate a JSON report with this structure:
+Generate a detailed, professional JSON report with this EXACT structure. Be thorough and specific — this report will be printed and shared:
 {
   "title": "Quick Advice Report",
-  "equipment": "Make Model Year",
-  "problemSummary": "Brief problem description",
-  "likelyCauses": [{"rank": 1, "cause": "...", "confidence": "High/Medium/Low"}],
-  "safeChecks": ["Check 1", "Check 2"],
-  "whenToCallTech": "Description of when professional help is needed",
-  "safetyWarnings": ["Warning 1"]
+  "generatedDate": "${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}",
+  "equipment": "Make Model Year (e.g., Caterpillar 320F 2019)",
+  "serialNumber": "If available from intake data",
+  "smuHours": "If available from intake data",
+  "customerName": "From intake data",
+  "company": "From intake data if available",
+  "problemSummary": "Comprehensive 3-5 sentence description of the reported problem including symptoms, conditions, and context",
+  "likelyCauses": [{"rank": 1, "cause": "Detailed description of the likely cause", "confidence": "High/Medium/Low", "explanation": "Why this is suspected based on the symptoms described"}],
+  "safeChecks": ["Detailed step-by-step check the operator can safely perform — be specific about what to look for and how"],
+  "immediateActions": ["What the operator should do RIGHT NOW to prevent further damage or safety risks"],
+  "whenToCallTech": "Detailed description of conditions that require immediate professional intervention, including specific warning signs to watch for",
+  "safetyWarnings": ["Specific safety warnings relevant to the equipment type and reported issue — include PPE requirements"],
+  "additionalNotes": "Any other relevant observations, maintenance recommendations, or follow-up suggestions",
+  "disclaimer": "This AI-generated quick advice report is for informational guidance only. It is not a substitute for hands-on inspection by a certified technician. All recommendations should be verified by qualified personnel before any action is taken. American Iron assumes no liability for actions taken based on this report."
 }
 
 Return ONLY the JSON, no markdown.`;
@@ -625,28 +638,33 @@ export async function generateProReport(
   messages: ConversationMessage[],
   intakeJson: Record<string, unknown> | null
 ): Promise<{ report: Record<string, unknown>; svg: string }> {
-  const prompt = `Based on the diagnostic conversation below, generate a comprehensive Pro Diagnostic Report in JSON format.
+  const prompt = `Based on the diagnostic conversation below, generate an extremely comprehensive Pro Diagnostic Report in JSON format. This is a PAID professional report — make it thorough, detailed, and valuable.
 
 INTAKE DATA: ${JSON.stringify(intakeJson || {})}
 
 CONVERSATION:
 ${messages.filter(m => m.role !== "system").map(m => `${m.role}: ${m.content}`).join("\n")}
 
-Generate a JSON report with this structure:
+Generate a highly detailed, professional JSON report with this EXACT structure. Every section must be thoroughly filled out — this report will be printed and shared with technicians:
 {
   "title": "Pro Diagnostic Report",
-  "equipment": {"make": "", "model": "", "year": "", "serialNumber": "", "smuHours": ""},
-  "problemSummary": "",
-  "rootCauseMatrix": [{"cause": "", "probability": "High/Medium/Low", "evidence": "", "testMethod": ""}],
-  "diagnosticTree": [{"step": 1, "action": "", "expectedResult": "", "ifFail": ""}],
-  "toolsRequired": ["Tool 1"],
-  "safetyChecklist": ["Item 1"],
-  "laborEstimate": {"minHours": 0, "maxHours": 0, "note": "These are estimates only"},
-  "partsList": [{"partName": "", "partNumber": "", "quantity": 1, "verified": true, "alternatives": [""]}],
-  "procedureSteps": [{"step": 1, "description": "", "safetyNote": ""}],
-  "calibrationSteps": [],
-  "recommendations": "",
-  "disclaimer": "This report is AI-generated guidance and not a substitute for certified inspection. All parts and procedures should be verified by a qualified technician."
+  "generatedDate": "${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}",
+  "reportId": "PRO-${Date.now()}",
+  "equipment": {"make": "", "model": "", "year": "", "serialNumber": "", "smuHours": "", "equipmentType": ""},
+  "customerInfo": {"name": "", "company": "", "location": ""},
+  "problemSummary": "Comprehensive 5-8 sentence description covering all reported symptoms, operating conditions, fault codes, timeline, and context",
+  "rootCauseMatrix": [{"cause": "Detailed root cause description", "probability": "High/Medium/Low", "evidence": "Specific evidence from the conversation", "testMethod": "Exact test/verification method to confirm this cause", "estimatedRepairDifficulty": "Easy/Moderate/Complex"}],
+  "diagnosticTree": [{"step": 1, "action": "Detailed diagnostic action with specific measurements or checks", "expectedResult": "What the result should be if this is not the issue", "ifFail": "What to do if the test reveals an issue", "toolRequired": "Specific tool for this step"}],
+  "toolsRequired": [{"tool": "Tool name", "purpose": "Why this tool is needed", "specification": "Any specifications like size, range, etc."}],
+  "safetyChecklist": [{"item": "Safety check item", "priority": "Critical/Important/Standard", "details": "Specific safety instructions"}],
+  "laborEstimate": {"minHours": 0, "maxHours": 0, "skillLevel": "General Mechanic/Specialist/Master Tech", "note": "These are estimates only — actual time may vary based on conditions"},
+  "partsList": [{"partName": "", "partNumber": "", "quantity": 1, "verified": true, "alternatives": ["Alternative part numbers"], "notes": "Any relevant notes about this part"}],
+  "procedureSteps": [{"step": 1, "description": "Detailed repair/maintenance procedure step", "safetyNote": "Safety precaution for this step", "estimatedTime": "Time estimate for this step"}],
+  "calibrationSteps": [{"step": 1, "parameter": "What to calibrate", "specification": "Target value/range", "method": "How to calibrate"}],
+  "preventiveMaintenance": ["Recommended preventive maintenance actions to avoid recurrence"],
+  "recommendations": "Comprehensive summary of recommended course of action, prioritized steps, and long-term maintenance advice",
+  "urgencyLevel": "Critical/High/Medium/Low — based on safety and operational impact",
+  "disclaimer": "This AI-generated professional diagnostic report is for informational guidance only. It is not a substitute for hands-on inspection by a certified technician. All parts, procedures, and recommendations should be verified by qualified personnel before any action is taken. American Iron assumes no liability for actions taken based on this report."
 }
 
 Return ONLY the JSON, no markdown.`;

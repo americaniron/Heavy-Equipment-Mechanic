@@ -158,6 +158,10 @@ export default function LiveDesk() {
   const sessionDataRef = useRef<SessionData | null>(null);
   const isProcessingRef = useRef(false);
   const handleUserMessageRef = useRef<(msg: string) => Promise<void>>(() => Promise.resolve());
+  const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const idleWarningTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const IDLE_WARNING_MS = 120000;
+  const IDLE_DISCONNECT_MS = 180000;
 
   const cleanupAudioNodes = useCallback(() => {
     if (vadFrameRef.current) {
@@ -331,6 +335,8 @@ export default function LiveDesk() {
   }, []);
 
   const cleanupAvatarSession = useCallback(() => {
+    if (idleTimerRef.current) { clearTimeout(idleTimerRef.current); idleTimerRef.current = null; }
+    if (idleWarningTimerRef.current) { clearTimeout(idleWarningTimerRef.current); idleWarningTimerRef.current = null; }
     stopVoiceCapture();
     if (audioStreamRef.current) {
       audioStreamRef.current.getTracks().forEach(t => t.stop());
@@ -448,6 +454,43 @@ export default function LiveDesk() {
       speakWithBrowser(text);
     }
   }, [speakWithBrowser]);
+
+  const sendAvatarSpeakRef = useRef<(text: string) => Promise<void>>(async () => {});
+
+  const clearIdleTimers = useCallback(() => {
+    if (idleTimerRef.current) { clearTimeout(idleTimerRef.current); idleTimerRef.current = null; }
+    if (idleWarningTimerRef.current) { clearTimeout(idleWarningTimerRef.current); idleWarningTimerRef.current = null; }
+  }, []);
+
+  const resetIdleTimer = useCallback(() => {
+    clearIdleTimers();
+    if (!sessionDataRef.current) return;
+
+    idleWarningTimerRef.current = setTimeout(async () => {
+      if (!sessionDataRef.current) return;
+      const warningMsg = selectedLanguage === "ar"
+        ? "يبدو أنك مشغول. هل لا تزال هناك؟ سأنهي المحادثة خلال دقيقة إذا لم أسمع منك."
+        : "It seems like you may have stepped away. Are you still there? I'll end the session in about a minute if I don't hear back.";
+      try {
+        await sendAvatarSpeakRef.current(warningMsg);
+      } catch {}
+    }, IDLE_WARNING_MS);
+
+    idleTimerRef.current = setTimeout(async () => {
+      if (!sessionDataRef.current) return;
+      const goodbyeMsg = selectedLanguage === "ar"
+        ? "شكراً لتواصلك مع أمريكان أيرون. سأنهي الجلسة الآن. لا تتردد في العودة في أي وقت!"
+        : "Thank you for reaching out to American Iron. I'm ending the session now due to inactivity. Feel free to come back anytime!";
+      try {
+        await sendAvatarSpeakRef.current(goodbyeMsg);
+        await new Promise(r => setTimeout(r, 6000));
+      } catch {}
+      cleanupAvatarSession();
+      setSessionData(null);
+      sessionDataRef.current = null;
+      toast({ title: selectedLanguage === "ar" ? "انتهت الجلسة بسبب عدم النشاط" : "Session ended due to inactivity" });
+    }, IDLE_DISCONNECT_MS);
+  }, [selectedLanguage, cleanupAvatarSession, clearIdleTimers, toast]);
 
   const loadSharedReport = async (token: string) => {
     try {
@@ -615,6 +658,7 @@ export default function LiveDesk() {
           conversationRef.current.push({ role: "assistant", content: introText });
 
           startVoiceCapture();
+          resetIdleTimer();
           console.log("Voice capture started after intro");
 
           await fetch(`/api/sessions/${session.id}/message`, {
@@ -639,6 +683,8 @@ export default function LiveDesk() {
           setShowTextInput(true);
         }
         conversationRef.current.push({ role: "assistant", content: introText });
+        startVoiceCapture();
+        resetIdleTimer();
 
         await fetch(`/api/sessions/${session.id}/message`, {
           method: "POST",
@@ -684,6 +730,7 @@ export default function LiveDesk() {
     console.log("handleUserMessage called:", userMsg, "session:", !!currentSession, "processing:", isProcessingRef.current);
     if (!currentSession || isProcessingRef.current || !userMsg.trim()) return;
 
+    resetIdleTimer();
     stopVoiceCapture();
     setIsProcessing(true);
     isProcessingRef.current = true;
@@ -778,6 +825,7 @@ export default function LiveDesk() {
   };
 
   handleUserMessageRef.current = handleUserMessage;
+  sendAvatarSpeakRef.current = sendAvatarSpeakCommand;
 
   const performHandoff = async (handoffData: any) => {
     if (!sessionDataRef.current) return;
@@ -818,6 +866,7 @@ export default function LiveDesk() {
         const mechEstimate = Math.max(5000, mechGreeting.length * 80);
         await waitForSpeakEnd(Math.min(mechEstimate, 30000));
         startVoiceCapture();
+        resetIdleTimer();
         console.log("Voice capture started after mechanic greeting");
       }, 3000);
     } catch (err) {
@@ -873,12 +922,29 @@ export default function LiveDesk() {
     if (!sessionData) return;
     setIsGeneratingReport(true);
     try {
-      const res = await apiRequest("POST", `/api/sessions/${sessionData.id}/report`);
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (accessToken) headers["x-session-token"] = accessToken;
+      const res = await fetch(`/api/sessions/${sessionData.id}/report`, {
+        method: "POST",
+        headers,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: "Unknown error" }));
+        if (res.status === 402) {
+          toast({ title: selectedLanguage === "ar" ? "الدفع مطلوب للتقرير الاحترافي" : "Payment required for Pro report", variant: "destructive" });
+        } else {
+          toast({ title: selectedLanguage === "ar" ? "خطأ في إنشاء التقرير" : `Report error: ${errorData.error || "Please try again"}`, variant: "destructive" });
+        }
+        return;
+      }
       const data = await res.json();
       setReport(data);
       setShowReport(true);
+      toast({ title: selectedLanguage === "ar" ? "تم إنشاء التقرير بنجاح" : "Report generated successfully" });
     } catch (err: any) {
-      toast({ title: "Error generating report", variant: "destructive" });
+      console.error("Report generation error:", err);
+      toast({ title: selectedLanguage === "ar" ? "خطأ في إنشاء التقرير" : "Error generating report. Please try again.", variant: "destructive" });
     } finally {
       setIsGeneratingReport(false);
     }
@@ -2166,18 +2232,48 @@ export default function LiveDesk() {
                       if (printContent) {
                         const win = window.open("", "_blank");
                         if (win) {
-                          win.document.write(`<html><head><title>AMERICAN IRON - Diagnostic Report</title>
-                            <style>body{font-family:system-ui,sans-serif;padding:40px;max-width:800px;margin:0 auto;color:#111}
-                            h1{font-size:24px;border-bottom:3px solid #FFCD11;padding-bottom:12px}
-                            h4{margin:16px 0 8px;font-size:16px}p{margin:4px 0;line-height:1.6}
-                            .badge{display:inline-block;padding:2px 8px;border-radius:4px;background:#f0f0f0;font-size:12px;margin-right:8px}
-                            .warning{background:#fff3cd;border:1px solid #ffc107;padding:12px;border-radius:8px;margin:12px 0}
-                            .header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}
-                            .logo{font-weight:bold;font-size:14px;color:#FFCD11;letter-spacing:2px}
-                            @media print{body{padding:20px}}</style></head>
-                            <body><div class='header'><h1>Diagnostic Report</h1><span class='logo'>AMERICAN IRON</span></div>${printContent.innerHTML}</body></html>`);
+                          const reportTitle = report.reportType === "pro" ? "Pro Diagnostic Report" : "Quick Advice Report";
+                          const equipInfo = `${sessionData.equipmentType || ""} ${sessionData.make || ""} ${sessionData.model || ""}`.trim();
+                          win.document.write(`<html><head><title>AMERICAN IRON - ${reportTitle}</title>
+                            <style>
+                            *{box-sizing:border-box;margin:0;padding:0}
+                            body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;padding:0;color:#1a1a1a;background:#fff;line-height:1.6}
+                            .print-wrapper{max-width:800px;margin:0 auto;padding:40px}
+                            .print-header{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:20px;border-bottom:3px solid #FFCD11;margin-bottom:30px}
+                            .print-header h1{font-size:22px;font-weight:700;color:#111;letter-spacing:0.5px}
+                            .print-header .subtitle{font-size:12px;color:#666;margin-top:4px}
+                            .print-header .logo{font-weight:800;font-size:16px;color:#111;letter-spacing:3px;text-align:right}
+                            .print-header .logo-sub{font-size:9px;color:#666;letter-spacing:1px;text-align:right}
+                            .report-body{font-size:13px}
+                            .report-body>div{margin-bottom:20px;page-break-inside:avoid}
+                            .report-body h4,.report-body [class*="tracking"]{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:#111;border-left:3px solid #FFCD11;padding-left:10px;margin-bottom:10px}
+                            .report-body p{margin:4px 0;line-height:1.7;color:#333}
+                            .report-body [class*="rounded"]{border:1px solid #e5e5e5;border-radius:8px;padding:12px;margin:6px 0;background:#fafafa}
+                            .report-body [class*="bg-red"],[class*="bg-orange"]{background:#fff8f0;border-color:#ffcba4}
+                            .report-body [class*="grid"]{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+                            .report-body [class*="font-mono"]{font-family:'Courier New',monospace;font-size:12px}
+                            .report-body [class*="text-white"]{color:#333 !important}
+                            .report-body [class*="text-red"]{color:#c53030 !important}
+                            .report-body [class*="text-orange"]{color:#c05621 !important}
+                            .report-body [class*="text-green"]{color:#276749 !important}
+                            .report-body [class*="text-blue"]{color:#2b6cb0 !important}
+                            .report-body [class*="text-yellow"],[class*="text-\\[\\#FFCD11\\]"]{color:#111 !important}
+                            .report-body svg{display:none}
+                            .report-body span[class*="rounded-full"]{display:inline-block;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600;border:1px solid #ddd;background:#f5f5f5;color:#333}
+                            .report-body [style*="backgroundColor"]{background:#f8f8f8 !important;border:1px solid #e0e0e0 !important}
+                            .print-footer{margin-top:30px;padding-top:16px;border-top:2px solid #FFCD11;font-size:10px;color:#999;text-align:center}
+                            @media print{body{padding:0}.print-wrapper{padding:20px}.report-body>div{page-break-inside:avoid}}
+                            </style></head>
+                            <body><div class='print-wrapper'>
+                            <div class='print-header'>
+                              <div><h1>${reportTitle}</h1><div class='subtitle'>${equipInfo ? `Equipment: ${equipInfo}` : ""}${report.content?.generatedDate ? ` | ${report.content.generatedDate}` : ""}${report.content?.reportId ? ` | ${report.content.reportId}` : ""}</div></div>
+                              <div><div class='logo'>AMERICAN IRON</div><div class='logo-sub'>LIVE AI ENGINEER DESK</div></div>
+                            </div>
+                            <div class='report-body'>${printContent.innerHTML}</div>
+                            <div class='print-footer'>Generated by AMERICAN IRON Live AI Engineer Desk | This report is AI-generated guidance only. Not a substitute for certified inspection.</div>
+                            </div></body></html>`);
                           win.document.close();
-                          win.print();
+                          setTimeout(() => win.print(), 300);
                         }
                       }
                     }}
@@ -2244,115 +2340,338 @@ export default function LiveDesk() {
 }
 
 function CinematicReportContent({ content }: { content: any }) {
+  const confidenceBadge = (level: string) => {
+    const l = (level || "").toLowerCase();
+    return l === "high" ? "bg-red-500/20 text-red-400 border-red-500/30" :
+           l === "medium" ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/30" :
+           "bg-blue-500/20 text-blue-400 border-blue-500/30";
+  };
+
+  const SectionHeader = ({ icon, title, color = "#FFCD11" }: { icon: any; title: string; color?: string }) => (
+    <div className="flex items-center gap-2.5 mb-4">
+      <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${color}15`, border: `1px solid ${color}30` }}>
+        {icon}
+      </div>
+      <h4 className="text-xs font-bold uppercase tracking-[0.15em]" style={{ color }}>{title}</h4>
+    </div>
+  );
+
   return (
-    <div className="space-y-6 text-sm">
+    <div className="space-y-6 text-sm report-content">
+      {(content.generatedDate || content.reportId || content.equipment || content.customerInfo || content.customerName) && (
+        <div className="bg-[#FFCD11]/5 rounded-xl border border-[#FFCD11]/20 p-5">
+          <div className="grid grid-cols-2 gap-4 text-xs">
+            {content.generatedDate && (
+              <div><span className="text-white/40 uppercase tracking-wider">Date</span><p className="text-white/80 mt-0.5 font-medium">{content.generatedDate}</p></div>
+            )}
+            {content.reportId && (
+              <div><span className="text-white/40 uppercase tracking-wider">Report ID</span><p className="text-white/80 mt-0.5 font-mono">{content.reportId}</p></div>
+            )}
+            {(content.customerName || content.customerInfo?.name) && (
+              <div><span className="text-white/40 uppercase tracking-wider">Customer</span><p className="text-white/80 mt-0.5 font-medium">{content.customerName || content.customerInfo?.name}</p></div>
+            )}
+            {(content.company || content.customerInfo?.company) && (
+              <div><span className="text-white/40 uppercase tracking-wider">Company</span><p className="text-white/80 mt-0.5">{content.company || content.customerInfo?.company}</p></div>
+            )}
+            {typeof content.equipment === "string" ? (
+              <div className="col-span-2"><span className="text-white/40 uppercase tracking-wider">Equipment</span><p className="text-white/80 mt-0.5 font-medium">{content.equipment}</p></div>
+            ) : content.equipment && (
+              <>
+                <div><span className="text-white/40 uppercase tracking-wider">Equipment</span><p className="text-white/80 mt-0.5 font-medium">{content.equipment.make} {content.equipment.model} {content.equipment.year}</p></div>
+                {content.equipment.serialNumber && <div><span className="text-white/40 uppercase tracking-wider">Serial Number</span><p className="text-white/80 mt-0.5 font-mono">{content.equipment.serialNumber}</p></div>}
+                {content.equipment.smuHours && <div><span className="text-white/40 uppercase tracking-wider">SMU/Hours</span><p className="text-white/80 mt-0.5">{content.equipment.smuHours}</p></div>}
+              </>
+            )}
+            {content.serialNumber && typeof content.equipment === "string" && (
+              <div><span className="text-white/40 uppercase tracking-wider">Serial Number</span><p className="text-white/80 mt-0.5 font-mono">{content.serialNumber}</p></div>
+            )}
+            {content.smuHours && typeof content.equipment === "string" && (
+              <div><span className="text-white/40 uppercase tracking-wider">SMU/Hours</span><p className="text-white/80 mt-0.5">{content.smuHours}</p></div>
+            )}
+            {content.urgencyLevel && (
+              <div><span className="text-white/40 uppercase tracking-wider">Urgency</span>
+                <span className={`inline-block mt-1 text-xs font-bold px-2.5 py-1 rounded-full border ${
+                  content.urgencyLevel.toLowerCase() === "critical" ? "bg-red-500/20 text-red-400 border-red-500/30" :
+                  content.urgencyLevel.toLowerCase() === "high" ? "bg-orange-500/20 text-orange-400 border-orange-500/30" :
+                  content.urgencyLevel.toLowerCase() === "medium" ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/30" :
+                  "bg-green-500/20 text-green-400 border-green-500/30"
+                }`}>{content.urgencyLevel}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {content.problemSummary && (
         <div className="bg-white/5 rounded-xl border border-white/10 p-5">
-          <h4 className="text-xs font-bold text-[#FFCD11] uppercase tracking-wider mb-3">Problem Summary</h4>
+          <SectionHeader icon={<Search className="w-4 h-4 text-[#FFCD11]" />} title="Problem Summary" />
           <p className="text-white/80 leading-relaxed text-base">{content.problemSummary}</p>
         </div>
       )}
-      {content.likelyCauses && (
-        <div>
-          <h4 className="text-xs font-bold text-[#FFCD11] uppercase tracking-wider mb-3">Likely Causes</h4>
+
+      {content.immediateActions && Array.isArray(content.immediateActions) && content.immediateActions.length > 0 && (
+        <div className="bg-orange-500/10 rounded-xl border border-orange-500/20 p-5">
+          <SectionHeader icon={<Zap className="w-4 h-4 text-orange-400" />} title="Immediate Actions Required" color="#fb923c" />
           <div className="space-y-2">
-            {(content.likelyCauses as any[]).map((cause: any, i: number) => (
-              <div key={i} className="flex items-center gap-3 bg-white/5 rounded-lg border border-white/10 p-3">
-                <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${
-                  (cause.confidence || "").toLowerCase() === "high" ? "bg-red-500/20 text-red-400" :
-                  (cause.confidence || "").toLowerCase() === "medium" ? "bg-yellow-500/20 text-yellow-400" :
-                  "bg-blue-500/20 text-blue-400"
-                }`}>{cause.confidence || "Medium"}</span>
-                <span className="text-white/80">{cause.cause}</span>
+            {(content.immediateActions as string[]).map((action: string, i: number) => (
+              <div key={i} className="flex items-start gap-3 text-orange-200/80">
+                <ArrowRight className="w-4 h-4 shrink-0 mt-0.5 text-orange-400" />
+                <span>{action}</span>
               </div>
             ))}
           </div>
         </div>
       )}
-      {content.rootCauseMatrix && (
+
+      {content.likelyCauses && Array.isArray(content.likelyCauses) && (
         <div>
-          <h4 className="text-xs font-bold text-[#FFCD11] uppercase tracking-wider mb-3">Root Cause Analysis</h4>
+          <SectionHeader icon={<Search className="w-4 h-4 text-[#FFCD11]" />} title="Likely Causes" />
+          <div className="space-y-2">
+            {(content.likelyCauses as any[]).map((cause: any, i: number) => (
+              <div key={i} className="bg-white/5 rounded-lg border border-white/10 p-4">
+                <div className="flex items-center gap-3 mb-1">
+                  <span className="text-white/30 font-mono text-xs">#{cause.rank || i + 1}</span>
+                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${confidenceBadge(cause.confidence)}`}>{cause.confidence || "Medium"}</span>
+                  <span className="text-white/90 font-medium">{cause.cause}</span>
+                </div>
+                {cause.explanation && <p className="text-white/50 text-xs leading-relaxed mt-2 pl-1">{cause.explanation}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {content.rootCauseMatrix && Array.isArray(content.rootCauseMatrix) && (
+        <div>
+          <SectionHeader icon={<Cog className="w-4 h-4 text-[#FFCD11]" />} title="Root Cause Analysis" />
           <div className="space-y-3">
             {(content.rootCauseMatrix as any[]).map((item: any, i: number) => (
               <div key={i} className="bg-white/5 rounded-xl border border-white/10 p-4">
                 <div className="flex items-center gap-3 mb-2">
-                  <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-[#FFCD11]/20 text-[#FFCD11]">{item.probability}</span>
+                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${confidenceBadge(item.probability)}`}>{item.probability}</span>
                   <span className="font-semibold text-white">{item.cause}</span>
+                  {item.estimatedRepairDifficulty && <span className="text-xs text-white/40 ml-auto">{item.estimatedRepairDifficulty}</span>}
                 </div>
-                {item.evidence && <p className="text-white/50 text-xs leading-relaxed pl-1">{item.evidence}</p>}
+                {item.evidence && <p className="text-white/50 text-xs leading-relaxed pl-1 mb-1"><span className="text-white/30">Evidence:</span> {item.evidence}</p>}
+                {item.testMethod && <p className="text-white/50 text-xs leading-relaxed pl-1"><span className="text-white/30">Test Method:</span> {item.testMethod}</p>}
               </div>
             ))}
           </div>
         </div>
       )}
-      {content.safeChecks && (
+
+      {content.safeChecks && Array.isArray(content.safeChecks) && (
         <div>
-          <h4 className="text-xs font-bold text-[#FFCD11] uppercase tracking-wider mb-3">Safe Checks</h4>
-          <div className="bg-white/5 rounded-xl border border-white/10 p-4 space-y-2">
+          <SectionHeader icon={<CheckCircle2 className="w-4 h-4 text-green-400" />} title="Safe Checks" color="#4ade80" />
+          <div className="bg-white/5 rounded-xl border border-white/10 p-4 space-y-3">
             {(content.safeChecks as string[]).map((check: string, i: number) => (
               <div key={i} className="flex items-start gap-3 text-white/70">
-                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-green-400" />
-                <span>{check}</span>
+                <span className="w-6 h-6 rounded-full bg-green-500/15 text-green-400 flex items-center justify-center text-xs font-bold shrink-0">{i + 1}</span>
+                <span className="pt-0.5">{check}</span>
               </div>
             ))}
           </div>
         </div>
       )}
-      {content.diagnosticTree && (
+
+      {content.diagnosticTree && Array.isArray(content.diagnosticTree) && (
         <div>
-          <h4 className="text-xs font-bold text-[#FFCD11] uppercase tracking-wider mb-3">Diagnostic Steps</h4>
+          <SectionHeader icon={<ArrowRight className="w-4 h-4 text-[#FFCD11]" />} title="Diagnostic Steps" />
           <div className="space-y-2">
             {(content.diagnosticTree as any[]).map((step: any, i: number) => (
-              <div key={i} className="flex items-start gap-3 bg-white/5 rounded-lg border border-white/10 p-3">
-                <span className="w-7 h-7 rounded-full bg-[#FFCD11]/15 text-[#FFCD11] flex items-center justify-center text-xs font-bold shrink-0">{step.step}</span>
-                <div className="pt-1">
-                  <p className="text-white/80">{step.action}</p>
-                  {step.expectedResult && <p className="text-white/40 text-xs mt-1">Expected: {step.expectedResult}</p>}
+              <div key={i} className="bg-white/5 rounded-lg border border-white/10 p-4">
+                <div className="flex items-start gap-3">
+                  <span className="w-8 h-8 rounded-full bg-[#FFCD11]/15 text-[#FFCD11] flex items-center justify-center text-xs font-bold shrink-0">{step.step}</span>
+                  <div className="pt-1 flex-1">
+                    <p className="text-white/90 font-medium">{step.action}</p>
+                    {step.expectedResult && <p className="text-white/40 text-xs mt-1.5"><span className="text-white/30">Expected:</span> {step.expectedResult}</p>}
+                    {step.ifFail && <p className="text-red-400/70 text-xs mt-1"><span className="text-red-400/50">If fails:</span> {step.ifFail}</p>}
+                    {step.toolRequired && <p className="text-blue-400/60 text-xs mt-1"><span className="text-blue-400/50">Tool:</span> {step.toolRequired}</p>}
+                  </div>
                 </div>
               </div>
             ))}
           </div>
         </div>
       )}
-      {content.partsList && (
+
+      {content.toolsRequired && Array.isArray(content.toolsRequired) && content.toolsRequired.length > 0 && (
         <div>
-          <h4 className="text-xs font-bold text-[#FFCD11] uppercase tracking-wider mb-3">Parts List</h4>
+          <SectionHeader icon={<Wrench className="w-4 h-4 text-[#FFCD11]" />} title="Tools Required" />
           <div className="bg-white/5 rounded-xl border border-white/10 overflow-hidden">
-            {(content.partsList as any[]).map((part: any, i: number) => (
-              <div key={i} className={`flex items-center justify-between px-4 py-3 ${i > 0 ? "border-t border-white/5" : ""}`}>
-                <span className="text-white/80">{part.partName}</span>
-                {part.partNumber && <span className="text-white/40 font-mono text-xs bg-white/5 px-2 py-1 rounded">{part.partNumber}</span>}
+            {(content.toolsRequired as any[]).map((tool: any, i: number) => (
+              <div key={i} className={`px-4 py-3 ${i > 0 ? "border-t border-white/5" : ""}`}>
+                {typeof tool === "string" ? (
+                  <span className="text-white/80">{tool}</span>
+                ) : (
+                  <div>
+                    <span className="text-white/90 font-medium">{tool.tool}</span>
+                    {tool.purpose && <span className="text-white/40 text-xs ml-2">— {tool.purpose}</span>}
+                    {tool.specification && <p className="text-white/30 text-xs mt-0.5">{tool.specification}</p>}
+                  </div>
+                )}
               </div>
             ))}
           </div>
         </div>
       )}
-      {content.safetyWarnings && (
+
+      {content.safetyChecklist && Array.isArray(content.safetyChecklist) && (
+        <div>
+          <SectionHeader icon={<Shield className="w-4 h-4 text-orange-400" />} title="Safety Checklist" color="#fb923c" />
+          <div className="bg-orange-500/5 rounded-xl border border-orange-500/15 p-4 space-y-2">
+            {(content.safetyChecklist as any[]).map((item: any, i: number) => (
+              <div key={i} className="flex items-start gap-3 text-white/70">
+                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-orange-400" />
+                <div>
+                  <span>{typeof item === "string" ? item : item.item}</span>
+                  {item.priority && <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${item.priority === "Critical" ? "bg-red-500/20 text-red-400" : "bg-white/10 text-white/40"}`}>{item.priority}</span>}
+                  {item.details && <p className="text-white/40 text-xs mt-0.5">{item.details}</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {content.laborEstimate && (
+        <div className="bg-white/5 rounded-xl border border-white/10 p-5">
+          <SectionHeader icon={<User className="w-4 h-4 text-[#FFCD11]" />} title="Labor Estimate" />
+          <div className="grid grid-cols-2 gap-4 text-xs">
+            <div className="bg-white/5 rounded-lg p-3 text-center">
+              <p className="text-white/40 uppercase tracking-wider mb-1">Estimated Hours</p>
+              <p className="text-2xl font-bold text-[#FFCD11]">{content.laborEstimate.minHours} - {content.laborEstimate.maxHours}</p>
+            </div>
+            {content.laborEstimate.skillLevel && (
+              <div className="bg-white/5 rounded-lg p-3 text-center">
+                <p className="text-white/40 uppercase tracking-wider mb-1">Skill Level</p>
+                <p className="text-lg font-semibold text-white/80">{content.laborEstimate.skillLevel}</p>
+              </div>
+            )}
+          </div>
+          {content.laborEstimate.note && <p className="text-white/40 text-xs italic mt-3">{content.laborEstimate.note}</p>}
+        </div>
+      )}
+
+      {content.partsList && Array.isArray(content.partsList) && content.partsList.length > 0 && (
+        <div>
+          <SectionHeader icon={<Package className="w-4 h-4 text-[#FFCD11]" />} title="Parts List" />
+          <div className="bg-white/5 rounded-xl border border-white/10 overflow-hidden">
+            <div className="grid grid-cols-[1fr_auto_auto] gap-2 px-4 py-2 bg-white/5 text-xs text-white/40 uppercase tracking-wider font-medium">
+              <span>Part Name</span>
+              <span>Part Number</span>
+              <span>Qty</span>
+            </div>
+            {(content.partsList as any[]).map((part: any, i: number) => (
+              <div key={i} className={`grid grid-cols-[1fr_auto_auto] gap-2 items-center px-4 py-3 ${i > 0 ? "border-t border-white/5" : ""}`}>
+                <div>
+                  <span className="text-white/80">{part.partName}</span>
+                  {part.notes && <p className="text-white/30 text-xs mt-0.5">{part.notes}</p>}
+                  {part.alternatives && Array.isArray(part.alternatives) && part.alternatives.length > 0 && part.alternatives[0] && (
+                    <p className="text-blue-400/50 text-xs mt-0.5">Alt: {part.alternatives.join(", ")}</p>
+                  )}
+                </div>
+                {part.partNumber ? <span className="text-white/40 font-mono text-xs bg-white/5 px-2 py-1 rounded">{part.partNumber}</span> : <span />}
+                <span className="text-white/60 text-xs text-center">{part.quantity || 1}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {content.procedureSteps && Array.isArray(content.procedureSteps) && content.procedureSteps.length > 0 && (
+        <div>
+          <SectionHeader icon={<Cog className="w-4 h-4 text-[#FFCD11]" />} title="Repair Procedure" />
+          <div className="space-y-2">
+            {(content.procedureSteps as any[]).map((step: any, i: number) => (
+              <div key={i} className="bg-white/5 rounded-lg border border-white/10 p-4">
+                <div className="flex items-start gap-3">
+                  <span className="w-7 h-7 rounded-full bg-white/10 text-white/70 flex items-center justify-center text-xs font-bold shrink-0">{step.step}</span>
+                  <div className="flex-1">
+                    <p className="text-white/80">{step.description}</p>
+                    {step.safetyNote && <p className="text-orange-400/70 text-xs mt-1.5 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> {step.safetyNote}</p>}
+                    {step.estimatedTime && <p className="text-white/30 text-xs mt-1">{step.estimatedTime}</p>}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {content.calibrationSteps && Array.isArray(content.calibrationSteps) && content.calibrationSteps.length > 0 && (
+        <div>
+          <SectionHeader icon={<Cpu className="w-4 h-4 text-[#FFCD11]" />} title="Calibration Steps" />
+          <div className="bg-white/5 rounded-xl border border-white/10 overflow-hidden">
+            {(content.calibrationSteps as any[]).map((step: any, i: number) => (
+              <div key={i} className={`px-4 py-3 ${i > 0 ? "border-t border-white/5" : ""}`}>
+                <div className="flex items-center gap-2">
+                  <span className="text-white/30 font-mono text-xs">{step.step || i + 1}.</span>
+                  <span className="text-white/80">{step.parameter}</span>
+                </div>
+                {step.specification && <p className="text-white/50 text-xs mt-1 pl-6">Spec: {step.specification}</p>}
+                {step.method && <p className="text-white/40 text-xs mt-0.5 pl-6">Method: {step.method}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {content.preventiveMaintenance && Array.isArray(content.preventiveMaintenance) && content.preventiveMaintenance.length > 0 && (
+        <div>
+          <SectionHeader icon={<Star className="w-4 h-4 text-[#FFCD11]" />} title="Preventive Maintenance" />
+          <div className="bg-white/5 rounded-xl border border-white/10 p-4 space-y-2">
+            {(content.preventiveMaintenance as string[]).map((item: string, i: number) => (
+              <div key={i} className="flex items-start gap-3 text-white/70">
+                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-[#FFCD11]" />
+                <span>{item}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {content.safetyWarnings && Array.isArray(content.safetyWarnings) && (
         <div className="bg-red-500/10 rounded-xl border border-red-500/20 p-5">
-          <h4 className="font-bold mb-3 flex items-center gap-2 text-red-400">
-            <AlertTriangle className="w-5 h-5" />
-            <span className="text-xs uppercase tracking-wider">Safety Warnings</span>
-          </h4>
+          <SectionHeader icon={<AlertTriangle className="w-4 h-4 text-red-400" />} title="Safety Warnings" color="#f87171" />
           <ul className="space-y-2 text-sm text-red-300/80">
             {(content.safetyWarnings as string[]).map((w: string, i: number) => (
               <li key={i} className="flex items-start gap-2">
-                <span className="text-red-400 mt-1">&#9679;</span>
+                <span className="text-red-400 mt-1 text-xs">&#9679;</span>
                 <span>{w}</span>
               </li>
             ))}
           </ul>
         </div>
       )}
+
       {content.whenToCallTech && (
         <div className="bg-white/5 rounded-xl border border-white/10 p-5">
-          <h4 className="text-xs font-bold text-[#FFCD11] uppercase tracking-wider mb-3">When to Call a Technician</h4>
+          <SectionHeader icon={<Phone className="w-4 h-4 text-[#FFCD11]" />} title="When to Call a Technician" />
           <p className="text-white/70 leading-relaxed">{content.whenToCallTech}</p>
         </div>
       )}
+
+      {content.recommendations && (
+        <div className="bg-[#FFCD11]/5 rounded-xl border border-[#FFCD11]/20 p-5">
+          <SectionHeader icon={<Star className="w-4 h-4 text-[#FFCD11]" />} title="Recommendations" />
+          <p className="text-white/80 leading-relaxed">{content.recommendations}</p>
+        </div>
+      )}
+
+      {content.additionalNotes && (
+        <div className="bg-white/5 rounded-xl border border-white/10 p-5">
+          <SectionHeader icon={<FileText className="w-4 h-4 text-[#FFCD11]" />} title="Additional Notes" />
+          <p className="text-white/70 leading-relaxed">{content.additionalNotes}</p>
+        </div>
+      )}
+
       {content.disclaimer && (
-        <p className="text-xs text-white/30 italic pt-2">
-          {content.disclaimer}
-        </p>
+        <div className="border-t border-white/10 pt-4 mt-6">
+          <p className="text-xs text-white/30 italic leading-relaxed">
+            {content.disclaimer}
+          </p>
+        </div>
       )}
     </div>
   );
@@ -2360,21 +2679,33 @@ function CinematicReportContent({ content }: { content: any }) {
 
 function ReportContent({ content }: { content: any }) {
   return (
-    <div className="space-y-3 text-sm">
+    <div className="space-y-4 text-sm">
+      {(content.generatedDate || content.equipment || content.customerName) && (
+        <div className="bg-muted/30 rounded-lg border p-4">
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            {content.generatedDate && <div><span className="text-muted-foreground">Date:</span> <span className="font-medium">{content.generatedDate}</span></div>}
+            {content.customerName && <div><span className="text-muted-foreground">Customer:</span> <span className="font-medium">{content.customerName}</span></div>}
+            {typeof content.equipment === "string" && <div className="col-span-2"><span className="text-muted-foreground">Equipment:</span> <span className="font-medium">{content.equipment}</span></div>}
+          </div>
+        </div>
+      )}
       {content.problemSummary && (
         <div>
           <h4 className="font-semibold mb-1">Problem Summary</h4>
-          <p className="text-muted-foreground">{content.problemSummary}</p>
+          <p className="text-muted-foreground leading-relaxed">{content.problemSummary}</p>
         </div>
       )}
       {content.likelyCauses && (
         <div>
-          <h4 className="font-semibold mb-1">Likely Causes</h4>
-          <div className="space-y-1">
+          <h4 className="font-semibold mb-2">Likely Causes</h4>
+          <div className="space-y-2">
             {(content.likelyCauses as any[]).map((cause: any, i: number) => (
-              <div key={i} className="flex items-center gap-2">
-                <Badge variant="secondary" className="text-xs">{cause.confidence || "Medium"}</Badge>
-                <span className="text-muted-foreground">{cause.cause}</span>
+              <div key={i} className="bg-card/50 border rounded-md p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <Badge variant="secondary" className="text-xs">{cause.confidence || "Medium"}</Badge>
+                  <span className="font-medium">{cause.cause}</span>
+                </div>
+                {cause.explanation && <p className="text-xs text-muted-foreground mt-1">{cause.explanation}</p>}
               </div>
             ))}
           </div>
@@ -2382,15 +2713,16 @@ function ReportContent({ content }: { content: any }) {
       )}
       {content.rootCauseMatrix && (
         <div>
-          <h4 className="font-semibold mb-1">Root Cause Matrix</h4>
-          <div className="space-y-1">
+          <h4 className="font-semibold mb-2">Root Cause Analysis</h4>
+          <div className="space-y-2">
             {(content.rootCauseMatrix as any[]).map((item: any, i: number) => (
-              <div key={i} className="bg-card/50 border border-card-border rounded-md p-2">
+              <div key={i} className="bg-card/50 border rounded-md p-3">
                 <div className="flex items-center gap-2 mb-1">
                   <Badge variant="secondary" className="text-xs">{item.probability}</Badge>
-                  <span className="font-medium text-xs">{item.cause}</span>
+                  <span className="font-medium text-sm">{item.cause}</span>
                 </div>
                 {item.evidence && <p className="text-xs text-muted-foreground">{item.evidence}</p>}
+                {item.testMethod && <p className="text-xs text-muted-foreground mt-0.5">Test: {item.testMethod}</p>}
               </div>
             ))}
           </div>
@@ -2398,8 +2730,8 @@ function ReportContent({ content }: { content: any }) {
       )}
       {content.safeChecks && (
         <div>
-          <h4 className="font-semibold mb-1">Safe Checks</h4>
-          <ul className="space-y-1">
+          <h4 className="font-semibold mb-2">Safe Checks</h4>
+          <ul className="space-y-1.5">
             {(content.safeChecks as string[]).map((check: string, i: number) => (
               <li key={i} className="flex items-start gap-2 text-muted-foreground">
                 <ChevronRight className="w-3 h-3 shrink-0 mt-1 text-primary" />
@@ -2411,14 +2743,14 @@ function ReportContent({ content }: { content: any }) {
       )}
       {content.diagnosticTree && (
         <div>
-          <h4 className="font-semibold mb-1">Diagnostic Steps</h4>
-          <div className="space-y-1">
+          <h4 className="font-semibold mb-2">Diagnostic Steps</h4>
+          <div className="space-y-1.5">
             {(content.diagnosticTree as any[]).map((step: any, i: number) => (
-              <div key={i} className="flex items-start gap-2 text-muted-foreground text-xs">
+              <div key={i} className="flex items-start gap-2 text-muted-foreground text-xs bg-card/50 border rounded-md p-2.5">
                 <span className="font-mono text-primary font-semibold">{step.step}.</span>
                 <div>
                   <p>{step.action}</p>
-                  {step.expectedResult && <p className="opacity-75">Expected: {step.expectedResult}</p>}
+                  {step.expectedResult && <p className="opacity-75 mt-0.5">Expected: {step.expectedResult}</p>}
                 </div>
               </div>
             ))}
@@ -2427,10 +2759,10 @@ function ReportContent({ content }: { content: any }) {
       )}
       {content.partsList && (
         <div>
-          <h4 className="font-semibold mb-1">Parts List</h4>
+          <h4 className="font-semibold mb-2">Parts List</h4>
           <div className="space-y-1">
             {(content.partsList as any[]).map((part: any, i: number) => (
-              <div key={i} className="flex items-center justify-between text-xs bg-card/50 border border-card-border rounded-md px-2 py-1.5">
+              <div key={i} className="flex items-center justify-between text-xs bg-card/50 border rounded-md px-3 py-2">
                 <span>{part.partName}</span>
                 {part.partNumber && <span className="text-muted-foreground font-mono">{part.partNumber}</span>}
               </div>
@@ -2439,14 +2771,14 @@ function ReportContent({ content }: { content: any }) {
         </div>
       )}
       {content.safetyWarnings && (
-        <div className="bg-destructive/5 border border-destructive/20 rounded-md p-3">
-          <h4 className="font-semibold mb-1 flex items-center gap-1.5">
+        <div className="bg-destructive/5 border border-destructive/20 rounded-md p-4">
+          <h4 className="font-semibold mb-2 flex items-center gap-1.5">
             <AlertTriangle className="w-3.5 h-3.5 text-destructive" />
             Safety Warnings
           </h4>
-          <ul className="space-y-1 text-xs text-muted-foreground">
+          <ul className="space-y-1.5 text-xs text-muted-foreground">
             {(content.safetyWarnings as string[]).map((w: string, i: number) => (
-              <li key={i}>- {w}</li>
+              <li key={i}>&#9679; {w}</li>
             ))}
           </ul>
         </div>
@@ -2454,11 +2786,17 @@ function ReportContent({ content }: { content: any }) {
       {content.whenToCallTech && (
         <div>
           <h4 className="font-semibold mb-1">When to Call a Technician</h4>
-          <p className="text-muted-foreground">{content.whenToCallTech}</p>
+          <p className="text-muted-foreground leading-relaxed">{content.whenToCallTech}</p>
+        </div>
+      )}
+      {content.recommendations && (
+        <div>
+          <h4 className="font-semibold mb-1">Recommendations</h4>
+          <p className="text-muted-foreground leading-relaxed">{content.recommendations}</p>
         </div>
       )}
       {content.disclaimer && (
-        <p className="text-xs text-muted-foreground italic border-t border-border/50 pt-2">
+        <p className="text-xs text-muted-foreground italic border-t pt-3 mt-3 leading-relaxed">
           {content.disclaimer}
         </p>
       )}
