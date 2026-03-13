@@ -22,6 +22,70 @@ if (!fs.existsSync(uploadDir)) {
 
 const sessionTokens = new Map<number, string>();
 
+async function deliverVerificationCode(target: string, targetType: string, code: string): Promise<boolean> {
+  if (targetType === "email") {
+    try {
+      const nodemailer = await import("nodemailer");
+
+      if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+        const transporter = nodemailer.createTransport({
+          host: process.env.SMTP_HOST || "smtp.gmail.com",
+          port: parseInt(process.env.SMTP_PORT || "587"),
+          secure: false,
+          auth: {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS,
+          },
+        });
+
+        await transporter.sendMail({
+          from: `"AMERICAN IRON" <${process.env.SMTP_USER}>`,
+          to: target,
+          subject: "Your Verification Code - AMERICAN IRON",
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 400px; margin: 0 auto; padding: 30px; background: #111; color: #fff; border-radius: 12px;">
+              <h2 style="color: #FFCD11; text-align: center;">AMERICAN IRON</h2>
+              <p style="text-align: center; color: #ccc;">Your verification code is:</p>
+              <div style="text-align: center; font-size: 36px; font-weight: bold; color: #FFCD11; letter-spacing: 8px; padding: 20px;">${code}</div>
+              <p style="text-align: center; color: #888; font-size: 12px;">This code expires in 10 minutes.</p>
+            </div>
+          `,
+        });
+        console.log(`[VERIFICATION] Email sent to ${target.substring(0, 3)}***`);
+        return true;
+      } else {
+        console.warn(`[VERIFICATION] No SMTP credentials configured. Set SMTP_USER and SMTP_PASS environment variables to enable email delivery.`);
+        console.warn(`[VERIFICATION] Code for ${target.substring(0, 3)}*** was generated but could not be delivered.`);
+        return false;
+      }
+    } catch (emailErr: any) {
+      console.error(`[VERIFICATION] Email delivery failed for ${target.substring(0, 3)}***:`, emailErr.message);
+      return false;
+    }
+  } else if (targetType === "phone") {
+    if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER) {
+      try {
+        const twilio = await import("twilio");
+        const client = twilio.default(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+        await client.messages.create({
+          body: `Your AMERICAN IRON verification code is: ${code}. It expires in 10 minutes.`,
+          from: process.env.TWILIO_PHONE_NUMBER,
+          to: target,
+        });
+        console.log(`[VERIFICATION] SMS sent to ${target.substring(0, 3)}***`);
+        return true;
+      } catch (smsErr: any) {
+        console.error(`[VERIFICATION] SMS delivery failed for ${target.substring(0, 3)}***:`, smsErr.message);
+        return false;
+      }
+    } else {
+      console.warn(`[VERIFICATION] No Twilio credentials configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER to enable SMS delivery.`);
+      return false;
+    }
+  }
+  return false;
+}
+
 function generateSessionToken(sessionId: number): string {
   const token = crypto.randomBytes(32).toString("hex");
   sessionTokens.set(sessionId, token);
@@ -387,7 +451,7 @@ export async function registerRoutes(
               verified: false,
               expiresAt,
             });
-            console.log(`[VERIFICATION] Code generated for ${verifyData.targetType}: ${verifyData.target.substring(0, 3)}***`);
+            await deliverVerificationCode(verifyData.target, verifyData.targetType, code);
             res.write(`data: ${JSON.stringify({ type: "verify_request", target: verifyData.target, targetType: verifyData.targetType })}\n\n`);
           } catch (e) {
             console.error("Verify request parse error:", e);
@@ -754,44 +818,13 @@ export async function registerRoutes(
         expiresAt,
       });
 
-      if (targetType === "email") {
-        try {
-          const nodemailer = await import("nodemailer");
-          const transporter = nodemailer.createTransport({
-            host: process.env.SMTP_HOST || "smtp.gmail.com",
-            port: parseInt(process.env.SMTP_PORT || "587"),
-            secure: false,
-            auth: {
-              user: process.env.SMTP_USER,
-              pass: process.env.SMTP_PASS,
-            },
-          });
+      const delivered = await deliverVerificationCode(target, targetType, code);
 
-          if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-            await transporter.sendMail({
-              from: `"AMERICAN IRON" <${process.env.SMTP_USER}>`,
-              to: target,
-              subject: "Your Verification Code - AMERICAN IRON",
-              html: `
-                <div style="font-family: Arial, sans-serif; max-width: 400px; margin: 0 auto; padding: 30px; background: #111; color: #fff; border-radius: 12px;">
-                  <h2 style="color: #FFCD11; text-align: center;">AMERICAN IRON</h2>
-                  <p style="text-align: center; color: #ccc;">Your verification code is:</p>
-                  <div style="text-align: center; font-size: 36px; font-weight: bold; color: #FFCD11; letter-spacing: 8px; padding: 20px;">${code}</div>
-                  <p style="text-align: center; color: #888; font-size: 12px;">This code expires in 10 minutes.</p>
-                </div>
-              `,
-            });
-          } else {
-            console.log(`[VERIFICATION] Code generated for ${target.substring(0, 3)}*** (no SMTP configured)`);
-          }
-        } catch (emailErr) {
-          console.log(`[VERIFICATION] Email send failed for ${target.substring(0, 3)}***`);
-        }
+      if (delivered) {
+        res.json({ success: true, message: `Verification code sent to ${targetType}` });
       } else {
-        console.log(`[VERIFICATION] SMS code generated for ${target.substring(0, 3)}***`);
+        res.json({ success: true, delivered: false, message: `Verification code created but delivery service is not configured. Please set up SMTP (email) or Twilio (SMS) credentials.` });
       }
-
-      res.json({ success: true, message: `Verification code sent to ${targetType}` });
     } catch (error: any) {
       console.error("Verification send error:", error);
       res.status(500).json({ error: "Failed to send verification code" });
