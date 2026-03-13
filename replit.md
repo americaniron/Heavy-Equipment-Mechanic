@@ -60,13 +60,17 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
 - **Arabic Avatars**: سارة/Sarah (admin), خالد/Khalid-Dexter (heavy equip), ليلى/Layla-Anastasia (power gen), عمر/Omar-Shawn (marine), حسن/Hassan-Dexter (hydraulics), نور/Nour-Elenora (electrical), طارق/Tariq-Bryan (parts) — gender-correct mapping, Arabic script names
 - **Body Gestures**: All avatar personas include natural body language instructions (nodding, hand gestures, leaning, posture changes)
 - **Handoff Bug Fix**: Client strips `<INTAKE_JSON>` tags from GPT response before sending text to avatar to prevent reading code/punctuation aloud
-- **Speaking Style**: All GPT prompts include natural conversational speaking instructions (filler words, varied sentence length, no robotic phrasing)
+- **Speaking Style**: All GPT prompts include strict no-filler instructions — no "Aha", "Got it", "Hmm", or verbal fillers; direct substantive responses only
+- **Idle Timeout**: 2-minute warning, 3-minute auto-disconnect with avatar goodbye message (English/Arabic)
 
-## Report Popup
-- **Cinematic Full-Screen Modal**: Dark overlay with blur, golden accent border, animated entrance
-- **Actions**: Print/Save PDF (opens print dialog), Email Report (mailto: with summary), Copy Share Link
-- **CinematicReportContent**: Premium dark-theme cards with golden section headers, color-coded confidence badges, numbered diagnostic steps
-- **ReportContent**: Legacy light-theme version kept for shared report page
+## Report Generation
+- **Endpoint**: `POST /api/sessions/:id/report` — returns existing report if already generated, creates new via OpenAI
+- **Quick Advice Report**: Comprehensive JSON with equipment info, problem summary, likely causes with explanations, safe checks, immediate actions, safety warnings, when to call tech, additional notes
+- **Pro Diagnostic Report**: Detailed JSON with root cause matrix (evidence + test methods), diagnostic tree, tools required, safety checklist, labor estimate with skill level, parts list with alternatives, procedure steps, calibration steps, preventive maintenance, recommendations, urgency level
+- **SVG Diagram**: Auto-generated technical diagram for Pro reports
+- **Report Modal**: Cinematic dark-theme with section headers, confidence badges, print-optimized layout
+- **Print**: Professional print stylesheet with AMERICAN IRON branding, proper typography, page-break-inside:avoid
+- **Share**: Public share via token URL, email report, copy link
 
 ## Visual Theme
 - **Caterpillar-inspired**: CAT yellow (#FFCD11) as primary, near-black backgrounds (#111111, #1a1a1a, #222)
