@@ -13,6 +13,7 @@ import {
   type ConversationMessage,
 } from "./services/ai-engine";
 import { createAvatarSession, stopAvatarSession, sendAvatarSpeak, getAvatarInfo } from "./services/avatar";
+import { createDIDStream, sendDIDSdpAnswer, sendDIDIceCandidate, sendDIDSpeak, closeDIDStream } from "./services/did-avatar";
 
 
 const uploadDir = path.join(process.cwd(), "uploads");
@@ -782,13 +783,25 @@ export async function registerRoutes(
   app.post("/api/avatar/session", async (req, res) => {
     try {
       const { agentType, language } = req.body;
+      const aType = agentType || "admin";
+      const lang = language || "en";
+
+      try {
+        const didResult = await createDIDStream(aType, lang);
+        console.log(`[Avatar] Using D-ID for ${aType}/${lang}`);
+        return res.json(didResult);
+      } catch (didErr: any) {
+        console.warn(`[Avatar] D-ID failed, falling back to HeyGen:`, didErr.message);
+      }
+
       const protocol = req.headers["x-forwarded-proto"] || "https";
       const host = req.get("host");
       const backgroundUrl = `${protocol}://${host}/static/shop_background.png`;
-      const result = await createAvatarSession(agentType || "admin", backgroundUrl, language || "en");
-      res.json(result);
+      const heygenResult = await createAvatarSession(aType, backgroundUrl, lang);
+      console.log(`[Avatar] Using HeyGen fallback for ${aType}/${lang}`);
+      res.json({ ...heygenResult, provider: "heygen" });
     } catch (error: any) {
-      console.error("Avatar session creation error:", error);
+      console.error("Avatar session creation error (both providers failed):", error);
       res.status(500).json({ error: error.message });
     }
   });
@@ -821,7 +834,14 @@ export async function registerRoutes(
 
   app.post("/api/avatar/speak", async (req, res) => {
     try {
-      const { sessionToken, text } = req.body;
+      const { sessionToken, text, provider, agentId, streamId, sessionId: didSessionId } = req.body;
+      if (provider === "did") {
+        if (!agentId || !streamId || !didSessionId || !text) {
+          return res.status(400).json({ error: "agentId, streamId, sessionId, and text required for D-ID" });
+        }
+        await sendDIDSpeak(agentId, streamId, didSessionId, text);
+        return res.json({ success: true });
+      }
       if (!sessionToken || !text) {
         return res.status(400).json({ error: "sessionToken and text required" });
       }
@@ -833,10 +853,40 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/avatar/session/sdp", async (req, res) => {
+    try {
+      const { agentId, streamId, sessionId: didSessionId, answer } = req.body;
+      if (!agentId || !streamId || !didSessionId || !answer) {
+        return res.status(400).json({ error: "agentId, streamId, sessionId, and answer required" });
+      }
+      await sendDIDSdpAnswer(agentId, streamId, didSessionId, answer);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("D-ID SDP error:", error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/avatar/session/ice", async (req, res) => {
+    try {
+      const { agentId, streamId, sessionId: didSessionId, candidate, sdpMid, sdpMLineIndex } = req.body;
+      if (!agentId || !streamId || !didSessionId) {
+        return res.status(400).json({ error: "agentId, streamId, sessionId required" });
+      }
+      await sendDIDIceCandidate(agentId, streamId, didSessionId, candidate, sdpMid, sdpMLineIndex);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("D-ID ICE error:", error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.post("/api/avatar/session/stop", async (req, res) => {
     try {
-      const { sessionToken } = req.body;
-      if (sessionToken) {
+      const { sessionToken, provider, agentId, streamId, sessionId: didSessionId } = req.body;
+      if (provider === "did" && agentId && streamId && didSessionId) {
+        await closeDIDStream(agentId, streamId, didSessionId);
+      } else if (sessionToken) {
         await stopAvatarSession(sessionToken);
       }
       res.json({ success: true });

@@ -50,17 +50,26 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
 - `POST /api/portal/escalation` - Escalation to human expert (creates support ticket)
 - `GET /api/portal/cases` - AI session history
 
-## LiveAvatar Integration
-- **API**: `https://api.liveavatar.com` using HEYGEN_API_KEY
-- **Mode**: FULL mode (server-side LLM, avatar speaks text sent via LiveKit data channel)
-- **Flow**: Server creates session token → starts session → returns LiveKit URL + client token → client connects to LiveKit Room → subscribes to video/audio tracks → sends speak commands on `agent-control` topic
-- **Events**: `avatar.speak_text` command → `avatar.speak_started`/`avatar.speak_ended` server events → `avatar.transcription` for subtitle text
-- **Voice Input**: Client-side MediaRecorder captures user mic audio with VAD (silence detection) → sends to `/api/transcribe` endpoint → OpenAI Whisper STT → transcribed text fed to `handleUserMessage` → GPT-4o response → `avatar.speak_text` command
-- **English Avatars**: Sarah (admin, random pool), Bryan (heavy equip), Elenora (power gen), Pedro (marine), Thaddeus (hydraulics), Anastasia (electrical), Marcus/Silas (parts)
-- **Arabic Avatars**: سارة/Sarah (admin), خالد/Khalid-Dexter (heavy equip), ليلى/Layla-Anastasia (power gen), عمر/Omar-Shawn (marine), حسن/Hassan-Dexter (hydraulics), نور/Nour-Elenora (electrical), طارق/Tariq-Bryan (parts) — gender-correct mapping, Arabic script names
-- **Body Gestures**: All avatar personas include natural body language instructions (nodding, hand gestures, leaning, posture changes)
-- **Handoff Bug Fix**: Client strips `<INTAKE_JSON>` tags from GPT response before sending text to avatar to prevent reading code/punctuation aloud
-- **Speaking Style**: All GPT prompts include strict no-filler instructions — no "Aha", "Got it", "Hmm", or verbal fillers; direct substantive responses only
+## Avatar Integration (Dual Provider: D-ID Primary + HeyGen Fallback)
+- **Primary**: D-ID Agents Streams API (`https://api.d-id.com`) using DID_API_KEY
+  - WebRTC-based: Server creates D-ID agent → creates stream → returns SDP offer + ICE servers → client does WebRTC handshake (RTCPeerConnection) → receives video/audio tracks
+  - Speak via REST: `POST /agents/{agentId}/streams/{streamId}` with `script.type=text`
+  - D-ID presenters mapped per role/language with Microsoft Neural voices (EN + AR)
+  - Agent caching: agents created once per role/language combination, reused across sessions
+  - New endpoints: `/api/avatar/session/sdp` (SDP answer), `/api/avatar/session/ice` (ICE candidates)
+  - Service file: `server/services/did-avatar.ts`
+- **Fallback**: HeyGen LiveAvatar API (`https://api.liveavatar.com`) using HEYGEN_API_KEY
+  - LiveKit-based: FULL mode, server creates session → returns LiveKit URL + token → client connects to LiveKit Room
+  - Speak via LiveKit data channel: `avatar.speak_text` on `agent-control` topic
+  - Service file: `server/services/avatar.ts`
+- **Fallback Chain**: D-ID → HeyGen → Browser TTS (speechSynthesis)
+- **Provider Detection**: Server tries D-ID first; on failure, falls back to HeyGen. Response includes `provider: "did"` or `provider: "heygen"`. Client reads provider to determine connection method.
+- **Speak Routing**: `sendAvatarSpeakCommand` checks `avatarProviderRef` → D-ID uses `/api/avatar/speak` REST call, HeyGen uses LiveKit data channel, fallback uses browser TTS
+- **Voice Input**: Client-side MediaRecorder captures user mic audio with VAD (silence detection) → sends to `/api/transcribe` endpoint → OpenAI Whisper STT → transcribed text fed to `handleUserMessage` → GPT-4o response → avatar speak command
+- **English Avatars**: Sarah (admin), Bryan (heavy equip), Elenora (power gen), Pedro (marine), Thaddeus (hydraulics), Anastasia (electrical), Marcus (parts)
+- **Arabic Avatars**: سارة (admin), خالد (heavy equip), ليلى (power gen), عمر (marine), حسن (hydraulics), نور (electrical), طارق (parts)
+- **Body Gestures**: All avatar personas include natural body language instructions
+- **Speaking Style**: Strict no-filler instructions — no verbal fillers; direct substantive responses only
 - **Idle Timeout**: 2-minute warning, 3-minute auto-disconnect with avatar goodbye message (English/Arabic)
 
 ## Report Generation
@@ -80,8 +89,8 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
 ## Environment Variables
 - `DATABASE_URL` - PostgreSQL connection
 - `AI_INTEGRATIONS_OPENAI_API_KEY` / `AI_INTEGRATIONS_OPENAI_BASE_URL` - OpenAI via Replit
-- `HEYGEN_API_KEY` - LiveAvatar API key (from app.liveavatar.com)
-- `DID_API_KEY` - D-ID API (legacy, kept for reference)
+- `DID_API_KEY` - D-ID Agents Streams API key (primary avatar provider)
+- `HEYGEN_API_KEY` - HeyGen LiveAvatar API key (fallback avatar provider)
 - `SESSION_SECRET` - For session management
 
 ## Session API Endpoints
@@ -94,5 +103,8 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
 - `POST /api/sessions/:id/report` - Generate report
 - `GET /api/sessions/:id/report` - Get report (requires auth)
 - `GET /api/shared/:token` - Access shared report (public)
-- `POST /api/avatar/session` - Create LiveAvatar session
-- `POST /api/avatar/session/stop` - Stop LiveAvatar session
+- `POST /api/avatar/session` - Create avatar session (tries D-ID first, falls back to HeyGen)
+- `POST /api/avatar/speak` - Send speak command (routes to D-ID or HeyGen based on provider param)
+- `POST /api/avatar/session/sdp` - Send SDP answer (D-ID WebRTC)
+- `POST /api/avatar/session/ice` - Send ICE candidate (D-ID WebRTC)
+- `POST /api/avatar/session/stop` - Stop avatar session (handles both D-ID and HeyGen)
