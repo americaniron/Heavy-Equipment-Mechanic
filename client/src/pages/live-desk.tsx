@@ -467,6 +467,8 @@ export default function LiveDesk() {
         setIsTalking(true);
 
         for (let i = 0; i < chunks.length; i++) {
+          setSubtitleText(chunks[i]);
+
           const speakRes = await fetch("/api/avatar/speak", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -480,7 +482,7 @@ export default function LiveDesk() {
           });
           if (!speakRes.ok) throw new Error(`D-ID speak HTTP ${speakRes.status}`);
           if (i < chunks.length - 1) {
-            const chunkDelay = Math.max(200, chunks[i].length * 55);
+            const chunkDelay = Math.max(250, chunks[i].length * 60);
             await new Promise(r => setTimeout(r, chunkDelay));
           }
         }
