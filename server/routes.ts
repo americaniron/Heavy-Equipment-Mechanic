@@ -28,14 +28,18 @@ async function deliverVerificationCode(target: string, targetType: string, code:
       const nodemailer = await import("nodemailer");
 
       if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+        const smtpPort = parseInt(process.env.SMTP_PORT || "587");
         const transporter = nodemailer.createTransport({
           host: process.env.SMTP_HOST || "smtp.gmail.com",
-          port: parseInt(process.env.SMTP_PORT || "587"),
-          secure: false,
+          port: smtpPort,
+          secure: smtpPort === 465,
           auth: {
             user: process.env.SMTP_USER,
             pass: process.env.SMTP_PASS,
           },
+          connectionTimeout: 10000,
+          greetingTimeout: 10000,
+          socketTimeout: 10000,
         });
 
         await transporter.sendMail({
