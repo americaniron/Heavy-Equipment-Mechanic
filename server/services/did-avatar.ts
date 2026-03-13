@@ -245,6 +245,21 @@ function getAuthHeader(): string {
   return `Basic ${Buffer.from(getApiKey() + ":").toString("base64")}`;
 }
 
+export async function checkDIDCredits(): Promise<number> {
+  try {
+    const res = await fetch(`${DID_API}/credits`, {
+      headers: { Authorization: getAuthHeader() },
+    });
+    if (!res.ok) return 0;
+    const data = await res.json();
+    console.log(`[D-ID] Credits remaining: ${data.remaining}/${data.total}`);
+    return data.remaining || 0;
+  } catch (e: any) {
+    console.warn(`[D-ID] Credit check failed:`, e.message);
+    return 0;
+  }
+}
+
 function getPersonaInstructions(agentType: string, language: string): string {
   const info = getAvatarInfo(agentType, language);
   return info?.persona || "You are a helpful assistant at American Iron.";
@@ -260,12 +275,13 @@ async function getOrCreateAgent(agentType: string, language: string): Promise<st
 
   const body = {
     presenter: {
-      type: "clip" as const,
-      presenter_id: presenter.presenterId,
+      type: "talk" as const,
       voice: {
         type: presenter.voiceType,
         voice_id: presenter.voiceId,
       },
+      source_url: presenter.sourceUrl,
+      thumbnail: presenter.sourceUrl,
     },
     llm: {
       type: "openai" as const,

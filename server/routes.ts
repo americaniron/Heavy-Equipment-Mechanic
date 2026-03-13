@@ -13,7 +13,7 @@ import {
   type ConversationMessage,
 } from "./services/ai-engine";
 import { createAvatarSession, stopAvatarSession, sendAvatarSpeak, getAvatarInfo } from "./services/avatar";
-import { createDIDStream, sendDIDSdpAnswer, sendDIDIceCandidate, sendDIDSpeak, closeDIDStream, clearDIDAgentCache } from "./services/did-avatar";
+import { createDIDStream, sendDIDSdpAnswer, sendDIDIceCandidate, sendDIDSpeak, closeDIDStream, clearDIDAgentCache, checkDIDCredits } from "./services/did-avatar";
 
 
 const uploadDir = path.join(process.cwd(), "uploads");
@@ -788,12 +788,17 @@ export async function registerRoutes(
       const aType = agentType || "admin";
       const lang = language || "en";
 
-      try {
-        const didResult = await createDIDStream(aType, lang);
-        console.log(`[Avatar] Using D-ID for ${aType}/${lang}`);
-        return res.json(didResult);
-      } catch (didErr: any) {
-        console.warn(`[Avatar] D-ID failed, falling back to HeyGen:`, didErr.message);
+      const credits = await checkDIDCredits();
+      if (credits > 0) {
+        try {
+          const didResult = await createDIDStream(aType, lang);
+          console.log(`[Avatar] Using D-ID for ${aType}/${lang} (credits: ${credits})`);
+          return res.json(didResult);
+        } catch (didErr: any) {
+          console.warn(`[Avatar] D-ID failed, falling back to HeyGen:`, didErr.message);
+        }
+      } else {
+        console.log(`[Avatar] D-ID credits exhausted (${credits}), skipping to HeyGen`);
       }
 
       const protocol = req.headers["x-forwarded-proto"] || "https";
@@ -851,6 +856,9 @@ export async function registerRoutes(
       res.json({ success: true });
     } catch (error: any) {
       console.error("Avatar speak error:", error.message);
+      if (error.message?.includes("402")) {
+        return res.status(402).json({ error: "credits_exhausted", message: "D-ID credits exhausted" });
+      }
       res.status(500).json({ error: error.message });
     }
   });
