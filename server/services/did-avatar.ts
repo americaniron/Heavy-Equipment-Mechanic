@@ -11,6 +11,97 @@ type DIDPresenterConfig = {
   gender: string;
 };
 
+type DIDExpression = {
+  start_frame: number;
+  expression: "happy" | "surprise" | "serious" | "neutral";
+  intensity: number;
+};
+
+const WB = `(?:^|[\\s.,!?;:،؛؟])`;
+const WBE = `(?=$|[\\s.,!?;:،؛؟])`;
+
+const GREETING_PATTERNS = new RegExp(`${WB}(hello|hi|hey|welcome|good morning|good afternoon|good evening|greetings|مرحبا|أهلا|السلام عليكم|أهلاً)${WBE}`, "i");
+const POSITIVE_PATTERNS = new RegExp(`${WB}(great|excellent|perfect|wonderful|fantastic|happy|glad|pleased|sure|absolutely|certainly|of course|no problem|you're welcome|thank|appreciate|congratulations|awesome|good news|ممتاز|رائع|جيد|شكرا|شكراً|مبارك|بالتأكيد|طبعا|طبعاً)${WBE}`, "i");
+const CONCERN_PATTERNS = new RegExp(`${WB}(sorry|unfortunately|problem|issue|concern|trouble|difficult|fail|error|broken|damage|leak|malfunction|warning|caution|urgent|critical|emergency|عذرا|عذراً|مشكلة|خطأ|عطل|تسرب|تحذير|طارئ|للأسف|صعب)${WBE}`, "i");
+const QUESTION_PATTERNS = new RegExp(`${WB}(can you|could you|would you|what|how|when|where|why|which|tell me|let me know|هل|ما|كيف|متى|أين|لماذا|أخبرني)${WBE}`, "i");
+const EXPLAIN_PATTERNS = new RegExp(`${WB}(let me explain|here's what|the reason|because|first|second|third|step|process|procedure|recommend|suggest|important|note that|keep in mind|اسمح لي|السبب|الخطوة|أوصي|مهم|أولا|أولاً|ثانيا|ثانياً|ثالثا|ثالثاً|لأن)${WBE}`, "i");
+const EMPATHY_PATTERNS = new RegExp(`${WB}(understand|i see|that makes sense|of course|no worries|don't worry|i hear you|rest assured|we'll take care|أفهم|لا تقلق|سنهتم|بالطبع|أسمعك|لا تخف)${WBE}`, "i");
+
+function analyzeTextForExpressions(text: string): DIDExpression[] {
+  const expressions: DIDExpression[] = [];
+  const words = text.split(/\s+/).length;
+  const estimatedFrames = Math.max(30, words * 8);
+
+  if (GREETING_PATTERNS.test(text)) {
+    expressions.push({ start_frame: 0, expression: "happy", intensity: 0.6 });
+  }
+
+  if (CONCERN_PATTERNS.test(text)) {
+    const matchIndex = text.search(CONCERN_PATTERNS);
+    const relativePosition = matchIndex / text.length;
+    const frame = Math.round(relativePosition * estimatedFrames);
+    expressions.push({ start_frame: frame, expression: "serious", intensity: 0.5 });
+
+    if (POSITIVE_PATTERNS.test(text.slice(matchIndex))) {
+      const laterFrame = Math.min(frame + Math.round(estimatedFrames * 0.3), estimatedFrames - 5);
+      expressions.push({ start_frame: laterFrame, expression: "happy", intensity: 0.4 });
+    }
+  } else if (POSITIVE_PATTERNS.test(text)) {
+    const matchIndex = text.search(POSITIVE_PATTERNS);
+    const relativePosition = matchIndex / text.length;
+    const frame = Math.round(relativePosition * estimatedFrames);
+    expressions.push({ start_frame: Math.max(0, frame), expression: "happy", intensity: 0.5 });
+  }
+
+  if (QUESTION_PATTERNS.test(text) && !CONCERN_PATTERNS.test(text)) {
+    const matchIndex = text.search(QUESTION_PATTERNS);
+    const frame = Math.round((matchIndex / text.length) * estimatedFrames);
+    expressions.push({ start_frame: frame, expression: "surprise", intensity: 0.25 });
+  }
+
+  if (EXPLAIN_PATTERNS.test(text)) {
+    const matchIndex = text.search(EXPLAIN_PATTERNS);
+    const frame = Math.round((matchIndex / text.length) * estimatedFrames);
+    if (!expressions.some(e => Math.abs(e.start_frame - frame) < 10)) {
+      expressions.push({ start_frame: frame, expression: "serious", intensity: 0.3 });
+    }
+  }
+
+  if (EMPATHY_PATTERNS.test(text)) {
+    const matchIndex = text.search(EMPATHY_PATTERNS);
+    const frame = Math.round((matchIndex / text.length) * estimatedFrames);
+    if (!expressions.some(e => Math.abs(e.start_frame - frame) < 10)) {
+      expressions.push({ start_frame: frame, expression: "happy", intensity: 0.35 });
+    }
+  }
+
+  if (expressions.length === 0) {
+    expressions.push({ start_frame: 0, expression: "neutral", intensity: 0.3 });
+    if (estimatedFrames > 40) {
+      expressions.push({ start_frame: Math.round(estimatedFrames * 0.5), expression: "happy", intensity: 0.2 });
+    }
+  }
+
+  expressions.sort((a, b) => a.start_frame - b.start_frame);
+
+  const deduped: DIDExpression[] = [];
+  for (const expr of expressions) {
+    if (!deduped.some(e => Math.abs(e.start_frame - expr.start_frame) < 8)) {
+      deduped.push(expr);
+    }
+  }
+
+  return deduped.slice(0, 6);
+}
+
+function getMotionFactorForText(text: string): number {
+  if (GREETING_PATTERNS.test(text) || POSITIVE_PATTERNS.test(text)) return 0.8;
+  if (CONCERN_PATTERNS.test(text)) return 0.65;
+  if (EXPLAIN_PATTERNS.test(text)) return 0.7;
+  if (QUESTION_PATTERNS.test(text)) return 0.75;
+  return 0.7;
+}
+
 const PRESENTER_MAP_EN: Record<string, DIDPresenterConfig> = {
   admin: {
     presenterId: "v2_public_Amber_BlackJacket_HomeOffice@9WuHtiUDnL",
@@ -314,6 +405,9 @@ export async function sendDIDIceCandidate(
 export async function sendDIDSpeak(agentId: string, streamId: string, sessionId: string, text: string): Promise<void> {
   console.log(`[D-ID] Sending speak: "${text.substring(0, 60)}..."`);
 
+  const expressions = analyzeTextForExpressions(text);
+  const motionFactor = getMotionFactorForText(text);
+
   const enhancedBody = {
     script: { type: "text" as const, input: text, ssml: false },
     config: {
@@ -323,10 +417,14 @@ export async function sendDIDSpeak(agentId: string, streamId: string, sessionId:
       sharpen: true,
       auto_match: true,
       normalization_factor: 0.1,
-      motion_factor: 0.55,
+      motion_factor: motionFactor,
+      driver_expressions: { expressions },
     },
     session_id: sessionId,
   };
+
+  console.log(`[D-ID] Expressions for chunk: motion=${motionFactor}, expressions=${JSON.stringify(expressions.map(e => `${e.expression}@${e.start_frame}`))}`);
+
 
   const res = await fetch(`${DID_API}/agents/${agentId}/streams/${streamId}`, {
     method: "POST",
