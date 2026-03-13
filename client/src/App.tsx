@@ -8,6 +8,7 @@ import NotFound from "@/pages/not-found";
 import LiveDesk from "@/pages/live-desk";
 import AuthPage from "@/pages/auth";
 import Portal from "@/pages/portal";
+import AdminPortal from "@/pages/admin-portal";
 
 function Router() {
   return (
@@ -17,6 +18,7 @@ function Router() {
       <Route path="/login" component={AuthPage} />
       <Route path="/register" component={AuthPage} />
       <Route path="/portal" component={Portal} />
+      <Route path="/admin" component={AdminPortal} />
       <Route component={NotFound} />
     </Switch>
   );

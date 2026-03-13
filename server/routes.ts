@@ -373,6 +373,45 @@ export async function registerRoutes(
           res.write(`data: ${JSON.stringify({ type: "text", content: chunk })}\n\n`);
         }
 
+        const verifyRequestMatch = fullResponse.match(/<VERIFY_REQUEST>([\s\S]*?)<\/VERIFY_REQUEST>/);
+        if (verifyRequestMatch) {
+          try {
+            const verifyData = JSON.parse(verifyRequestMatch[1]);
+            const code = String(Math.floor(1000 + Math.random() * 9000));
+            const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+            await storage.createVerificationCode({
+              sessionId,
+              target: verifyData.target.toLowerCase(),
+              targetType: verifyData.targetType,
+              code,
+              verified: false,
+              expiresAt,
+            });
+            console.log(`[VERIFICATION] Code generated for ${verifyData.targetType}: ${verifyData.target.substring(0, 3)}***`);
+            res.write(`data: ${JSON.stringify({ type: "verify_request", target: verifyData.target, targetType: verifyData.targetType })}\n\n`);
+          } catch (e) {
+            console.error("Verify request parse error:", e);
+          }
+          fullResponse = fullResponse.replace(/<VERIFY_REQUEST>[\s\S]*?<\/VERIFY_REQUEST>/g, "").trim();
+        }
+
+        const verifyCodeMatch = fullResponse.match(/<VERIFY_CODE>([\s\S]*?)<\/VERIFY_CODE>/);
+        if (verifyCodeMatch) {
+          try {
+            const codeData = JSON.parse(verifyCodeMatch[1]);
+            const vc = await storage.getVerificationCode(codeData.target, codeData.code);
+            if (vc && new Date() <= vc.expiresAt) {
+              await storage.markVerified(vc.id);
+              res.write(`data: ${JSON.stringify({ type: "verify_result", verified: true, target: codeData.target })}\n\n`);
+            } else {
+              res.write(`data: ${JSON.stringify({ type: "verify_result", verified: false, target: codeData.target })}\n\n`);
+            }
+          } catch (e) {
+            console.error("Verify code parse error:", e);
+          }
+          fullResponse = fullResponse.replace(/<VERIFY_CODE>[\s\S]*?<\/VERIFY_CODE>/g, "").trim();
+        }
+
         const intakeData = parseIntakeJson(fullResponse);
         if (intakeData) {
           const cleanResponse = stripIntakeJson(fullResponse);
@@ -575,6 +614,12 @@ export async function registerRoutes(
         status: "completed",
       });
 
+      try {
+        await createVisitLogForSession(sessionId);
+      } catch (logErr) {
+        console.error("Visit log creation error:", logErr);
+      }
+
       res.json(report);
     } catch (error: any) {
       console.error("Report generation error:", error);
@@ -674,6 +719,304 @@ export async function registerRoutes(
       res.json({ success: true });
     } catch (error: any) {
       console.error("Avatar session stop error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/verify/send", async (req, res) => {
+    try {
+      const { target, targetType, sessionId } = req.body;
+      if (!target || !targetType) {
+        return res.status(400).json({ error: "target and targetType required" });
+      }
+
+      if (targetType === "email") {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(target)) {
+          return res.status(400).json({ error: "Invalid email format" });
+        }
+      } else if (targetType === "phone") {
+        const phoneRegex = /^[\d\s\-\+\(\)]{7,20}$/;
+        if (!phoneRegex.test(target)) {
+          return res.status(400).json({ error: "Invalid phone format" });
+        }
+      }
+
+      const code = String(Math.floor(1000 + Math.random() * 9000));
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+      await storage.createVerificationCode({
+        sessionId: sessionId || null,
+        target: target.toLowerCase(),
+        targetType,
+        code,
+        verified: false,
+        expiresAt,
+      });
+
+      if (targetType === "email") {
+        try {
+          const nodemailer = await import("nodemailer");
+          const transporter = nodemailer.createTransport({
+            host: process.env.SMTP_HOST || "smtp.gmail.com",
+            port: parseInt(process.env.SMTP_PORT || "587"),
+            secure: false,
+            auth: {
+              user: process.env.SMTP_USER,
+              pass: process.env.SMTP_PASS,
+            },
+          });
+
+          if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+            await transporter.sendMail({
+              from: `"AMERICAN IRON" <${process.env.SMTP_USER}>`,
+              to: target,
+              subject: "Your Verification Code - AMERICAN IRON",
+              html: `
+                <div style="font-family: Arial, sans-serif; max-width: 400px; margin: 0 auto; padding: 30px; background: #111; color: #fff; border-radius: 12px;">
+                  <h2 style="color: #FFCD11; text-align: center;">AMERICAN IRON</h2>
+                  <p style="text-align: center; color: #ccc;">Your verification code is:</p>
+                  <div style="text-align: center; font-size: 36px; font-weight: bold; color: #FFCD11; letter-spacing: 8px; padding: 20px;">${code}</div>
+                  <p style="text-align: center; color: #888; font-size: 12px;">This code expires in 10 minutes.</p>
+                </div>
+              `,
+            });
+          } else {
+            console.log(`[VERIFICATION] Code generated for ${target.substring(0, 3)}*** (no SMTP configured)`);
+          }
+        } catch (emailErr) {
+          console.log(`[VERIFICATION] Email send failed for ${target.substring(0, 3)}***`);
+        }
+      } else {
+        console.log(`[VERIFICATION] SMS code generated for ${target.substring(0, 3)}***`);
+      }
+
+      res.json({ success: true, message: `Verification code sent to ${targetType}` });
+    } catch (error: any) {
+      console.error("Verification send error:", error);
+      res.status(500).json({ error: "Failed to send verification code" });
+    }
+  });
+
+  const verifyAttempts = new Map<string, { count: number; lastAttempt: number }>();
+
+  app.post("/api/verify/check", async (req, res) => {
+    try {
+      const { target, code } = req.body;
+      if (!target || !code) {
+        return res.status(400).json({ error: "target and code required" });
+      }
+
+      const key = target.toLowerCase();
+      const now = Date.now();
+      const attempts = verifyAttempts.get(key);
+      if (attempts) {
+        if (now - attempts.lastAttempt < 60000 && attempts.count >= 5) {
+          return res.status(429).json({ error: "Too many attempts. Please wait 1 minute.", verified: false });
+        }
+        if (now - attempts.lastAttempt >= 60000) {
+          verifyAttempts.set(key, { count: 1, lastAttempt: now });
+        } else {
+          attempts.count++;
+          attempts.lastAttempt = now;
+        }
+      } else {
+        verifyAttempts.set(key, { count: 1, lastAttempt: now });
+      }
+
+      const vc = await storage.getVerificationCode(key, code);
+      if (!vc) {
+        return res.status(400).json({ error: "Invalid verification code", verified: false });
+      }
+
+      if (new Date() > vc.expiresAt) {
+        return res.status(400).json({ error: "Verification code has expired", verified: false });
+      }
+
+      await storage.markVerified(vc.id);
+      verifyAttempts.delete(key);
+      res.json({ verified: true });
+    } catch (error: any) {
+      console.error("Verification check error:", error);
+      res.status(500).json({ error: "Verification failed" });
+    }
+  });
+
+  async function createVisitLogForSession(sessionId: number) {
+    const session = await storage.getSession(sessionId);
+    if (!session) return null;
+
+    const existing = await storage.getVisitLogBySession(sessionId);
+    if (existing) return existing;
+
+    const report = await storage.getReport(sessionId);
+
+    let emailVerified = false;
+    let phoneVerified = false;
+    if (session.customerEmail) {
+      const vc = await storage.getLatestVerificationForTarget(session.customerEmail.toLowerCase());
+      emailVerified = vc?.verified === true;
+    }
+    if (session.customerPhone) {
+      const vc = await storage.getLatestVerificationForTarget(session.customerPhone);
+      phoneVerified = vc?.verified === true;
+    }
+
+    return storage.createVisitLog({
+      sessionId,
+      customerName: session.customerName,
+      customerEmail: session.customerEmail,
+      customerPhone: session.customerPhone,
+      company: session.company,
+      equipmentType: session.equipmentType,
+      make: session.make,
+      model: session.model,
+      year: session.year,
+      serialNumber: session.serialNumber,
+      problemSummary: session.problemSummary,
+      faultCodes: session.faultCodes,
+      visitType: session.visitType,
+      mechanicType: session.mechanicType,
+      status: session.status || "completed",
+      emailVerified,
+      phoneVerified,
+      reportData: report?.content || null,
+      conversationSummary: null,
+      language: session.language,
+    });
+  }
+
+  const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "americaniron2024";
+  const adminTokens = new Map<string, number>();
+  const ADMIN_TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000;
+
+  app.post("/api/admin/login", async (req, res) => {
+    try {
+      const { password } = req.body;
+      if (password !== ADMIN_PASSWORD) {
+        return res.status(401).json({ error: "Invalid admin password" });
+      }
+      const token = crypto.randomBytes(32).toString("hex");
+      adminTokens.set(token, Date.now() + ADMIN_TOKEN_EXPIRY_MS);
+      res.json({ token });
+    } catch (error: any) {
+      res.status(500).json({ error: "Admin login failed" });
+    }
+  });
+
+  function requireAdmin(req: Request, res: Response, next: NextFunction) {
+    const token = req.headers["x-admin-token"] as string;
+    if (!token) {
+      return res.status(401).json({ error: "Admin authentication required" });
+    }
+    const expiry = adminTokens.get(token);
+    if (!expiry || Date.now() > expiry) {
+      adminTokens.delete(token);
+      return res.status(401).json({ error: "Admin authentication required" });
+    }
+    next();
+  }
+
+  app.post("/api/admin/sessions/:id/visit-log", requireAdmin, async (req, res) => {
+    try {
+      const sessionId = parseInt(req.params.id);
+      const log = await createVisitLogForSession(sessionId);
+      if (!log) return res.status(404).json({ error: "Session not found" });
+      res.json(log);
+    } catch (error: any) {
+      console.error("Visit log error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/admin/dashboard", requireAdmin, async (_req, res) => {
+    try {
+      const allSessions = await storage.getAllSessions();
+      const allVisitLogs = await storage.getAllVisitLogs();
+      const allCustomers = await storage.getAllCustomers();
+
+      const totalVisits = allSessions.length;
+      const completedVisits = allSessions.filter(s => s.status === "completed").length;
+      const activeVisits = allSessions.filter(s => s.status !== "completed").length;
+      const uniqueEmails = new Set(allSessions.filter(s => s.customerEmail).map(s => s.customerEmail)).size;
+
+      const visitsByType: Record<string, number> = {};
+      allSessions.forEach(s => {
+        const t = s.mechanicType || "admin";
+        visitsByType[t] = (visitsByType[t] || 0) + 1;
+      });
+
+      res.json({
+        totalVisits,
+        completedVisits,
+        activeVisits,
+        uniqueCustomers: uniqueEmails,
+        registeredCustomers: allCustomers.length,
+        visitsByType,
+        recentVisits: allSessions.slice(0, 20),
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/admin/visits", requireAdmin, async (_req, res) => {
+    try {
+      const allSessions = await storage.getAllSessions();
+      const visitLogs = await storage.getAllVisitLogs();
+
+      const visits = allSessions.map(session => {
+        const log = visitLogs.find(vl => vl.sessionId === session.id);
+        return {
+          id: session.id,
+          customerName: session.customerName,
+          customerEmail: session.customerEmail,
+          customerPhone: session.customerPhone,
+          company: session.company,
+          equipmentType: session.equipmentType,
+          make: session.make,
+          model: session.model,
+          year: session.year,
+          serialNumber: session.serialNumber,
+          problemSummary: session.problemSummary,
+          faultCodes: session.faultCodes,
+          visitType: session.visitType,
+          mechanicType: session.mechanicType,
+          status: session.status,
+          language: session.language,
+          createdAt: session.createdAt,
+          emailVerified: log?.emailVerified || false,
+          phoneVerified: log?.phoneVerified || false,
+          hasReport: !!log?.reportData,
+        };
+      });
+
+      res.json(visits);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/admin/visits/:id", requireAdmin, async (req, res) => {
+    try {
+      const sessionId = parseInt(req.params.id);
+      const detail = await storage.getSessionWithMessages(sessionId);
+      const visitLog = await storage.getVisitLogBySession(sessionId);
+      res.json({ ...detail, visitLog });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/admin/customers", requireAdmin, async (_req, res) => {
+    try {
+      const allCustomers = await storage.getAllCustomers();
+      const result = allCustomers.map(c => {
+        const { passwordHash, ...safe } = c;
+        return safe;
+      });
+      res.json(result);
+    } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
   });

@@ -168,6 +168,50 @@ export const sessionReports = pgTable("session_reports", {
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
+export const verificationCodes = pgTable("verification_codes", {
+  id: serial("id").primaryKey(),
+  sessionId: integer("session_id").references(() => sessions.id, { onDelete: "cascade" }),
+  target: text("target").notNull(),
+  targetType: text("target_type").notNull(),
+  code: text("code").notNull(),
+  verified: boolean("verified").default(false).notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const visitLogs = pgTable("visit_logs", {
+  id: serial("id").primaryKey(),
+  sessionId: integer("session_id").references(() => sessions.id, { onDelete: "cascade" }),
+  customerName: text("customer_name"),
+  customerEmail: text("customer_email"),
+  customerPhone: text("customer_phone"),
+  company: text("company"),
+  equipmentType: text("equipment_type"),
+  make: text("make"),
+  model: text("model"),
+  year: text("year"),
+  serialNumber: text("serial_number"),
+  problemSummary: text("problem_summary"),
+  faultCodes: text("fault_codes"),
+  visitType: text("visit_type"),
+  mechanicType: text("mechanic_type"),
+  status: text("status").default("completed").notNull(),
+  emailVerified: boolean("email_verified").default(false),
+  phoneVerified: boolean("phone_verified").default(false),
+  reportData: jsonb("report_data"),
+  conversationSummary: text("conversation_summary"),
+  language: text("language").default("en"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertVerificationCodeSchema = createInsertSchema(verificationCodes).omit({ id: true, createdAt: true });
+export const insertVisitLogSchema = createInsertSchema(visitLogs).omit({ id: true, createdAt: true });
+
+export type VerificationCode = typeof verificationCodes.$inferSelect;
+export type InsertVerificationCode = z.infer<typeof insertVerificationCodeSchema>;
+export type VisitLog = typeof visitLogs.$inferSelect;
+export type InsertVisitLog = z.infer<typeof insertVisitLogSchema>;
+
 export const insertCustomerSchema = createInsertSchema(customers).omit({ id: true, createdAt: true });
 export const insertEquipmentSchema = createInsertSchema(equipment).omit({ id: true, createdAt: true });
 export const insertServiceRequestSchema = createInsertSchema(serviceRequests).omit({ id: true, createdAt: true });

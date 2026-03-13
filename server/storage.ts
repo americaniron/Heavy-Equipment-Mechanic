@@ -1,9 +1,10 @@
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, like, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
   customers, equipment, serviceRequests, workOrders,
   maintenanceSchedules, supportTickets, documents, invoices,
   sessions, sessionMessages, sessionFiles, sessionReports,
+  verificationCodes, visitLogs,
   type Customer, type InsertCustomer,
   type Equipment, type InsertEquipment,
   type ServiceRequest, type InsertServiceRequest,
@@ -16,6 +17,8 @@ import {
   type SessionMessage, type InsertSessionMessage,
   type SessionFile, type InsertSessionFile,
   type SessionReport, type InsertSessionReport,
+  type VerificationCode, type InsertVerificationCode,
+  type VisitLog, type InsertVisitLog,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -68,6 +71,19 @@ export interface IStorage {
   createReport(data: InsertSessionReport): Promise<SessionReport>;
   getReport(sessionId: number, reportType?: string): Promise<SessionReport | undefined>;
   getReportByShareToken(token: string): Promise<SessionReport | undefined>;
+
+  createVerificationCode(data: InsertVerificationCode): Promise<VerificationCode>;
+  getVerificationCode(target: string, code: string): Promise<VerificationCode | undefined>;
+  getLatestVerificationForTarget(target: string): Promise<VerificationCode | undefined>;
+  markVerified(id: number): Promise<void>;
+
+  createVisitLog(data: InsertVisitLog): Promise<VisitLog>;
+  getAllVisitLogs(): Promise<VisitLog[]>;
+  getVisitLogBySession(sessionId: number): Promise<VisitLog | undefined>;
+
+  getAllSessions(): Promise<Session[]>;
+  getAllCustomers(): Promise<Customer[]>;
+  getSessionWithMessages(sessionId: number): Promise<{ session: Session; messages: SessionMessage[]; report: SessionReport | undefined }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -224,6 +240,60 @@ export class DatabaseStorage implements IStorage {
   async getReportByShareToken(token: string): Promise<SessionReport | undefined> {
     const [report] = await db.select().from(sessionReports).where(eq(sessionReports.shareToken, token));
     return report;
+  }
+
+  async createVerificationCode(data: InsertVerificationCode): Promise<VerificationCode> {
+    const [code] = await db.insert(verificationCodes).values(data).returning();
+    return code;
+  }
+  async getVerificationCode(target: string, code: string): Promise<VerificationCode | undefined> {
+    const [vc] = await db.select().from(verificationCodes)
+      .where(and(
+        eq(verificationCodes.target, target.toLowerCase()),
+        eq(verificationCodes.code, code),
+        eq(verificationCodes.verified, false)
+      ))
+      .orderBy(desc(verificationCodes.createdAt));
+    return vc;
+  }
+  async getLatestVerificationForTarget(target: string): Promise<VerificationCode | undefined> {
+    const [vc] = await db.select().from(verificationCodes)
+      .where(and(
+        eq(verificationCodes.target, target.toLowerCase()),
+        eq(verificationCodes.verified, true)
+      ))
+      .orderBy(desc(verificationCodes.createdAt))
+      .limit(1);
+    return vc;
+  }
+  async markVerified(id: number): Promise<void> {
+    await db.update(verificationCodes).set({ verified: true }).where(eq(verificationCodes.id, id));
+  }
+
+  async createVisitLog(data: InsertVisitLog): Promise<VisitLog> {
+    const [log] = await db.insert(visitLogs).values(data).returning();
+    return log;
+  }
+  async getAllVisitLogs(): Promise<VisitLog[]> {
+    return db.select().from(visitLogs).orderBy(desc(visitLogs.createdAt));
+  }
+  async getVisitLogBySession(sessionId: number): Promise<VisitLog | undefined> {
+    const [log] = await db.select().from(visitLogs).where(eq(visitLogs.sessionId, sessionId));
+    return log;
+  }
+
+  async getAllSessions(): Promise<Session[]> {
+    return db.select().from(sessions).orderBy(desc(sessions.createdAt));
+  }
+  async getAllCustomers(): Promise<Customer[]> {
+    return db.select().from(customers).orderBy(desc(customers.createdAt));
+  }
+  async getSessionWithMessages(sessionId: number): Promise<{ session: Session; messages: SessionMessage[]; report: SessionReport | undefined }> {
+    const session = await this.getSession(sessionId);
+    if (!session) throw new Error("Session not found");
+    const messages = await this.getMessages(sessionId);
+    const report = await this.getReport(sessionId);
+    return { session, messages, report };
   }
 }
 
