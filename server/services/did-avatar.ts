@@ -13,56 +13,56 @@ type DIDPresenterConfig = {
 
 const PRESENTER_MAP_EN: Record<string, DIDPresenterConfig> = {
   admin: {
-    presenterId: "v2_public_Amber@0zSz8kflCN",
-    sourceUrl: "https://clips-presenters.d-id.com/v2/Amber/0zSz8kflCN/OUM7xZOuD5/image.png",
+    presenterId: "v2_public_Amber_BlackJacket_HomeOffice@9WuHtiUDnL",
+    sourceUrl: "https://clips-presenters.d-id.com/v2/Amber_BlackJacket_HomeOffice/9WuHtiUDnL/Sc6QllBjEE/image.png",
     voiceType: "microsoft",
     voiceId: "en-US-JennyMultilingualV2Neural",
     name: "Sarah",
     gender: "female",
   },
   heavy_equipment: {
-    presenterId: "v2_public_Adam_BlackShirt_Library@6uEefixtDc",
-    sourceUrl: "https://clips-presenters.d-id.com/v2/Adam/6uEefixtDc/image.png",
+    presenterId: "v2_public_Adam_GreenShirt_Outdoor@lCt14o5o4r",
+    sourceUrl: "https://clips-presenters.d-id.com/v2/Adam_GreenShirt_Outdoor/lCt14o5o4r/edTFEy9IG_/image.png",
     voiceType: "microsoft",
     voiceId: "en-US-GuyNeural",
     name: "Bryan",
     gender: "male",
   },
   power_gen: {
-    presenterId: "v2_public_Amber_WhiteBlueShirt_Outdoor@k_pw06LqHE",
-    sourceUrl: "https://clips-presenters.d-id.com/v2/Amber/k_pw06LqHE/image.png",
+    presenterId: "v2_public_fiona_blue_shirt_lab@FQBA_hemBB",
+    sourceUrl: "https://clips-presenters.d-id.com/v2/fiona_blue_shirt_lab/FQBA_hemBB/SbQyQr6H5b/image.png",
     voiceType: "microsoft",
     voiceId: "en-US-AriaNeural",
     name: "Elenora",
     gender: "female",
   },
   marine: {
-    presenterId: "v2_public_alex_black_suite_green_screen@u8RGmlrjpD",
-    sourceUrl: "https://clips-presenters.d-id.com/v2/alex/u8RGmlrjpD/image.png",
+    presenterId: "v2_public_dylan_dark_grey_shirt_nature@4DwMS4ibcR",
+    sourceUrl: "https://clips-presenters.d-id.com/v2/dylan_dark_grey_shirt_nature/4DwMS4ibcR/8AOgVavfzg/image.png",
     voiceType: "microsoft",
     voiceId: "en-US-DavisNeural",
     name: "Pedro",
     gender: "male",
   },
   hydraulics: {
-    presenterId: "v2_public_Adam_WhiteBlueShirt_LivingRoom@kwLwo22I6I",
-    sourceUrl: "https://clips-presenters.d-id.com/v2/Adam/kwLwo22I6I/image.png",
+    presenterId: "v2_public_ethan@hmt8kojzjp",
+    sourceUrl: "https://clips-presenters.d-id.com/v2/ethan/hmt8kojzjp/traoowwmob/image.png",
     voiceType: "microsoft",
     voiceId: "en-US-TonyNeural",
     name: "Thaddeus",
     gender: "male",
   },
   electrical: {
-    presenterId: "v2_public_Amber_RedSweater_HomeOffice@atjDiWT4JK",
-    sourceUrl: "https://clips-presenters.d-id.com/v2/Amber/atjDiWT4JK/image.png",
+    presenterId: "v2_public_ella_pink_shirt_classroom@wmnCN4_87Q",
+    sourceUrl: "https://clips-presenters.d-id.com/v2/ella_pink_shirt_classroom/wmnCN4_87Q/tNGWKcDea1/image.png",
     voiceType: "microsoft",
     voiceId: "en-US-JennyNeural",
     name: "Anastasia",
     gender: "female",
   },
   parts: {
-    presenterId: "v2_public_alex_biege_shirt_green_screen@sNZgzDrsOE",
-    sourceUrl: "https://clips-presenters.d-id.com/v2/alex/sNZgzDrsOE/image.png",
+    presenterId: "v2_public_eugene_black_shirt_lobby@CthhIOV7vW",
+    sourceUrl: "https://clips-presenters.d-id.com/v2/eugene_black_shirt_lobby/CthhIOV7vW/GrsTVHDhB7/image.png",
     voiceType: "microsoft",
     voiceId: "en-US-BrandonNeural",
     name: "Marcus",
@@ -72,56 +72,56 @@ const PRESENTER_MAP_EN: Record<string, DIDPresenterConfig> = {
 
 const PRESENTER_MAP_AR: Record<string, DIDPresenterConfig> = {
   admin: {
-    presenterId: "v2_public_Amber@0zSz8kflCN",
-    sourceUrl: "https://clips-presenters.d-id.com/v2/Amber/0zSz8kflCN/OUM7xZOuD5/image.png",
+    presenterId: "v2_public_Amber_BlackJacket_HomeOffice@9WuHtiUDnL",
+    sourceUrl: "https://clips-presenters.d-id.com/v2/Amber_BlackJacket_HomeOffice/9WuHtiUDnL/Sc6QllBjEE/image.png",
     voiceType: "microsoft",
     voiceId: "ar-SA-ZariyahNeural",
     name: "سارة",
     gender: "female",
   },
   heavy_equipment: {
-    presenterId: "v2_public_Adam_BlackShirt_Library@6uEefixtDc",
-    sourceUrl: "https://clips-presenters.d-id.com/v2/Adam/6uEefixtDc/image.png",
+    presenterId: "v2_public_Adam_GreenShirt_Outdoor@lCt14o5o4r",
+    sourceUrl: "https://clips-presenters.d-id.com/v2/Adam_GreenShirt_Outdoor/lCt14o5o4r/edTFEy9IG_/image.png",
     voiceType: "microsoft",
     voiceId: "ar-SA-HamedNeural",
     name: "خالد",
     gender: "male",
   },
   power_gen: {
-    presenterId: "v2_public_Amber_WhiteBlueShirt_Outdoor@k_pw06LqHE",
-    sourceUrl: "https://clips-presenters.d-id.com/v2/Amber/k_pw06LqHE/image.png",
+    presenterId: "v2_public_fiona_blue_shirt_lab@FQBA_hemBB",
+    sourceUrl: "https://clips-presenters.d-id.com/v2/fiona_blue_shirt_lab/FQBA_hemBB/SbQyQr6H5b/image.png",
     voiceType: "microsoft",
     voiceId: "ar-SA-ZariyahNeural",
     name: "ليلى",
     gender: "female",
   },
   marine: {
-    presenterId: "v2_public_alex_black_suite_green_screen@u8RGmlrjpD",
-    sourceUrl: "https://clips-presenters.d-id.com/v2/alex/u8RGmlrjpD/image.png",
+    presenterId: "v2_public_dylan_dark_grey_shirt_nature@4DwMS4ibcR",
+    sourceUrl: "https://clips-presenters.d-id.com/v2/dylan_dark_grey_shirt_nature/4DwMS4ibcR/8AOgVavfzg/image.png",
     voiceType: "microsoft",
     voiceId: "ar-SA-HamedNeural",
     name: "عمر",
     gender: "male",
   },
   hydraulics: {
-    presenterId: "v2_public_Adam_WhiteBlueShirt_LivingRoom@kwLwo22I6I",
-    sourceUrl: "https://clips-presenters.d-id.com/v2/Adam/kwLwo22I6I/image.png",
+    presenterId: "v2_public_ethan@hmt8kojzjp",
+    sourceUrl: "https://clips-presenters.d-id.com/v2/ethan/hmt8kojzjp/traoowwmob/image.png",
     voiceType: "microsoft",
     voiceId: "ar-SA-HamedNeural",
     name: "حسن",
     gender: "male",
   },
   electrical: {
-    presenterId: "v2_public_Amber_RedSweater_HomeOffice@atjDiWT4JK",
-    sourceUrl: "https://clips-presenters.d-id.com/v2/Amber/atjDiWT4JK/image.png",
+    presenterId: "v2_public_ella_pink_shirt_classroom@wmnCN4_87Q",
+    sourceUrl: "https://clips-presenters.d-id.com/v2/ella_pink_shirt_classroom/wmnCN4_87Q/tNGWKcDea1/image.png",
     voiceType: "microsoft",
     voiceId: "ar-SA-ZariyahNeural",
     name: "نور",
     gender: "female",
   },
   parts: {
-    presenterId: "v2_public_alex_biege_shirt_green_screen@sNZgzDrsOE",
-    sourceUrl: "https://clips-presenters.d-id.com/v2/alex/sNZgzDrsOE/image.png",
+    presenterId: "v2_public_eugene_black_shirt_lobby@CthhIOV7vW",
+    sourceUrl: "https://clips-presenters.d-id.com/v2/eugene_black_shirt_lobby/CthhIOV7vW/GrsTVHDhB7/image.png",
     voiceType: "microsoft",
     voiceId: "ar-SA-HamedNeural",
     name: "طارق",
@@ -136,6 +136,13 @@ const PRESENTER_MAPS: Record<string, Record<string, DIDPresenterConfig>> = {
 
 const agentCache: Record<string, string> = {};
 const activeStreams: Map<string, { agentId: string; streamId: string; sessionId: string }> = new Map();
+
+export function clearDIDAgentCache(): void {
+  for (const key of Object.keys(agentCache)) {
+    delete agentCache[key];
+  }
+  console.log("[D-ID] Agent cache cleared — new agents will use updated presenters");
+}
 
 function getApiKey(): string {
   const key = process.env.DID_API_KEY;
@@ -307,32 +314,55 @@ export async function sendDIDIceCandidate(
 export async function sendDIDSpeak(agentId: string, streamId: string, sessionId: string, text: string): Promise<void> {
   console.log(`[D-ID] Sending speak: "${text.substring(0, 60)}..."`);
 
-  const body: any = {
-    script: {
-      type: "text",
-      input: text,
-    },
+  const enhancedBody = {
+    script: { type: "text" as const, input: text, ssml: false },
     config: {
       stitch: true,
+      fluent: true,
+      align_driver: true,
+      sharpen: true,
+      auto_match: true,
+      normalization_factor: 0.1,
+      motion_factor: 0.55,
     },
     session_id: sessionId,
   };
 
   const res = await fetch(`${DID_API}/agents/${agentId}/streams/${streamId}`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: getAuthHeader(),
-    },
-    body: JSON.stringify(body),
+    headers: { "Content-Type": "application/json", Authorization: getAuthHeader() },
+    body: JSON.stringify(enhancedBody),
   });
 
-  if (!res.ok) {
-    const errText = await res.text();
-    console.error(`[D-ID] Speak failed:`, res.status, errText);
-    throw new Error(`D-ID speak error: ${res.status}`);
+  if (res.ok) {
+    console.log(`[D-ID] Speak command sent (enhanced config)`);
+    return;
   }
-  console.log(`[D-ID] Speak command sent`);
+
+  const errText = await res.text();
+  if (res.status >= 400 && res.status < 500) {
+    console.warn(`[D-ID] Enhanced speak rejected (${res.status}), retrying with minimal config`);
+    const minimalBody = {
+      script: { type: "text" as const, input: text },
+      config: { stitch: true },
+      session_id: sessionId,
+    };
+    const retryRes = await fetch(`${DID_API}/agents/${agentId}/streams/${streamId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: getAuthHeader() },
+      body: JSON.stringify(minimalBody),
+    });
+    if (!retryRes.ok) {
+      const retryErr = await retryRes.text();
+      console.error(`[D-ID] Minimal speak also failed:`, retryRes.status, retryErr);
+      throw new Error(`D-ID speak error: ${retryRes.status}`);
+    }
+    console.log(`[D-ID] Speak command sent (minimal config fallback)`);
+    return;
+  }
+
+  console.error(`[D-ID] Speak failed:`, res.status, errText);
+  throw new Error(`D-ID speak error: ${res.status}`);
 }
 
 export async function closeDIDStream(agentId: string, streamId: string, sessionId: string): Promise<void> {

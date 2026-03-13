@@ -454,7 +454,7 @@ export default function LiveDesk() {
         const chunks: string[] = [];
         let current = "";
         for (const s of sentences) {
-          if ((current + s).length > 180 && current) {
+          if ((current + s).length > 100 && current) {
             chunks.push(current.trim());
             current = s;
           } else {
@@ -463,6 +463,8 @@ export default function LiveDesk() {
         }
         if (current.trim()) chunks.push(current.trim());
         if (chunks.length === 0) chunks.push(text);
+
+        setIsTalking(true);
 
         for (let i = 0; i < chunks.length; i++) {
           const speakRes = await fetch("/api/avatar/speak", {
@@ -478,11 +480,11 @@ export default function LiveDesk() {
           });
           if (!speakRes.ok) throw new Error(`D-ID speak HTTP ${speakRes.status}`);
           if (i < chunks.length - 1) {
-            await new Promise(r => setTimeout(r, 300));
+            const chunkDelay = Math.max(200, chunks[i].length * 55);
+            await new Promise(r => setTimeout(r, chunkDelay));
           }
         }
 
-        setIsTalking(true);
         console.log("[D-ID] Speak sent", chunks.length, "chunks, total length:", text.length);
 
         const fallbackMs = Math.max(5000, text.length * 80);
@@ -497,6 +499,7 @@ export default function LiveDesk() {
         }, fallbackMs);
       } catch (err) {
         console.error("[D-ID] Speak failed:", err);
+        setIsTalking(false);
         speakWithBrowser(text);
       }
       return;
@@ -2135,14 +2138,21 @@ export default function LiveDesk() {
       </div>
 
       {subtitleText && (
-        <div className="absolute left-0 right-0 z-20 flex justify-center px-4" style={{ pointerEvents: "none", bottom: introPlaying ? "140px" : "100px" }}>
-          <div className="max-w-3xl w-full">
+        <div
+          className="absolute left-0 right-0 z-20 flex justify-center px-6"
+          style={{
+            pointerEvents: "none",
+            bottom: introPlaying ? "16px" : "90px",
+            transition: "bottom 0.3s ease",
+          }}
+        >
+          <div className="max-w-2xl w-full">
             {introPlaying && (
-              <div className="flex items-center justify-end mb-2" style={{ pointerEvents: "auto" }}>
+              <div className="flex items-center justify-end mb-3" style={{ pointerEvents: "auto" }}>
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="text-white/60 hover:text-white text-xs h-7 px-3 bg-black/40 backdrop-blur-sm rounded-full"
+                  className="text-white/70 hover:text-white text-xs h-7 px-4 bg-black/50 backdrop-blur-md rounded-full border border-white/10 hover:border-[#FFCD11]/40 transition-all"
                   data-testid="button-skip-intro"
                   onClick={() => {
                     setIntroPlaying(false);
@@ -2160,16 +2170,32 @@ export default function LiveDesk() {
               </div>
             )}
             <div
-              className="text-white/90 text-center text-sm leading-relaxed max-h-16 overflow-hidden"
-              data-testid="text-subtitle"
-              dir={selectedLanguage === "ar" ? "rtl" : "ltr"}
+              className="rounded-lg px-5 py-3"
               style={{
-                textShadow: "0 1px 4px rgba(0,0,0,0.8), 0 0 20px rgba(0,0,0,0.5)",
-                fontWeight: 500,
-                letterSpacing: "0.01em",
+                background: "linear-gradient(180deg, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.85) 100%)",
+                backdropFilter: "blur(12px)",
+                border: "1px solid rgba(255,255,255,0.08)",
               }}
             >
-              {subtitleText}
+              <p
+                className="text-white text-center leading-relaxed"
+                data-testid="text-subtitle"
+                dir={selectedLanguage === "ar" ? "rtl" : "ltr"}
+                style={{
+                  fontSize: "0.9375rem",
+                  fontWeight: 400,
+                  letterSpacing: "0.02em",
+                  lineHeight: 1.65,
+                  maxHeight: "4.95em",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  display: "-webkit-box",
+                  WebkitLineClamp: 3,
+                  WebkitBoxOrient: "vertical" as any,
+                }}
+              >
+                {subtitleText}
+              </p>
             </div>
           </div>
         </div>
