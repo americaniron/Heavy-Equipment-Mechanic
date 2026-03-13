@@ -242,7 +242,11 @@ function getApiKey(): string {
 }
 
 function getAuthHeader(): string {
-  return `Basic ${Buffer.from(getApiKey() + ":").toString("base64")}`;
+  const key = getApiKey();
+  if (key.includes(":")) {
+    return `Basic ${key}`;
+  }
+  return `Basic ${Buffer.from(key + ":").toString("base64")}`;
 }
 
 export async function checkDIDCredits(): Promise<number> {
