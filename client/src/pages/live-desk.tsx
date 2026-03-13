@@ -445,30 +445,56 @@ export default function LiveDesk() {
         return;
       }
       try {
-        const speakRes = await fetch("/api/avatar/speak", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            provider: "did",
-            agentId: didAgentIdRef.current,
-            streamId: didStreamIdRef.current,
-            sessionId: didSessionIdRef.current,
-            text,
-          }),
-        });
-        if (!speakRes.ok) throw new Error(`D-ID speak HTTP ${speakRes.status}`);
-        setIsTalking(true);
-        console.log("[D-ID] Speak sent, length:", text.length);
+        const sentenceMatches = text.match(/[^.!?؟]+[.!?؟]+\s*/g) || [];
+        const matched = sentenceMatches.join("");
+        const remainder = text.slice(matched.length).trim();
+        const sentences = [...sentenceMatches];
+        if (remainder) sentences.push(remainder);
 
-        const estimatedMs = Math.max(3000, text.length * 70);
+        const chunks: string[] = [];
+        let current = "";
+        for (const s of sentences) {
+          if ((current + s).length > 180 && current) {
+            chunks.push(current.trim());
+            current = s;
+          } else {
+            current += s;
+          }
+        }
+        if (current.trim()) chunks.push(current.trim());
+        if (chunks.length === 0) chunks.push(text);
+
+        for (let i = 0; i < chunks.length; i++) {
+          const speakRes = await fetch("/api/avatar/speak", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              provider: "did",
+              agentId: didAgentIdRef.current,
+              streamId: didStreamIdRef.current,
+              sessionId: didSessionIdRef.current,
+              text: chunks[i],
+            }),
+          });
+          if (!speakRes.ok) throw new Error(`D-ID speak HTTP ${speakRes.status}`);
+          if (i < chunks.length - 1) {
+            await new Promise(r => setTimeout(r, 300));
+          }
+        }
+
+        setIsTalking(true);
+        console.log("[D-ID] Speak sent", chunks.length, "chunks, total length:", text.length);
+
+        const fallbackMs = Math.max(5000, text.length * 80);
         setTimeout(() => {
-          setIsTalking(false);
-          setTimeout(() => setSubtitleText(""), 3000);
           if (speakEndedResolveRef.current) {
+            console.log("[D-ID] Speak fallback timer fired");
+            setIsTalking(false);
+            setTimeout(() => setSubtitleText(""), 3000);
             speakEndedResolveRef.current();
             speakEndedResolveRef.current = null;
           }
-        }, estimatedMs);
+        }, fallbackMs);
       } catch (err) {
         console.error("[D-ID] Speak failed:", err);
         speakWithBrowser(text);
@@ -651,26 +677,40 @@ export default function LiveDesk() {
 
       pc.oniceconnectionstatechange = () => {
         console.log("[D-ID] ICE state:", pc.iceConnectionState);
-        if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
+        if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+          console.log("[D-ID] WebRTC connected successfully");
+          setAvatarReady(true);
+        } else if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
           setAvatarReady(false);
         }
       };
 
       pc.ondatachannel = (event) => {
         const dc = event.channel;
+        console.log("[D-ID] Data channel opened:", dc.label);
         dc.onmessage = (msgEvent) => {
           try {
             const msg = JSON.parse(msgEvent.data);
-            console.log("[D-ID] Data channel message:", msg.type || msg.event);
-            if (msg.type === "speak_started") {
+            const eventType = msg.type || msg.event || msg.state;
+            console.log("[D-ID] Data channel:", eventType, JSON.stringify(msg).slice(0, 200));
+
+            if (eventType === "speak_started" || eventType === "started" ||
+                (msg.type === "chat/answer" && msg.state === "started")) {
               setIsTalking(true);
-            } else if (msg.type === "speak_ended" || msg.type === "done") {
+            } else if (eventType === "speak_ended" || eventType === "done" ||
+                       (msg.type === "chat/answer" && msg.state === "done") ||
+                       eventType === "stream/done") {
               setIsTalking(false);
               setTimeout(() => setSubtitleText(""), 3000);
               if (speakEndedResolveRef.current) {
                 speakEndedResolveRef.current();
                 speakEndedResolveRef.current = null;
               }
+            }
+
+            if (msg.type === "stream/ready" || eventType === "stream/ready") {
+              console.log("[D-ID] Stream ready - avatar is live");
+              setAvatarReady(true);
             }
           } catch {}
         };

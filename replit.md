@@ -8,15 +8,16 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
 - **Backend**: Express.js with TypeScript
 - **Database**: PostgreSQL with Drizzle ORM
 - **AI Engine**: OpenAI (GPT-4o) via Replit AI Integrations
-- **Video Avatars**: LiveAvatar (HeyGen) FULL mode API with LiveKit transport + browser TTS fallback
-- **Voice**: LiveKit audio tracks via LiveAvatar + browser SpeechSynthesis fallback
+- **Video Avatars**: D-ID Agents Streams API (primary, WebRTC) + HeyGen LiveAvatar (fallback, LiveKit) + browser TTS fallback
+- **Voice**: D-ID Microsoft Neural voices / HeyGen LiveKit audio tracks + browser SpeechSynthesis fallback
 - **Auth**: Token-based auth with bcryptjs password hashing
 
 ## Key Files
 - `shared/schema.ts` - Database schema (sessions, messages, files, reports, customers, equipment, serviceRequests, workOrders, maintenanceSchedules, supportTickets, documents, invoices, verificationCodes, visitLogs)
 - `server/routes.ts` - All API endpoints with session token auth + portal auth + admin portal auth + verification endpoints
 - `server/services/ai-engine.ts` - OpenAI conversation engine (Admin + 6 Specialist system prompts, with verification step integration)
-- `server/services/avatar.ts` - LiveAvatar API integration (session creation with H264/high quality, start, stop)
+- `server/services/avatar.ts` - HeyGen LiveAvatar API integration (session creation with H264/high quality, start, stop)
+- `server/services/did-avatar.ts` - D-ID Agents Streams API (agent creation with cached agents, WebRTC streams, speak, ICE/SDP relay, per-session stream cleanup)
 - `server/storage.ts` - Database CRUD operations for all tables including verification codes and visit logs
 - `server/db.ts` - Drizzle database connection
 - `client/src/pages/live-desk.tsx` - Full-screen video-first experience with LiveKit client, verification modal, text chunking for lip-sync
