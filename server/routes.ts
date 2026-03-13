@@ -36,7 +36,7 @@ async function sendEmailViaResend(target: string, code: string): Promise<boolean
   try {
     const { Resend } = await import("resend");
     const resend = new Resend(process.env.RESEND_API_KEY);
-    const fromEmail = process.env.RESEND_FROM_EMAIL || "AMERICAN IRON <onboarding@resend.dev>";
+    const fromEmail = process.env.RESEND_FROM_EMAIL || "AMERICAN IRON <noreply@americaniron1.com>";
     const result = await resend.emails.send({
       from: fromEmail,
       to: [target],
