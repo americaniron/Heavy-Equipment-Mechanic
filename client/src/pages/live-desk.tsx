@@ -139,6 +139,11 @@ export default function LiveDesk() {
   const roomRef = useRef<Room | null>(null);
   const avatarSessionTokenRef = useRef<string | null>(null);
   const avatarSessionIdRef = useRef<string | null>(null);
+  const avatarProviderRef = useRef<"did" | "heygen" | null>(null);
+  const didPeerRef = useRef<RTCPeerConnection | null>(null);
+  const didAgentIdRef = useRef<string | null>(null);
+  const didStreamIdRef = useRef<string | null>(null);
+  const didSessionIdRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const conversationRef = useRef<Array<{ role: string; content: string }>>([]);
   const pendingHandoffRef = useRef<any>(null);
@@ -346,6 +351,18 @@ export default function LiveDesk() {
       audioContextRef.current.close().catch(() => {});
       audioContextRef.current = null;
     }
+    if (didPeerRef.current) {
+      try { didPeerRef.current.close(); } catch (e) { console.error("D-ID peer close error:", e); }
+      didPeerRef.current = null;
+    }
+    const container = videoContainerRef.current;
+    if (container) {
+      container.querySelectorAll("video").forEach(v => v.remove());
+    }
+    document.querySelectorAll("audio[style*='display: none']").forEach(a => {
+      (a as HTMLAudioElement).pause();
+      a.remove();
+    });
     if (roomRef.current) {
       try {
         roomRef.current.disconnect();
@@ -354,15 +371,31 @@ export default function LiveDesk() {
       }
       roomRef.current = null;
     }
-    if (avatarSessionTokenRef.current) {
+    const provider = avatarProviderRef.current;
+    if (provider === "did" && didAgentIdRef.current && didStreamIdRef.current && didSessionIdRef.current) {
+      fetch("/api/avatar/session/stop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: "did",
+          agentId: didAgentIdRef.current,
+          streamId: didStreamIdRef.current,
+          sessionId: didSessionIdRef.current,
+        }),
+      }).catch(() => {});
+      didAgentIdRef.current = null;
+      didStreamIdRef.current = null;
+      didSessionIdRef.current = null;
+    } else if (avatarSessionTokenRef.current) {
       fetch("/api/avatar/session/stop", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionToken: avatarSessionTokenRef.current }),
       }).catch(() => {});
-      avatarSessionTokenRef.current = null;
-      avatarSessionIdRef.current = null;
     }
+    avatarSessionTokenRef.current = null;
+    avatarSessionIdRef.current = null;
+    avatarProviderRef.current = null;
   }, []);
 
   const speakWithBrowser = useCallback((text: string) => {
@@ -404,6 +437,45 @@ export default function LiveDesk() {
   }, []);
 
   const sendAvatarSpeakCommand = useCallback(async (text: string) => {
+    const provider = avatarProviderRef.current;
+
+    if (provider === "did") {
+      if (!didAgentIdRef.current || !didStreamIdRef.current || !didSessionIdRef.current) {
+        speakWithBrowser(text);
+        return;
+      }
+      try {
+        const speakRes = await fetch("/api/avatar/speak", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            provider: "did",
+            agentId: didAgentIdRef.current,
+            streamId: didStreamIdRef.current,
+            sessionId: didSessionIdRef.current,
+            text,
+          }),
+        });
+        if (!speakRes.ok) throw new Error(`D-ID speak HTTP ${speakRes.status}`);
+        setIsTalking(true);
+        console.log("[D-ID] Speak sent, length:", text.length);
+
+        const estimatedMs = Math.max(3000, text.length * 70);
+        setTimeout(() => {
+          setIsTalking(false);
+          setTimeout(() => setSubtitleText(""), 3000);
+          if (speakEndedResolveRef.current) {
+            speakEndedResolveRef.current();
+            speakEndedResolveRef.current = null;
+          }
+        }, estimatedMs);
+      } catch (err) {
+        console.error("[D-ID] Speak failed:", err);
+        speakWithBrowser(text);
+      }
+      return;
+    }
+
     const room = roomRef.current;
     if (!room || room.state !== "connected") {
       speakWithBrowser(text);
@@ -505,12 +577,128 @@ export default function LiveDesk() {
     }
   };
 
-  const connectAvatar = async (agentType: string = "admin", language: string = "en"): Promise<Room> => {
+  const connectAvatar = async (agentType: string = "admin", language: string = "en"): Promise<Room | null> => {
     const res = await apiRequest("POST", "/api/avatar/session", { agentType, language });
-    const { sessionId, sessionToken, livekitUrl, livekitClientToken } = await res.json();
+    const data = await res.json();
 
-    avatarSessionTokenRef.current = sessionToken;
-    avatarSessionIdRef.current = sessionId;
+    if (data.provider === "did") {
+      console.log("[D-ID] Setting up WebRTC connection");
+      avatarProviderRef.current = "did";
+      didAgentIdRef.current = data.agentId;
+      didStreamIdRef.current = data.streamId;
+      didSessionIdRef.current = data.sessionId;
+
+      const pc = new RTCPeerConnection({
+        iceServers: data.iceServers || [{ urls: "stun:stun.l.google.com:19302" }],
+      });
+      didPeerRef.current = pc;
+
+      pc.ontrack = (event) => {
+        console.log("[D-ID] Track received:", event.track.kind);
+        const container = videoContainerRef.current;
+
+        if (event.track.kind === "video" && container) {
+          const existingVideos = container.querySelectorAll("video");
+          existingVideos.forEach(v => v.remove());
+
+          const videoEl = document.createElement("video");
+          videoEl.srcObject = event.streams[0];
+          videoEl.autoplay = true;
+          videoEl.playsInline = true;
+          videoEl.style.width = "100%";
+          videoEl.style.height = "100%";
+          videoEl.style.objectFit = "cover";
+          videoEl.style.position = "absolute";
+          videoEl.style.top = "0";
+          videoEl.style.left = "0";
+          videoEl.style.zIndex = "1";
+          videoEl.setAttribute("data-testid", "video-avatar");
+          container.appendChild(videoEl);
+          console.log("[D-ID] Video element attached");
+          setAvatarReady(true);
+        }
+
+        if (event.track.kind === "audio") {
+          const audioEl = document.createElement("audio");
+          audioEl.srcObject = event.streams[0];
+          audioEl.autoplay = true;
+          audioEl.style.display = "none";
+          document.body.appendChild(audioEl);
+          console.log("[D-ID] Audio element attached");
+        }
+      };
+
+      pc.onicecandidate = async (event) => {
+        if (event.candidate) {
+          try {
+            await fetch("/api/avatar/session/ice", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                agentId: data.agentId,
+                streamId: data.streamId,
+                sessionId: data.sessionId,
+                candidate: event.candidate.candidate,
+                sdpMid: event.candidate.sdpMid,
+                sdpMLineIndex: event.candidate.sdpMLineIndex,
+              }),
+            });
+          } catch (e) {
+            console.warn("[D-ID] ICE candidate send failed:", e);
+          }
+        }
+      };
+
+      pc.oniceconnectionstatechange = () => {
+        console.log("[D-ID] ICE state:", pc.iceConnectionState);
+        if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
+          setAvatarReady(false);
+        }
+      };
+
+      pc.ondatachannel = (event) => {
+        const dc = event.channel;
+        dc.onmessage = (msgEvent) => {
+          try {
+            const msg = JSON.parse(msgEvent.data);
+            console.log("[D-ID] Data channel message:", msg.type || msg.event);
+            if (msg.type === "speak_started") {
+              setIsTalking(true);
+            } else if (msg.type === "speak_ended" || msg.type === "done") {
+              setIsTalking(false);
+              setTimeout(() => setSubtitleText(""), 3000);
+              if (speakEndedResolveRef.current) {
+                speakEndedResolveRef.current();
+                speakEndedResolveRef.current = null;
+              }
+            }
+          } catch {}
+        };
+      };
+
+      await pc.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp: data.offer }));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+
+      const sdpRes = await fetch("/api/avatar/session/sdp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: data.agentId,
+          streamId: data.streamId,
+          sessionId: data.sessionId,
+          answer: answer.sdp,
+        }),
+      });
+      if (!sdpRes.ok) throw new Error(`D-ID SDP answer failed: ${sdpRes.status}`);
+
+      console.log("[D-ID] SDP answer sent, waiting for connection...");
+      return null;
+    }
+
+    avatarProviderRef.current = "heygen";
+    avatarSessionTokenRef.current = data.sessionToken;
+    avatarSessionIdRef.current = data.sessionId;
 
     const room = new Room({
       adaptiveStream: true,
@@ -567,9 +755,9 @@ export default function LiveDesk() {
       console.log("Room connected successfully");
     });
 
-    room.on(RoomEvent.DataReceived, (data, participant, kind, topic) => {
+    room.on(RoomEvent.DataReceived, (rawData, participant, kind, topic) => {
       try {
-        const decoded = new TextDecoder().decode(data);
+        const decoded = new TextDecoder().decode(rawData);
         const message = JSON.parse(decoded);
         const eventType = message.event_type || message.type;
         console.log("LiveKit event:", eventType, "topic:", topic, JSON.stringify(message).slice(0, 200));
@@ -602,8 +790,9 @@ export default function LiveDesk() {
       setAvatarReady(false);
     });
 
-    await room.connect(livekitUrl, livekitClientToken);
+    await room.connect(data.livekitUrl, data.livekitClientToken);
     roomRef.current = room;
+    console.log("[Avatar] Connected via HeyGen LiveKit");
 
     return room;
   };
@@ -702,8 +891,11 @@ export default function LiveDesk() {
   const lastCueTimeRef = useRef<number>(0);
 
   const sendAvatarListeningCue = useCallback(() => {
+    const provider = avatarProviderRef.current;
     const room = roomRef.current;
-    if (!room || room.state !== "connected") return;
+    const hasDID = provider === "did" && didAgentIdRef.current && didStreamIdRef.current && didSessionIdRef.current;
+    const hasHeygen = room && room.state === "connected";
+    if (!hasDID && !hasHeygen) return;
     const now = Date.now();
     if (now - lastCueTimeRef.current < 8000) return;
     lastCueTimeRef.current = now;
@@ -712,16 +904,30 @@ export default function LiveDesk() {
       : ["Mm-hmm", "I see", "Got it", "Okay"];
     const cue = cues[Math.floor(Math.random() * cues.length)];
     try {
-      const encoder = new TextEncoder();
-      const payload = JSON.stringify({
-        event_type: "avatar.speak_text",
-        session_id: avatarSessionIdRef.current,
-        text: cue,
-      });
-      room.localParticipant.publishData(encoder.encode(payload), {
-        reliable: true,
-        topic: "agent-control",
-      });
+      if (hasDID) {
+        fetch("/api/avatar/speak", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            provider: "did",
+            agentId: didAgentIdRef.current,
+            streamId: didStreamIdRef.current,
+            sessionId: didSessionIdRef.current,
+            text: cue,
+          }),
+        }).catch(() => {});
+      } else if (hasHeygen) {
+        const encoder = new TextEncoder();
+        const payload = JSON.stringify({
+          event_type: "avatar.speak_text",
+          session_id: avatarSessionIdRef.current,
+          text: cue,
+        });
+        room!.localParticipant.publishData(encoder.encode(payload), {
+          reliable: true,
+          topic: "agent-control",
+        });
+      }
     } catch {}
   }, [selectedLanguage]);
 
