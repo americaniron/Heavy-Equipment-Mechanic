@@ -22,50 +22,80 @@ if (!fs.existsSync(uploadDir)) {
 
 const sessionTokens = new Map<number, string>();
 
-async function deliverVerificationCode(target: string, targetType: string, code: string): Promise<boolean> {
-  if (targetType === "email") {
-    try {
-      const nodemailer = await import("nodemailer");
+const verificationEmailHtml = (code: string) => `
+  <div style="font-family: Arial, sans-serif; max-width: 400px; margin: 0 auto; padding: 30px; background: #111; color: #fff; border-radius: 12px;">
+    <h2 style="color: #FFCD11; text-align: center;">AMERICAN IRON</h2>
+    <p style="text-align: center; color: #ccc;">Your verification code is:</p>
+    <div style="text-align: center; font-size: 36px; font-weight: bold; color: #FFCD11; letter-spacing: 8px; padding: 20px;">${code}</div>
+    <p style="text-align: center; color: #888; font-size: 12px;">This code expires in 10 minutes.</p>
+  </div>
+`;
 
-      if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-        const smtpPort = parseInt(process.env.SMTP_PORT || "587");
-        const transporter = nodemailer.createTransport({
-          host: process.env.SMTP_HOST || "smtp.gmail.com",
-          port: smtpPort,
-          secure: smtpPort === 465,
-          auth: {
-            user: process.env.SMTP_USER,
-            pass: process.env.SMTP_PASS,
-          },
-          connectionTimeout: 10000,
-          greetingTimeout: 10000,
-          socketTimeout: 10000,
-        });
-
-        await transporter.sendMail({
-          from: `"AMERICAN IRON" <${process.env.SMTP_USER}>`,
-          to: target,
-          subject: "Your Verification Code - AMERICAN IRON",
-          html: `
-            <div style="font-family: Arial, sans-serif; max-width: 400px; margin: 0 auto; padding: 30px; background: #111; color: #fff; border-radius: 12px;">
-              <h2 style="color: #FFCD11; text-align: center;">AMERICAN IRON</h2>
-              <p style="text-align: center; color: #ccc;">Your verification code is:</p>
-              <div style="text-align: center; font-size: 36px; font-weight: bold; color: #FFCD11; letter-spacing: 8px; padding: 20px;">${code}</div>
-              <p style="text-align: center; color: #888; font-size: 12px;">This code expires in 10 minutes.</p>
-            </div>
-          `,
-        });
-        console.log(`[VERIFICATION] Email sent to ${target.substring(0, 3)}***`);
-        return true;
-      } else {
-        console.warn(`[VERIFICATION] No SMTP credentials configured. Set SMTP_USER and SMTP_PASS environment variables to enable email delivery.`);
-        console.warn(`[VERIFICATION] Code for ${target.substring(0, 3)}*** was generated but could not be delivered.`);
-        return false;
-      }
-    } catch (emailErr: any) {
-      console.error(`[VERIFICATION] Email delivery failed for ${target.substring(0, 3)}***:`, emailErr.message);
+async function sendEmailViaResend(target: string, code: string): Promise<boolean> {
+  if (!process.env.RESEND_API_KEY) return false;
+  try {
+    const { Resend } = await import("resend");
+    const resend = new Resend(process.env.RESEND_API_KEY);
+    const fromEmail = process.env.RESEND_FROM_EMAIL || "AMERICAN IRON <onboarding@resend.dev>";
+    const result = await resend.emails.send({
+      from: fromEmail,
+      to: [target],
+      subject: "Your Verification Code - AMERICAN IRON",
+      html: verificationEmailHtml(code),
+    });
+    if (result.error) {
+      console.error(`[VERIFICATION] Resend error for ${target.substring(0, 3)}***:`, result.error.message);
       return false;
     }
+    console.log(`[VERIFICATION] Email sent via Resend to ${target.substring(0, 3)}***`);
+    return true;
+  } catch (err: any) {
+    console.error(`[VERIFICATION] Resend delivery failed for ${target.substring(0, 3)}***:`, err.message);
+    return false;
+  }
+}
+
+async function sendEmailViaSMTP(target: string, code: string): Promise<boolean> {
+  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) return false;
+  try {
+    const nodemailer = await import("nodemailer");
+    const smtpPort = parseInt(process.env.SMTP_PORT || "587");
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST || "smtp.gmail.com",
+      port: smtpPort,
+      secure: smtpPort === 465,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 10000,
+    });
+    await transporter.sendMail({
+      from: `"AMERICAN IRON" <${process.env.SMTP_USER}>`,
+      to: target,
+      subject: "Your Verification Code - AMERICAN IRON",
+      html: verificationEmailHtml(code),
+    });
+    console.log(`[VERIFICATION] Email sent via SMTP to ${target.substring(0, 3)}***`);
+    return true;
+  } catch (err: any) {
+    console.error(`[VERIFICATION] SMTP delivery failed for ${target.substring(0, 3)}***:`, err.message);
+    return false;
+  }
+}
+
+async function deliverVerificationCode(target: string, targetType: string, code: string): Promise<boolean> {
+  if (targetType === "email") {
+    const sentViaResend = await sendEmailViaResend(target, code);
+    if (sentViaResend) return true;
+
+    const sentViaSMTP = await sendEmailViaSMTP(target, code);
+    if (sentViaSMTP) return true;
+
+    console.warn(`[VERIFICATION] No email service configured. Set RESEND_API_KEY or SMTP_USER/SMTP_PASS.`);
+    return false;
   } else if (targetType === "phone") {
     if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER) {
       try {
@@ -83,7 +113,7 @@ async function deliverVerificationCode(target: string, targetType: string, code:
         return false;
       }
     } else {
-      console.warn(`[VERIFICATION] No Twilio credentials configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER to enable SMS delivery.`);
+      console.warn(`[VERIFICATION] No Twilio credentials configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER.`);
       return false;
     }
   }
