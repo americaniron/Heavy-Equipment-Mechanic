@@ -36,7 +36,7 @@ async function sendEmailViaResend(target: string, code: string): Promise<boolean
   try {
     const { Resend } = await import("resend");
     const resend = new Resend(process.env.RESEND_API_KEY);
-    const fromEmail = process.env.RESEND_FROM_EMAIL || "AMERICAN IRON <onboarding@resend.dev>";
+    const fromEmail = process.env.RESEND_FROM_EMAIL || "AMERICAN IRON <adam@americaniron1.com>";
     const result = await resend.emails.send({
       from: fromEmail,
       to: [target],
@@ -857,7 +857,7 @@ export async function registerRoutes(
       if (delivered) {
         res.json({ success: true, message: `Verification code sent to ${targetType}` });
       } else {
-        res.json({ success: true, delivered: false, message: `Verification code created but delivery service is not configured. Please set up SMTP (email) or Twilio (SMS) credentials.` });
+        res.json({ success: true, delivered: false, message: `Verification code created but could not be delivered. Check server logs for details.` });
       }
     } catch (error: any) {
       console.error("Verification send error:", error);
