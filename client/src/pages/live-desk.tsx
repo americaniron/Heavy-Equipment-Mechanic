@@ -64,7 +64,7 @@ const MECHANIC_INFO: Record<string, Record<string, { name: string; title: string
     marine: { name: "James Coastal", title: "Marine Engine Mechanic", icon: Anchor },
     hydraulics: { name: "David Pressure", title: "Hydraulics Specialist", icon: Droplets },
     electrical: { name: "Elena Circuit", title: "Electrical Controls Specialist", icon: Cpu },
-    parts: { name: "Tariq Hassan", title: "Parts Assistance Specialist", icon: Package },
+    parts: { name: "Marcus", title: "Parts Assistance Specialist", icon: Package },
   },
   ar: {
     heavy_equipment: { name: "خالد المهندس", title: "ميكانيكي معدات ثقيلة", icon: Wrench },
@@ -704,10 +704,11 @@ export default function LiveDesk() {
       }
 
       if (fullText) {
-        const speakText = fullText.length > 500 ? fullText.substring(0, 500) : fullText;
+        const cleanedText = fullText.replace(/<INTAKE_JSON>[\s\S]*?<\/INTAKE_JSON>/g, "").trim();
+        const speakText = cleanedText.length > 500 ? cleanedText.substring(0, 500) : cleanedText;
         setSubtitleText(speakText);
-        conversationRef.current.push({ role: "assistant", content: fullText });
-        await sendAvatarSpeakCommand(speakText);
+        conversationRef.current.push({ role: "assistant", content: cleanedText });
+        if (speakText) await sendAvatarSpeakCommand(speakText);
 
         const estimatedMs = Math.max(3000, speakText.length * 80);
         await waitForSpeakEnd(Math.min(estimatedMs, 30000));
@@ -1960,32 +1961,237 @@ export default function LiveDesk() {
         </div>
       )}
 
-      <Dialog open={showReport} onOpenChange={setShowReport}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto bg-card" data-testid="modal-report">
-          <DialogHeader>
-            <DialogTitle>
-              {report?.reportType === "pro" ? "Pro Diagnostic Report" : "Quick Advice Report"}
-            </DialogTitle>
-            <DialogDescription>
-              Generated for {sessionData.equipmentType || "your equipment"}
-            </DialogDescription>
-          </DialogHeader>
-          {report?.content && <ReportContent content={report.content} />}
-          {report?.svgDiagram && (
-            <div>
-              <h4 className="text-sm font-semibold mb-2">Technical Diagram</h4>
-              <div className="bg-muted/50 rounded-md border border-card-border p-2 overflow-x-auto"
-                dangerouslySetInnerHTML={{ __html: report.svgDiagram }} />
+      {showReport && report && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" data-testid="modal-report">
+          <div className="absolute inset-0 bg-black/90 backdrop-blur-md animate-in fade-in duration-500" onClick={() => setShowReport(false)} />
+
+          <div className="relative z-10 w-full max-w-4xl mx-4 max-h-[90vh] flex flex-col animate-in zoom-in-95 fade-in duration-500">
+            <div className="relative overflow-hidden rounded-2xl border border-[#FFCD11]/20 bg-gradient-to-b from-[#1a1a1a] to-[#111111] shadow-2xl shadow-[#FFCD11]/5">
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-[#FFCD11] to-transparent" />
+
+              <div className="p-6 pb-4 border-b border-white/10">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-xl bg-[#FFCD11]/15 flex items-center justify-center border border-[#FFCD11]/30">
+                      <FileText className="w-6 h-6 text-[#FFCD11]" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold text-white tracking-tight">
+                        {report.reportType === "pro" ? "Pro Diagnostic Report" : "Quick Advice Report"}
+                      </h2>
+                      <p className="text-sm text-white/50 mt-0.5">
+                        AMERICAN IRON | {sessionData.equipmentType || "Equipment"} {sessionData.make ? `- ${sessionData.make}` : ""} {sessionData.model || ""}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-10 w-10 rounded-full text-white/50 hover:text-white hover:bg-white/10"
+                    onClick={() => setShowReport(false)}
+                    data-testid="button-close-report"
+                  >
+                    <X className="w-5 h-5" />
+                  </Button>
+                </div>
+
+                <div className="flex items-center gap-2 mt-4 flex-wrap">
+                  <Button
+                    size="sm"
+                    className="bg-[#FFCD11] text-black hover:bg-[#FFCD11]/90 font-medium"
+                    onClick={() => {
+                      const printContent = document.getElementById("report-print-area");
+                      if (printContent) {
+                        const win = window.open("", "_blank");
+                        if (win) {
+                          win.document.write(`<html><head><title>AMERICAN IRON - Diagnostic Report</title>
+                            <style>body{font-family:system-ui,sans-serif;padding:40px;max-width:800px;margin:0 auto;color:#111}
+                            h1{font-size:24px;border-bottom:3px solid #FFCD11;padding-bottom:12px}
+                            h4{margin:16px 0 8px;font-size:16px}p{margin:4px 0;line-height:1.6}
+                            .badge{display:inline-block;padding:2px 8px;border-radius:4px;background:#f0f0f0;font-size:12px;margin-right:8px}
+                            .warning{background:#fff3cd;border:1px solid #ffc107;padding:12px;border-radius:8px;margin:12px 0}
+                            .header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}
+                            .logo{font-weight:bold;font-size:14px;color:#FFCD11;letter-spacing:2px}
+                            @media print{body{padding:20px}}</style></head>
+                            <body><div class='header'><h1>Diagnostic Report</h1><span class='logo'>AMERICAN IRON</span></div>${printContent.innerHTML}</body></html>`);
+                          win.document.close();
+                          win.print();
+                        }
+                      }
+                    }}
+                    data-testid="button-print-report"
+                  >
+                    <Download className="w-3.5 h-3.5 mr-1.5" />
+                    Print / Save PDF
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="bg-white/10 text-white hover:bg-white/20 border-0"
+                    onClick={() => {
+                      const subject = encodeURIComponent(`AMERICAN IRON - ${report.reportType === "pro" ? "Pro Diagnostic" : "Quick Advice"} Report`);
+                      const shareUrl = report.shareToken ? `${window.location.origin}/?shared=${report.shareToken}` : "";
+                      const body = encodeURIComponent(
+                        `Here is your diagnostic report from AMERICAN IRON:\n\n` +
+                        `Equipment: ${sessionData.equipmentType || "N/A"} ${sessionData.make || ""} ${sessionData.model || ""}\n` +
+                        (report.content?.problemSummary ? `Problem: ${report.content.problemSummary}\n\n` : "\n") +
+                        (shareUrl ? `View full report: ${shareUrl}\n\n` : "") +
+                        `---\nGenerated by AMERICAN IRON Live AI Engineer Desk`
+                      );
+                      window.open(`mailto:?subject=${subject}&body=${body}`, "_self");
+                    }}
+                    data-testid="button-email-report"
+                  >
+                    <Send className="w-3.5 h-3.5 mr-1.5" />
+                    Email Report
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="bg-white/10 text-white hover:bg-white/20 border-0"
+                    onClick={copyShareLink}
+                    data-testid="button-share-report"
+                  >
+                    <Share2 className="w-3.5 h-3.5 mr-1.5" />
+                    Copy Link
+                  </Button>
+                </div>
+              </div>
+
+              <div className="overflow-y-auto max-h-[calc(90vh-220px)] p-6" id="report-print-area">
+                {report.content && <CinematicReportContent content={report.content} />}
+                {report.svgDiagram && (
+                  <div className="mt-6">
+                    <h4 className="text-sm font-bold text-[#FFCD11] uppercase tracking-wider mb-3">Technical Diagram</h4>
+                    <div className="bg-white/5 rounded-xl border border-white/10 p-4 overflow-x-auto"
+                      dangerouslySetInnerHTML={{ __html: report.svgDiagram }} />
+                  </div>
+                )}
+              </div>
+
+              <div className="p-4 border-t border-white/10 flex items-center justify-center gap-2 text-xs text-white/30">
+                <Shield className="w-3.5 h-3.5" />
+                <span>AI guidance is informational only. Not a substitute for certified inspection.</span>
+              </div>
             </div>
-          )}
-          <div className="flex items-center gap-2 pt-2 border-t border-border/50">
-            <Button variant="secondary" size="sm" onClick={copyShareLink} data-testid="button-share-report">
-              <Share2 className="w-3.5 h-3.5 mr-1.5" />
-              Share Report
-            </Button>
           </div>
-        </DialogContent>
-      </Dialog>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CinematicReportContent({ content }: { content: any }) {
+  return (
+    <div className="space-y-6 text-sm">
+      {content.problemSummary && (
+        <div className="bg-white/5 rounded-xl border border-white/10 p-5">
+          <h4 className="text-xs font-bold text-[#FFCD11] uppercase tracking-wider mb-3">Problem Summary</h4>
+          <p className="text-white/80 leading-relaxed text-base">{content.problemSummary}</p>
+        </div>
+      )}
+      {content.likelyCauses && (
+        <div>
+          <h4 className="text-xs font-bold text-[#FFCD11] uppercase tracking-wider mb-3">Likely Causes</h4>
+          <div className="space-y-2">
+            {(content.likelyCauses as any[]).map((cause: any, i: number) => (
+              <div key={i} className="flex items-center gap-3 bg-white/5 rounded-lg border border-white/10 p-3">
+                <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${
+                  (cause.confidence || "").toLowerCase() === "high" ? "bg-red-500/20 text-red-400" :
+                  (cause.confidence || "").toLowerCase() === "medium" ? "bg-yellow-500/20 text-yellow-400" :
+                  "bg-blue-500/20 text-blue-400"
+                }`}>{cause.confidence || "Medium"}</span>
+                <span className="text-white/80">{cause.cause}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {content.rootCauseMatrix && (
+        <div>
+          <h4 className="text-xs font-bold text-[#FFCD11] uppercase tracking-wider mb-3">Root Cause Analysis</h4>
+          <div className="space-y-3">
+            {(content.rootCauseMatrix as any[]).map((item: any, i: number) => (
+              <div key={i} className="bg-white/5 rounded-xl border border-white/10 p-4">
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-[#FFCD11]/20 text-[#FFCD11]">{item.probability}</span>
+                  <span className="font-semibold text-white">{item.cause}</span>
+                </div>
+                {item.evidence && <p className="text-white/50 text-xs leading-relaxed pl-1">{item.evidence}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {content.safeChecks && (
+        <div>
+          <h4 className="text-xs font-bold text-[#FFCD11] uppercase tracking-wider mb-3">Safe Checks</h4>
+          <div className="bg-white/5 rounded-xl border border-white/10 p-4 space-y-2">
+            {(content.safeChecks as string[]).map((check: string, i: number) => (
+              <div key={i} className="flex items-start gap-3 text-white/70">
+                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-green-400" />
+                <span>{check}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {content.diagnosticTree && (
+        <div>
+          <h4 className="text-xs font-bold text-[#FFCD11] uppercase tracking-wider mb-3">Diagnostic Steps</h4>
+          <div className="space-y-2">
+            {(content.diagnosticTree as any[]).map((step: any, i: number) => (
+              <div key={i} className="flex items-start gap-3 bg-white/5 rounded-lg border border-white/10 p-3">
+                <span className="w-7 h-7 rounded-full bg-[#FFCD11]/15 text-[#FFCD11] flex items-center justify-center text-xs font-bold shrink-0">{step.step}</span>
+                <div className="pt-1">
+                  <p className="text-white/80">{step.action}</p>
+                  {step.expectedResult && <p className="text-white/40 text-xs mt-1">Expected: {step.expectedResult}</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {content.partsList && (
+        <div>
+          <h4 className="text-xs font-bold text-[#FFCD11] uppercase tracking-wider mb-3">Parts List</h4>
+          <div className="bg-white/5 rounded-xl border border-white/10 overflow-hidden">
+            {(content.partsList as any[]).map((part: any, i: number) => (
+              <div key={i} className={`flex items-center justify-between px-4 py-3 ${i > 0 ? "border-t border-white/5" : ""}`}>
+                <span className="text-white/80">{part.partName}</span>
+                {part.partNumber && <span className="text-white/40 font-mono text-xs bg-white/5 px-2 py-1 rounded">{part.partNumber}</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {content.safetyWarnings && (
+        <div className="bg-red-500/10 rounded-xl border border-red-500/20 p-5">
+          <h4 className="font-bold mb-3 flex items-center gap-2 text-red-400">
+            <AlertTriangle className="w-5 h-5" />
+            <span className="text-xs uppercase tracking-wider">Safety Warnings</span>
+          </h4>
+          <ul className="space-y-2 text-sm text-red-300/80">
+            {(content.safetyWarnings as string[]).map((w: string, i: number) => (
+              <li key={i} className="flex items-start gap-2">
+                <span className="text-red-400 mt-1">&#9679;</span>
+                <span>{w}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {content.whenToCallTech && (
+        <div className="bg-white/5 rounded-xl border border-white/10 p-5">
+          <h4 className="text-xs font-bold text-[#FFCD11] uppercase tracking-wider mb-3">When to Call a Technician</h4>
+          <p className="text-white/70 leading-relaxed">{content.whenToCallTech}</p>
+        </div>
+      )}
+      {content.disclaimer && (
+        <p className="text-xs text-white/30 italic pt-2">
+          {content.disclaimer}
+        </p>
+      )}
     </div>
   );
 }
