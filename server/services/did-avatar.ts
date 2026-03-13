@@ -135,6 +135,7 @@ const PRESENTER_MAPS: Record<string, Record<string, DIDPresenterConfig>> = {
 };
 
 const agentCache: Record<string, string> = {};
+const activeStreams: Array<{ agentId: string; streamId: string; sessionId: string }> = [];
 
 function getApiKey(): string {
   const key = process.env.DID_API_KEY;
@@ -167,11 +168,12 @@ async function getOrCreateAgent(agentType: string, language: string): Promise<st
         voice_id: presenter.voiceId,
       },
       source_url: presenter.sourceUrl,
+      thumbnail: presenter.sourceUrl,
     },
     llm: {
       type: "openai" as const,
       provider: "openai" as const,
-      model: "gpt-4o",
+      model: "gpt-4o-mini",
       instructions: persona,
     },
     preview_name: presenter.name,
@@ -211,6 +213,13 @@ export async function createDIDStream(agentType: string = "admin", language: str
 }> {
   const agentId = await getOrCreateAgent(agentType, language);
 
+  for (const old of activeStreams.splice(0)) {
+    try {
+      console.log(`[D-ID] Cleaning up old stream ${old.streamId}`);
+      await closeDIDStream(old.agentId, old.streamId, old.sessionId);
+    } catch {}
+  }
+
   console.log(`[D-ID] Creating stream for agent ${agentId}`);
   const res = await fetch(`${DID_API}/agents/${agentId}/streams`, {
     method: "POST",
@@ -226,15 +235,21 @@ export async function createDIDStream(agentType: string = "admin", language: str
     throw new Error(`D-ID create stream error: ${res.status}`);
   }
 
+  const setCookieHeader = res.headers.get("set-cookie") || "";
   const data = await res.json();
-  console.log(`[D-ID] Stream created: ${data.id}, session: ${data.session_id}`);
+
+  const sessionId = data.session_id || setCookieHeader || data.id;
+  const offerSdp = typeof data.offer === "string" ? data.offer : (data.offer?.sdp || data.offer);
+  console.log(`[D-ID] Stream created: ${data.id}, session_id present: ${!!sessionId}, offer type: ${typeof offerSdp}`);
+
+  activeStreams.push({ agentId, streamId: data.id, sessionId });
 
   return {
     provider: "did",
     agentId,
     streamId: data.id,
-    sessionId: data.session_id,
-    offer: data.offer,
+    sessionId: sessionId,
+    offer: offerSdp,
     iceServers: data.ice_servers || [{ urls: ["stun:stun.l.google.com:19302"] }],
   };
 }
@@ -322,6 +337,8 @@ export async function closeDIDStream(agentId: string, streamId: string, sessionI
       },
       body: JSON.stringify({ session_id: sessionId }),
     });
+    const idx = activeStreams.findIndex(s => s.streamId === streamId);
+    if (idx >= 0) activeStreams.splice(idx, 1);
     console.log(`[D-ID] Stream closed`);
   } catch (err) {
     console.error("[D-ID] Error closing stream:", err);
