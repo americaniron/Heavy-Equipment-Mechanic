@@ -401,17 +401,43 @@ export default function LiveDesk() {
 
     try {
       const encoder = new TextEncoder();
-      const payload = JSON.stringify({
-        event_type: "avatar.speak_text",
-        session_id: avatarSessionIdRef.current,
-        text: text,
-      });
-      room.localParticipant.publishData(encoder.encode(payload), {
-        reliable: true,
-        topic: "agent-control",
-      });
+
+      const sentenceMatches = text.match(/[^.!?]+[.!?]+\s*/g) || [];
+      const matched = sentenceMatches.join("");
+      const remainder = text.slice(matched.length).trim();
+      const sentences = [...sentenceMatches];
+      if (remainder) sentences.push(remainder);
+
+      const chunks: string[] = [];
+      let current = "";
+      for (const s of sentences) {
+        if ((current + s).length > 180 && current) {
+          chunks.push(current.trim());
+          current = s;
+        } else {
+          current += s;
+        }
+      }
+      if (current.trim()) chunks.push(current.trim());
+      if (chunks.length === 0) chunks.push(text);
+
+      for (let i = 0; i < chunks.length; i++) {
+        const payload = JSON.stringify({
+          event_type: "avatar.speak_text",
+          session_id: avatarSessionIdRef.current,
+          text: chunks[i],
+        });
+        room.localParticipant.publishData(encoder.encode(payload), {
+          reliable: true,
+          topic: "agent-control",
+        });
+        if (i < chunks.length - 1) {
+          await new Promise(r => setTimeout(r, 200));
+        }
+      }
+
       setIsTalking(true);
-      console.log("Avatar speak command sent via LiveKit, text length:", text.length);
+      console.log("Avatar speak: sent", chunks.length, "chunks, total length:", text.length);
     } catch (err) {
       console.error("Failed to send speak command via LiveKit:", err);
       speakWithBrowser(text);
@@ -705,13 +731,12 @@ export default function LiveDesk() {
 
       if (fullText) {
         const cleanedText = fullText.replace(/<INTAKE_JSON>[\s\S]*?<\/INTAKE_JSON>/g, "").trim();
-        const speakText = cleanedText.length > 500 ? cleanedText.substring(0, 500) : cleanedText;
-        setSubtitleText(speakText);
+        setSubtitleText(cleanedText);
         conversationRef.current.push({ role: "assistant", content: cleanedText });
-        if (speakText) await sendAvatarSpeakCommand(speakText);
+        if (cleanedText) await sendAvatarSpeakCommand(cleanedText);
 
-        const estimatedMs = Math.max(3000, speakText.length * 80);
-        await waitForSpeakEnd(Math.min(estimatedMs, 30000));
+        const estimatedMs = Math.max(3000, cleanedText.length * 80);
+        await waitForSpeakEnd(Math.min(estimatedMs, 45000));
 
         if (handoffData) {
           await new Promise(r => setTimeout(r, 1500));
@@ -1634,7 +1659,7 @@ export default function LiveDesk() {
         data-testid="shop-background"
       />
 
-      <div className="absolute inset-0 flex items-center justify-center z-[1]" style={{ paddingTop: "64px", paddingBottom: "140px" }}>
+      <div className="absolute inset-0 flex items-center justify-center z-[1]" style={{ paddingTop: "56px", paddingBottom: "160px" }}>
         <div
           className={`relative w-full max-w-3xl mx-4 rounded-2xl overflow-hidden shadow-2xl transition-all duration-500 ${avatarListening ? "ring-2 ring-[#FFCD11]/50 shadow-[0_0_40px_rgba(255,205,17,0.15)]" : "ring-1 ring-white/10"}`}
           style={{ aspectRatio: "16/9" }}
@@ -1777,17 +1802,14 @@ export default function LiveDesk() {
       </div>
 
       {subtitleText && (
-        <div className="absolute bottom-36 left-0 right-0 z-20 flex justify-center px-4" style={{ pointerEvents: "none" }}>
-          <div className="max-w-2xl w-full space-y-2">
+        <div className="absolute left-0 right-0 z-20 flex justify-center px-4" style={{ pointerEvents: "none", bottom: introPlaying ? "140px" : "100px" }}>
+          <div className="max-w-3xl w-full">
             {introPlaying && (
-              <div className="flex items-center justify-between" style={{ pointerEvents: "auto" }}>
-                <Badge variant="outline" className="bg-blue-500/20 text-blue-300 border-blue-500/30 text-xs">
-                  Introduction
-                </Badge>
+              <div className="flex items-center justify-end mb-2" style={{ pointerEvents: "auto" }}>
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="text-white/60 hover:text-white text-xs h-7 px-3"
+                  className="text-white/60 hover:text-white text-xs h-7 px-3 bg-black/40 backdrop-blur-sm rounded-full"
                   data-testid="button-skip-intro"
                   onClick={() => {
                     setIntroPlaying(false);
@@ -1804,7 +1826,16 @@ export default function LiveDesk() {
                 </Button>
               </div>
             )}
-            <div className="bg-black/70 backdrop-blur-sm text-white text-sm px-4 py-3 rounded-lg leading-relaxed" data-testid="text-subtitle" dir={selectedLanguage === "ar" ? "rtl" : "ltr"}>
+            <div
+              className="text-white/90 text-center text-sm leading-relaxed max-h-16 overflow-hidden"
+              data-testid="text-subtitle"
+              dir={selectedLanguage === "ar" ? "rtl" : "ltr"}
+              style={{
+                textShadow: "0 1px 4px rgba(0,0,0,0.8), 0 0 20px rgba(0,0,0,0.5)",
+                fontWeight: 500,
+                letterSpacing: "0.01em",
+              }}
+            >
               {subtitleText}
             </div>
           </div>
