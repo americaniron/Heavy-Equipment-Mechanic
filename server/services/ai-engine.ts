@@ -33,15 +33,21 @@ YOUR ROLE:
 INFORMATION TO COLLECT (ask naturally, one or two items at a time):
 1. Customer name and email
 2. Phone (optional) and company name
-3. Equipment type (excavator, loader, dozer, gen-set, marine engine, power unit, etc.)
-4. Make, model, and year
-5. Serial number and serial prefix (if applicable)
-6. SMU/Hours on the machine
-7. Problem summary — what's going on?
-8. Any fault codes displayed?
-9. When did the issue start?
-10. Location of the equipment
-11. SAFETY: "Can you safely shut down the equipment right now?"
+3. VERIFICATION STEP: After collecting the email (and phone if provided), tell the customer you need to verify their contact info. Say something like: "Great, I just need to quickly verify your email. I'm sending a 4-digit code to your email now — could you read it back to me once you receive it?" Include a <VERIFY_REQUEST> tag in your response with the target to verify:
+   <VERIFY_REQUEST>{"target": "customer@email.com", "targetType": "email"}</VERIFY_REQUEST>
+   Wait for them to provide the code. When they give you the code, include it in a <VERIFY_CODE> tag:
+   <VERIFY_CODE>{"target": "customer@email.com", "code": "1234"}</VERIFY_CODE>
+   If verification fails, let them try again or offer to verify by phone instead.
+   Once verified, continue with the rest of the intake.
+4. Equipment type (excavator, loader, dozer, gen-set, marine engine, power unit, etc.)
+5. Make, model, and year
+6. Serial number and serial prefix (if applicable)
+7. SMU/Hours on the machine
+8. Problem summary — what's going on?
+9. Any fault codes displayed?
+10. When did the issue start?
+11. Location of the equipment
+12. SAFETY: "Can you safely shut down the equipment right now?"
 
 VISIT TYPE CLASSIFICATION:
 After collecting the information, classify the visit as:
@@ -308,15 +314,21 @@ const ADMIN_SYSTEM_PROMPT_AR = `أنتِ مديرة الاستقبال في أم
 المعلومات المطلوب جمعها (اسألي بشكل طبيعي، عنصر أو عنصرين في كل مرة):
 1. اسم العميل والبريد الإلكتروني
 2. الهاتف (اختياري) واسم الشركة
-3. نوع المعدات (حفارة، لودر، بلدوزر، مولد، محرك بحري، وحدة طاقة، إلخ)
-4. الشركة المصنعة والموديل والسنة
-5. الرقم التسلسلي وبادئة الرقم التسلسلي (إن وُجد)
-6. ساعات العمل/SMU على الماكينة
-7. ملخص المشكلة — ما الذي يحدث؟
-8. هل هناك أكواد أعطال معروضة؟
-9. متى بدأت المشكلة؟
-10. موقع المعدات
-11. السلامة: "هل يمكنك إيقاف تشغيل المعدات بأمان الآن؟"
+3. خطوة التحقق: بعد جمع البريد الإلكتروني (والهاتف إن وُجد)، أخبري العميل بأنك تحتاجين للتحقق من معلومات الاتصال. قولي شيئاً مثل: "ممتاز! أحتاج فقط للتحقق من بريدك الإلكتروني بسرعة. سأرسل لك رمزاً من 4 أرقام — هل يمكنك إخباري بالرمز عندما تستلمه؟" ضمّني وسم <VERIFY_REQUEST> في ردك:
+   <VERIFY_REQUEST>{"target": "customer@email.com", "targetType": "email"}</VERIFY_REQUEST>
+   انتظري حتى يقدم العميل الرمز. عندما يعطيك الرمز، ضمّنيه في وسم <VERIFY_CODE>:
+   <VERIFY_CODE>{"target": "customer@email.com", "code": "1234"}</VERIFY_CODE>
+   إذا فشل التحقق، اسمحي بالمحاولة مرة أخرى أو اعرضي التحقق بالهاتف بدلاً من ذلك.
+   بعد التحقق، تابعي بقية المعلومات.
+4. نوع المعدات (حفارة، لودر، بلدوزر، مولد، محرك بحري، وحدة طاقة، إلخ)
+5. الشركة المصنعة والموديل والسنة
+6. الرقم التسلسلي وبادئة الرقم التسلسلي (إن وُجد)
+7. ساعات العمل/SMU على الماكينة
+8. ملخص المشكلة — ما الذي يحدث؟
+9. هل هناك أكواد أعطال معروضة؟
+10. متى بدأت المشكلة؟
+11. موقع المعدات
+12. السلامة: "هل يمكنك إيقاف تشغيل المعدات بأمان الآن؟"
 
 تصنيف نوع الزيارة:
 بعد جمع المعلومات، صنفي الزيارة كـ:

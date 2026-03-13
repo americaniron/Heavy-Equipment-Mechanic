@@ -103,6 +103,11 @@ export default function LiveDesk() {
   const [aboutNarrating, setAboutNarrating] = useState(false);
   const [activeView, setActiveView] = useState<"home" | "services">("home");
   const [expandedService, setExpandedService] = useState<number | null>(null);
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
+  const [verifyTarget, setVerifyTarget] = useState("");
+  const [verifyType, setVerifyType] = useState<"email" | "phone">("email");
+  const [verifyCode, setVerifyCode] = useState("");
+  const [verificationStatus, setVerificationStatus] = useState<"pending" | "verified" | "failed" | null>(null);
   const aboutVideoRef = useRef<HTMLVideoElement>(null);
   const aboutAudioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -724,13 +729,29 @@ export default function LiveDesk() {
               fullText += event.content;
             } else if (event.type === "handoff") {
               handoffData = event;
+            } else if (event.type === "verify_request") {
+              setVerifyTarget(event.target);
+              setVerifyType(event.targetType);
+              setShowVerifyModal(true);
+            } else if (event.type === "verify_result") {
+              if (event.verified) {
+                setVerificationStatus("verified");
+                toast({ title: selectedLanguage === "ar" ? "تم التحقق بنجاح!" : "Verified successfully!" });
+              } else {
+                setVerificationStatus("failed");
+                toast({ title: selectedLanguage === "ar" ? "رمز التحقق غير صحيح" : "Invalid verification code", variant: "destructive" });
+              }
             }
           } catch {}
         }
       }
 
       if (fullText) {
-        const cleanedText = fullText.replace(/<INTAKE_JSON>[\s\S]*?<\/INTAKE_JSON>/g, "").trim();
+        const cleanedText = fullText
+          .replace(/<INTAKE_JSON>[\s\S]*?<\/INTAKE_JSON>/g, "")
+          .replace(/<VERIFY_REQUEST>[\s\S]*?<\/VERIFY_REQUEST>/g, "")
+          .replace(/<VERIFY_CODE>[\s\S]*?<\/VERIFY_CODE>/g, "")
+          .trim();
         setSubtitleText(cleanedText);
         conversationRef.current.push({ role: "assistant", content: cleanedText });
         if (cleanedText) await sendAvatarSpeakCommand(cleanedText);
@@ -1989,6 +2010,116 @@ export default function LiveDesk() {
               </Button>
             </>
           )}
+        </div>
+      )}
+
+      {showVerifyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" data-testid="modal-verify">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
+          <div className="relative z-10 w-full max-w-sm mx-4 bg-[#1a1a1a] border border-[#FFCD11]/30 rounded-2xl p-6 animate-in zoom-in-95 fade-in duration-300">
+            <div className="text-center mb-6">
+              <div className="w-14 h-14 mx-auto mb-3 rounded-full bg-[#FFCD11]/10 flex items-center justify-center">
+                <Shield className="w-7 h-7 text-[#FFCD11]" />
+              </div>
+              <h3 className="text-white text-lg font-semibold" data-testid="text-verify-title">
+                {selectedLanguage === "ar" ? "التحقق من الهوية" : "Verify Your Identity"}
+              </h3>
+              <p className="text-gray-400 text-sm mt-1" dir={selectedLanguage === "ar" ? "rtl" : "ltr"}>
+                {selectedLanguage === "ar"
+                  ? `تم إرسال رمز مكون من 4 أرقام إلى ${verifyType === "email" ? "بريدك الإلكتروني" : "هاتفك"}`
+                  : `A 4-digit code has been sent to your ${verifyType}`}
+              </p>
+              <p className="text-[#FFCD11] text-xs mt-1 font-mono" data-testid="text-verify-target">{verifyTarget}</p>
+            </div>
+
+            <div className="flex justify-center gap-2 mb-4">
+              {[0, 1, 2, 3].map(i => (
+                <input
+                  key={i}
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={1}
+                  data-testid={`input-verify-digit-${i}`}
+                  className="w-12 h-14 text-center text-2xl font-bold bg-[#111] border border-white/20 rounded-lg text-white focus:border-[#FFCD11] focus:ring-1 focus:ring-[#FFCD11] outline-none transition-all"
+                  value={verifyCode[i] || ""}
+                  onChange={e => {
+                    const val = e.target.value.replace(/\D/g, "");
+                    if (val) {
+                      const newCode = verifyCode.split("");
+                      newCode[i] = val;
+                      setVerifyCode(newCode.join(""));
+                      const next = e.target.nextElementSibling as HTMLInputElement;
+                      if (next) next.focus();
+                    }
+                  }}
+                  onKeyDown={e => {
+                    if (e.key === "Backspace" && !verifyCode[i]) {
+                      const prev = (e.target as HTMLElement).previousElementSibling as HTMLInputElement;
+                      if (prev) prev.focus();
+                    }
+                  }}
+                />
+              ))}
+            </div>
+
+            {verificationStatus === "verified" && (
+              <div className="text-center text-green-400 text-sm mb-3 flex items-center justify-center gap-1" data-testid="text-verify-success">
+                <CheckCircle2 className="w-4 h-4" /> {selectedLanguage === "ar" ? "تم التحقق بنجاح!" : "Verified!"}
+              </div>
+            )}
+            {verificationStatus === "failed" && (
+              <div className="text-center text-red-400 text-sm mb-3" data-testid="text-verify-failed">
+                {selectedLanguage === "ar" ? "رمز غير صحيح، حاول مرة أخرى" : "Invalid code, please try again"}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1 border-white/20 text-gray-300 hover:text-white"
+                data-testid="button-verify-skip"
+                onClick={() => {
+                  setShowVerifyModal(false);
+                  setVerifyCode("");
+                  setVerificationStatus(null);
+                }}
+              >
+                {selectedLanguage === "ar" ? "تخطي" : "Skip"}
+              </Button>
+              <Button
+                className="flex-1 bg-[#FFCD11] hover:bg-[#e6b800] text-black font-semibold"
+                data-testid="button-verify-submit"
+                disabled={verifyCode.length < 4}
+                onClick={async () => {
+                  try {
+                    const res = await fetch("/api/verify/check", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ target: verifyTarget, code: verifyCode }),
+                    });
+                    const data = await res.json();
+                    if (data.verified) {
+                      setVerificationStatus("verified");
+                      setTimeout(() => {
+                        setShowVerifyModal(false);
+                        setVerifyCode("");
+                        setVerificationStatus(null);
+                        const msg = selectedLanguage === "ar" ? "تم التحقق، شكراً" : "Verified, thank you";
+                        handleUserMessageRef.current(msg);
+                      }, 1500);
+                    } else {
+                      setVerificationStatus("failed");
+                      setVerifyCode("");
+                    }
+                  } catch {
+                    setVerificationStatus("failed");
+                  }
+                }}
+              >
+                {selectedLanguage === "ar" ? "تحقق" : "Verify"}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
 

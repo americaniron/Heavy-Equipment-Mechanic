@@ -13,17 +13,18 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
 - **Auth**: Token-based auth with bcryptjs password hashing
 
 ## Key Files
-- `shared/schema.ts` - Database schema (sessions, messages, files, reports, customers, equipment, serviceRequests, workOrders, maintenanceSchedules, supportTickets, documents, invoices)
-- `server/routes.ts` - All API endpoints with session token auth + portal auth
-- `server/services/ai-engine.ts` - OpenAI conversation engine (Admin + 6 Specialist system prompts)
-- `server/services/avatar.ts` - LiveAvatar API integration (session creation, start, stop)
-- `server/storage.ts` - Database CRUD operations for all tables
+- `shared/schema.ts` - Database schema (sessions, messages, files, reports, customers, equipment, serviceRequests, workOrders, maintenanceSchedules, supportTickets, documents, invoices, verificationCodes, visitLogs)
+- `server/routes.ts` - All API endpoints with session token auth + portal auth + admin portal auth + verification endpoints
+- `server/services/ai-engine.ts` - OpenAI conversation engine (Admin + 6 Specialist system prompts, with verification step integration)
+- `server/services/avatar.ts` - LiveAvatar API integration (session creation with H264/high quality, start, stop)
+- `server/storage.ts` - Database CRUD operations for all tables including verification codes and visit logs
 - `server/db.ts` - Drizzle database connection
-- `client/src/pages/live-desk.tsx` - Full-screen video-first experience with LiveKit client
+- `client/src/pages/live-desk.tsx` - Full-screen video-first experience with LiveKit client, verification modal, text chunking for lip-sync
 - `client/src/pages/auth.tsx` - Login/Register page with AMERICAN IRON branding
 - `client/src/pages/portal.tsx` - Full Customer Portal + AI Virtual Mechanic Portal (20 sections)
+- `client/src/pages/admin-portal.tsx` - Admin Portal with dashboard, visit logs, customer management, email/WhatsApp communication
 - `client/src/lib/auth.tsx` - AuthProvider context with login/register/logout
-- `client/src/App.tsx` - Router with routes for /, /live-desk, /login, /register, /portal
+- `client/src/App.tsx` - Router with routes for /, /live-desk, /login, /register, /portal, /admin
 
 ## Customer Portal & AI Mechanic Portal
 - **Auth**: Token-based (x-auth-token header), bcryptjs password hashing, shared registration
