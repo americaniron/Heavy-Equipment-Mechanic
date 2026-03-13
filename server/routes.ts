@@ -13,7 +13,7 @@ import {
   type ConversationMessage,
 } from "./services/ai-engine";
 import { createAvatarSession, stopAvatarSession, sendAvatarSpeak, getAvatarInfo } from "./services/avatar";
-import { createDIDStream, sendDIDSdpAnswer, sendDIDIceCandidate, sendDIDSpeak, closeDIDStream } from "./services/did-avatar";
+import { createDIDStream, sendDIDSdpAnswer, sendDIDIceCandidate, sendDIDSpeak, closeDIDStream, clearDIDAgentCache } from "./services/did-avatar";
 
 
 const uploadDir = path.join(process.cwd(), "uploads");
@@ -159,6 +159,8 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+
+  clearDIDAgentCache();
 
   app.post("/api/auth/register", async (req, res) => {
     try {
