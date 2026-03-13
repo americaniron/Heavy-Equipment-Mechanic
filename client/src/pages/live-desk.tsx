@@ -480,6 +480,9 @@ export default function LiveDesk() {
               text: chunks[i],
             }),
           });
+          if (speakRes.status === 402) {
+            throw new Error("credits_exhausted");
+          }
           if (!speakRes.ok) throw new Error(`D-ID speak HTTP ${speakRes.status}`);
           if (i < chunks.length - 1) {
             const chunkDelay = Math.max(250, chunks[i].length * 60);
@@ -499,10 +502,32 @@ export default function LiveDesk() {
             speakEndedResolveRef.current = null;
           }
         }, fallbackMs);
-      } catch (err) {
+      } catch (err: any) {
         console.error("[D-ID] Speak failed:", err);
         setIsTalking(false);
-        speakWithBrowser(text);
+
+        if (err?.message === "credits_exhausted") {
+          console.log("[D-ID] Credits exhausted, switching to HeyGen avatar");
+          didAgentIdRef.current = null;
+          didStreamIdRef.current = null;
+          didSessionIdRef.current = null;
+          if (didPeerRef.current) {
+            didPeerRef.current.close();
+            didPeerRef.current = null;
+          }
+          avatarProviderRef.current = "heygen";
+
+          try {
+            await connectAvatar(currentAgent || "admin", selectedLanguage);
+            await new Promise(r => setTimeout(r, 2000));
+            await sendAvatarSpeakCommand(text);
+          } catch (heygenErr) {
+            console.error("[HeyGen] Fallback also failed:", heygenErr);
+            speakWithBrowser(text);
+          }
+        } else {
+          speakWithBrowser(text);
+        }
       }
       return;
     }
