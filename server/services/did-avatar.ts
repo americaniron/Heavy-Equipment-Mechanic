@@ -262,7 +262,7 @@ export async function sendDIDSdpAnswer(agentId: string, streamId: string, sessio
       "Content-Type": "application/json",
       Authorization: getAuthHeader(),
     },
-    body: JSON.stringify({ answer, session_id: sessionId }),
+    body: JSON.stringify({ answer: { type: "answer", sdp: answer }, session_id: sessionId }),
   });
 
   if (!res.ok) {
