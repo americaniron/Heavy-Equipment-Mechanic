@@ -260,13 +260,12 @@ async function getOrCreateAgent(agentType: string, language: string): Promise<st
 
   const body = {
     presenter: {
-      type: "talk" as const,
+      type: "clip" as const,
+      presenter_id: presenter.presenterId,
       voice: {
         type: presenter.voiceType,
         voice_id: presenter.voiceId,
       },
-      source_url: presenter.sourceUrl,
-      thumbnail: presenter.sourceUrl,
     },
     llm: {
       type: "openai" as const,
@@ -356,22 +355,49 @@ export async function createDIDStream(agentType: string = "admin", language: str
 }
 
 export async function sendDIDSdpAnswer(agentId: string, streamId: string, sessionId: string, answer: string): Promise<void> {
-  console.log(`[D-ID] Sending SDP answer for stream ${streamId}`);
-  const res = await fetch(`${DID_API}/agents/${agentId}/streams/${streamId}/sdp`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: getAuthHeader(),
-    },
-    body: JSON.stringify({ answer: { type: "answer", sdp: answer }, session_id: sessionId }),
-  });
+  const maxRetries = 3;
+  const retryableStatuses = new Set([408, 429, 500, 502, 503, 504]);
 
-  if (!res.ok) {
-    const errText = await res.text();
-    console.error(`[D-ID] SDP answer failed:`, res.status, errText);
-    throw new Error(`D-ID SDP error: ${res.status}`);
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[D-ID] Sending SDP answer for stream ${streamId} (attempt ${attempt}/${maxRetries})`);
+      const res = await fetch(`${DID_API}/agents/${agentId}/streams/${streamId}/sdp`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: getAuthHeader(),
+        },
+        body: JSON.stringify({ answer: { type: "answer", sdp: answer }, session_id: sessionId }),
+      });
+
+      if (res.ok) {
+        console.log(`[D-ID] SDP answer accepted`);
+        return;
+      }
+
+      const errText = await res.text();
+      console.error(`[D-ID] SDP answer failed (attempt ${attempt}):`, res.status, errText);
+
+      if (attempt < maxRetries && retryableStatuses.has(res.status)) {
+        const delay = attempt * 1200 + Math.random() * 500;
+        console.log(`[D-ID] Retrying SDP in ${Math.round(delay)}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+
+      throw new Error(`D-ID SDP error: ${res.status}`);
+    } catch (err: any) {
+      if (err?.message?.startsWith("D-ID SDP error:")) throw err;
+      console.error(`[D-ID] SDP network error (attempt ${attempt}):`, err?.message || err);
+      if (attempt < maxRetries) {
+        const delay = attempt * 1500;
+        console.log(`[D-ID] Retrying SDP after network error in ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      throw new Error(`D-ID SDP network error after ${maxRetries} attempts`);
+    }
   }
-  console.log(`[D-ID] SDP answer accepted`);
 }
 
 export async function sendDIDIceCandidate(
@@ -423,8 +449,7 @@ export async function sendDIDSpeak(agentId: string, streamId: string, sessionId:
     session_id: sessionId,
   };
 
-  console.log(`[D-ID] Expressions for chunk: motion=${motionFactor}, expressions=${JSON.stringify(expressions.map(e => `${e.expression}@${e.start_frame}`))}`);
-
+  console.log(`[D-ID] Speak chunk (clip mode): motion=${motionFactor}, expr=${JSON.stringify(expressions.map(e => `${e.expression}@${e.start_frame}`))}`);
 
   const res = await fetch(`${DID_API}/agents/${agentId}/streams/${streamId}`, {
     method: "POST",
