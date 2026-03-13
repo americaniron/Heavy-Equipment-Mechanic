@@ -55,8 +55,17 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
 - **Flow**: Server creates session token → starts session → returns LiveKit URL + client token → client connects to LiveKit Room → subscribes to video/audio tracks → sends speak commands on `agent-control` topic
 - **Events**: `avatar.speak_text` command → `avatar.speak_started`/`avatar.speak_ended` server events → `avatar.transcription` for subtitle text
 - **Voice Input**: Client-side MediaRecorder captures user mic audio with VAD (silence detection) → sends to `/api/transcribe` endpoint → OpenAI Whisper STT → transcribed text fed to `handleUserMessage` → GPT-4o response → `avatar.speak_text` command
-- **English Avatars**: Silas (admin), Bryan (heavy equip), Elenora (power gen), Pedro (marine), Thaddeus (hydraulics), Anastasia (electrical), Marcus (parts)
-- **Arabic Avatars**: Fatima (admin), Khalid (heavy equip), Layla (power gen), Omar (marine), Hassan (hydraulics), Nour (electrical), Tariq (parts)
+- **English Avatars**: Sarah (admin, random pool), Bryan (heavy equip), Elenora (power gen), Pedro (marine), Thaddeus (hydraulics), Anastasia (electrical), Marcus/Silas (parts)
+- **Arabic Avatars**: سارة/Sarah (admin), خالد/Khalid-Dexter (heavy equip), ليلى/Layla-Anastasia (power gen), عمر/Omar-Shawn (marine), حسن/Hassan-Dexter (hydraulics), نور/Nour-Elenora (electrical), طارق/Tariq-Bryan (parts) — gender-correct mapping, Arabic script names
+- **Body Gestures**: All avatar personas include natural body language instructions (nodding, hand gestures, leaning, posture changes)
+- **Handoff Bug Fix**: Client strips `<INTAKE_JSON>` tags from GPT response before sending text to avatar to prevent reading code/punctuation aloud
+- **Speaking Style**: All GPT prompts include natural conversational speaking instructions (filler words, varied sentence length, no robotic phrasing)
+
+## Report Popup
+- **Cinematic Full-Screen Modal**: Dark overlay with blur, golden accent border, animated entrance
+- **Actions**: Print/Save PDF (opens print dialog), Email Report (mailto: with summary), Copy Share Link
+- **CinematicReportContent**: Premium dark-theme cards with golden section headers, color-coded confidence badges, numbered diagnostic steps
+- **ReportContent**: Legacy light-theme version kept for shared report page
 
 ## Visual Theme
 - **Caterpillar-inspired**: CAT yellow (#FFCD11) as primary, near-black backgrounds (#111111, #1a1a1a, #222)
