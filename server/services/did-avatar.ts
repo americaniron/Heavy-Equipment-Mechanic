@@ -11,12 +11,6 @@ type DIDPresenterConfig = {
   gender: string;
 };
 
-type DIDExpression = {
-  start_frame: number;
-  expression: "happy" | "surprise" | "serious" | "neutral";
-  intensity: number;
-};
-
 const WB = `(?:^|[\\s.,!?;:،؛؟])`;
 const WBE = `(?=$|[\\s.,!?;:،؛؟])`;
 
@@ -27,79 +21,26 @@ const QUESTION_PATTERNS = new RegExp(`${WB}(can you|could you|would you|what|how
 const EXPLAIN_PATTERNS = new RegExp(`${WB}(let me explain|here's what|the reason|because|first|second|third|step|process|procedure|recommend|suggest|important|note that|keep in mind|اسمح لي|السبب|الخطوة|أوصي|مهم|أولا|أولاً|ثانيا|ثانياً|ثالثا|ثالثاً|لأن)${WBE}`, "i");
 const EMPATHY_PATTERNS = new RegExp(`${WB}(understand|i see|that makes sense|of course|no worries|don't worry|i hear you|rest assured|we'll take care|أفهم|لا تقلق|سنهتم|بالطبع|أسمعك|لا تخف)${WBE}`, "i");
 
-function analyzeTextForExpressions(text: string): DIDExpression[] {
-  const expressions: DIDExpression[] = [];
-  const words = text.split(/\s+/).length;
-  const estimatedFrames = Math.max(30, words * 8);
+type VoiceStyle = "cheerful" | "friendly" | "empathetic" | "chat" | "customerservice" | "hopeful" | "excited";
 
-  if (GREETING_PATTERNS.test(text)) {
-    expressions.push({ start_frame: 0, expression: "happy", intensity: 0.6 });
-  }
-
-  if (CONCERN_PATTERNS.test(text)) {
-    const matchIndex = text.search(CONCERN_PATTERNS);
-    const relativePosition = matchIndex / text.length;
-    const frame = Math.round(relativePosition * estimatedFrames);
-    expressions.push({ start_frame: frame, expression: "serious", intensity: 0.5 });
-
-    if (POSITIVE_PATTERNS.test(text.slice(matchIndex))) {
-      const laterFrame = Math.min(frame + Math.round(estimatedFrames * 0.3), estimatedFrames - 5);
-      expressions.push({ start_frame: laterFrame, expression: "happy", intensity: 0.4 });
-    }
-  } else if (POSITIVE_PATTERNS.test(text)) {
-    const matchIndex = text.search(POSITIVE_PATTERNS);
-    const relativePosition = matchIndex / text.length;
-    const frame = Math.round(relativePosition * estimatedFrames);
-    expressions.push({ start_frame: Math.max(0, frame), expression: "happy", intensity: 0.5 });
-  }
-
-  if (QUESTION_PATTERNS.test(text) && !CONCERN_PATTERNS.test(text)) {
-    const matchIndex = text.search(QUESTION_PATTERNS);
-    const frame = Math.round((matchIndex / text.length) * estimatedFrames);
-    expressions.push({ start_frame: frame, expression: "surprise", intensity: 0.25 });
-  }
-
-  if (EXPLAIN_PATTERNS.test(text)) {
-    const matchIndex = text.search(EXPLAIN_PATTERNS);
-    const frame = Math.round((matchIndex / text.length) * estimatedFrames);
-    if (!expressions.some(e => Math.abs(e.start_frame - frame) < 10)) {
-      expressions.push({ start_frame: frame, expression: "serious", intensity: 0.3 });
-    }
-  }
-
-  if (EMPATHY_PATTERNS.test(text)) {
-    const matchIndex = text.search(EMPATHY_PATTERNS);
-    const frame = Math.round((matchIndex / text.length) * estimatedFrames);
-    if (!expressions.some(e => Math.abs(e.start_frame - frame) < 10)) {
-      expressions.push({ start_frame: frame, expression: "happy", intensity: 0.35 });
-    }
-  }
-
-  if (expressions.length === 0) {
-    expressions.push({ start_frame: 0, expression: "neutral", intensity: 0.3 });
-    if (estimatedFrames > 40) {
-      expressions.push({ start_frame: Math.round(estimatedFrames * 0.5), expression: "happy", intensity: 0.2 });
-    }
-  }
-
-  expressions.sort((a, b) => a.start_frame - b.start_frame);
-
-  const deduped: DIDExpression[] = [];
-  for (const expr of expressions) {
-    if (!deduped.some(e => Math.abs(e.start_frame - expr.start_frame) < 8)) {
-      deduped.push(expr);
-    }
-  }
-
-  return deduped.slice(0, 6);
+function analyzeVoiceStyle(text: string): VoiceStyle {
+  if (GREETING_PATTERNS.test(text) && POSITIVE_PATTERNS.test(text)) return "cheerful";
+  if (GREETING_PATTERNS.test(text)) return "friendly";
+  if (CONCERN_PATTERNS.test(text) && EMPATHY_PATTERNS.test(text)) return "empathetic";
+  if (CONCERN_PATTERNS.test(text)) return "empathetic";
+  if (EMPATHY_PATTERNS.test(text)) return "empathetic";
+  if (POSITIVE_PATTERNS.test(text)) return "cheerful";
+  if (EXPLAIN_PATTERNS.test(text)) return "chat";
+  if (QUESTION_PATTERNS.test(text)) return "friendly";
+  return "chat";
 }
 
-function getMotionFactorForText(text: string): number {
-  if (GREETING_PATTERNS.test(text) || POSITIVE_PATTERNS.test(text)) return 0.8;
-  if (CONCERN_PATTERNS.test(text)) return 0.65;
-  if (EXPLAIN_PATTERNS.test(text)) return 0.7;
-  if (QUESTION_PATTERNS.test(text)) return 0.75;
-  return 0.7;
+function addSSMLBreaks(text: string): string {
+  let ssml = text;
+  ssml = ssml.replace(/([.!?؟])\s+/g, '$1 <break time="400ms"/> ');
+  ssml = ssml.replace(/([,،;؛:])\s+/g, '$1 <break time="200ms"/> ');
+  ssml = ssml.replace(/(—|–)\s*/g, '$1 <break time="300ms"/> ');
+  return ssml;
 }
 
 const PRESENTER_MAP_EN: Record<string, DIDPresenterConfig> = {
@@ -447,59 +388,97 @@ export async function sendDIDIceCandidate(
   }
 }
 
-export async function sendDIDSpeak(agentId: string, streamId: string, sessionId: string, text: string): Promise<void> {
+export async function sendDIDSpeak(
+  agentId: string,
+  streamId: string,
+  sessionId: string,
+  text: string,
+  agentType: string = "admin",
+  language: string = "en"
+): Promise<void> {
   console.log(`[D-ID] Sending speak: "${text.substring(0, 60)}..."`);
 
-  const expressions = analyzeTextForExpressions(text);
-  const motionFactor = getMotionFactorForText(text);
+  const presenterMap = PRESENTER_MAPS[language] || PRESENTER_MAPS.en;
+  const presenter = presenterMap[agentType] || presenterMap.admin;
+  const voiceStyle = analyzeVoiceStyle(text);
+  const ssmlText = addSSMLBreaks(text);
 
-  const enhancedBody = {
-    script: { type: "text" as const, input: text, ssml: false },
-    config: {
-      stitch: true,
-      fluent: true,
-      align_driver: true,
-      sharpen: true,
-      auto_match: true,
-      normalization_factor: 0.1,
-      motion_factor: motionFactor,
-      driver_expressions: { expressions },
+  const speakBody: any = {
+    script: {
+      type: "text" as const,
+      input: ssmlText,
+      ssml: true,
+      provider: {
+        type: presenter.voiceType,
+        voice_id: presenter.voiceId,
+        voice_config: {
+          style: voiceStyle,
+        },
+      },
     },
     session_id: sessionId,
   };
 
-  console.log(`[D-ID] Speak chunk (clip mode): motion=${motionFactor}, expr=${JSON.stringify(expressions.map(e => `${e.expression}@${e.start_frame}`))}`);
+  console.log(`[D-ID] Speak (style: ${voiceStyle}, voice: ${presenter.voiceId}, ssml: true, len: ${text.length})`);
 
   const res = await fetch(`${DID_API}/agents/${agentId}/streams/${streamId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: getAuthHeader() },
-    body: JSON.stringify(enhancedBody),
+    body: JSON.stringify(speakBody),
   });
 
   if (res.ok) {
-    console.log(`[D-ID] Speak command sent (enhanced config)`);
+    console.log(`[D-ID] Speak sent successfully (style: ${voiceStyle})`);
     return;
   }
 
   const errText = await res.text();
+  console.warn(`[D-ID] Styled speak rejected (${res.status}): ${errText.substring(0, 200)}`);
+
   if (res.status >= 400 && res.status < 500) {
-    console.warn(`[D-ID] Enhanced speak rejected (${res.status}), retrying with minimal config`);
-    const minimalBody = {
-      script: { type: "text" as const, input: text },
-      config: { stitch: true },
+    const fallbackBody: any = {
+      script: {
+        type: "text" as const,
+        input: ssmlText,
+        ssml: true,
+        provider: {
+          type: presenter.voiceType,
+          voice_id: presenter.voiceId,
+        },
+      },
       session_id: sessionId,
     };
+    console.log(`[D-ID] Retrying without voice_config style...`);
     const retryRes = await fetch(`${DID_API}/agents/${agentId}/streams/${streamId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: getAuthHeader() },
-      body: JSON.stringify(minimalBody),
+      body: JSON.stringify(fallbackBody),
     });
-    if (!retryRes.ok) {
-      const retryErr = await retryRes.text();
-      console.error(`[D-ID] Minimal speak also failed:`, retryRes.status, retryErr);
-      throw new Error(`D-ID speak error: ${retryRes.status}`);
+    if (retryRes.ok) {
+      console.log(`[D-ID] Speak sent (no style fallback, ssml preserved)`);
+      return;
     }
-    console.log(`[D-ID] Speak command sent (minimal config fallback)`);
+    const retryErr = await retryRes.text();
+    console.warn(`[D-ID] SSML speak also rejected (${retryRes.status}), trying plain text...`);
+
+    const plainBody = {
+      script: {
+        type: "text" as const,
+        input: text,
+      },
+      session_id: sessionId,
+    };
+    const plainRes = await fetch(`${DID_API}/agents/${agentId}/streams/${streamId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: getAuthHeader() },
+      body: JSON.stringify(plainBody),
+    });
+    if (!plainRes.ok) {
+      const plainErr = await plainRes.text();
+      console.error(`[D-ID] All speak attempts failed:`, plainRes.status, plainErr);
+      throw new Error(`D-ID speak error: ${plainRes.status}`);
+    }
+    console.log(`[D-ID] Speak sent (plain text fallback)`);
     return;
   }
 

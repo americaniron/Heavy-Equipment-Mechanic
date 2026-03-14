@@ -445,54 +445,30 @@ export default function LiveDesk() {
         return;
       }
       try {
-        const sentenceMatches = text.match(/[^.!?؟]+[.!?؟]+\s*/g) || [];
-        const matched = sentenceMatches.join("");
-        const remainder = text.slice(matched.length).trim();
-        const sentences = [...sentenceMatches];
-        if (remainder) sentences.push(remainder);
-
-        const chunks: string[] = [];
-        let current = "";
-        for (const s of sentences) {
-          if ((current + s).length > 100 && current) {
-            chunks.push(current.trim());
-            current = s;
-          } else {
-            current += s;
-          }
-        }
-        if (current.trim()) chunks.push(current.trim());
-        if (chunks.length === 0) chunks.push(text);
-
         setIsTalking(true);
+        setSubtitleText(text);
 
-        for (let i = 0; i < chunks.length; i++) {
-          setSubtitleText(chunks[i]);
-
-          const speakRes = await fetch("/api/avatar/speak", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              provider: "did",
-              agentId: didAgentIdRef.current,
-              streamId: didStreamIdRef.current,
-              sessionId: didSessionIdRef.current,
-              text: chunks[i],
-            }),
-          });
-          if (speakRes.status === 402) {
-            throw new Error("credits_exhausted");
-          }
-          if (!speakRes.ok) throw new Error(`D-ID speak HTTP ${speakRes.status}`);
-          if (i < chunks.length - 1) {
-            const chunkDelay = Math.max(250, chunks[i].length * 60);
-            await new Promise(r => setTimeout(r, chunkDelay));
-          }
+        const speakRes = await fetch("/api/avatar/speak", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            provider: "did",
+            agentId: didAgentIdRef.current,
+            streamId: didStreamIdRef.current,
+            sessionId: didSessionIdRef.current,
+            text,
+            agentType: currentAgent || "admin",
+            language: selectedLanguage,
+          }),
+        });
+        if (speakRes.status === 402) {
+          throw new Error("credits_exhausted");
         }
+        if (!speakRes.ok) throw new Error(`D-ID speak HTTP ${speakRes.status}`);
 
-        console.log("[D-ID] Speak sent", chunks.length, "chunks, total length:", text.length);
+        console.log("[D-ID] Speak sent, full text length:", text.length);
 
-        const fallbackMs = Math.max(5000, text.length * 80);
+        const fallbackMs = Math.max(8000, text.length * 100);
         setTimeout(() => {
           if (speakEndedResolveRef.current) {
             console.log("[D-ID] Speak fallback timer fired");
@@ -581,7 +557,7 @@ export default function LiveDesk() {
       console.error("Failed to send speak command via LiveKit:", err);
       speakWithBrowser(text);
     }
-  }, [speakWithBrowser]);
+  }, [speakWithBrowser, currentAgent, selectedLanguage]);
 
   const sendAvatarSpeakRef = useRef<(text: string) => Promise<void>>(async () => {});
 
@@ -722,14 +698,21 @@ export default function LiveDesk() {
           try {
             const msg = JSON.parse(msgEvent.data);
             const eventType = msg.type || msg.event || msg.state;
-            console.log("[D-ID] Data channel:", eventType, JSON.stringify(msg).slice(0, 200));
+            const msgState = msg.state || msg.status;
+            console.log("[D-ID] DC event:", eventType, msgState ? `state=${msgState}` : "", JSON.stringify(msg).slice(0, 300));
 
-            if (eventType === "speak_started" || eventType === "started" ||
-                (msg.type === "chat/answer" && msg.state === "started")) {
+            const isStarted = eventType === "speak_started" || eventType === "started" ||
+              msgState === "started" || msgState === "talking" ||
+              (msg.type === "chat/answer" && msg.state === "started") ||
+              (msg.type === "stream/started");
+            const isDone = eventType === "speak_ended" || eventType === "done" ||
+              msgState === "done" || msgState === "idle" ||
+              (msg.type === "chat/answer" && msg.state === "done") ||
+              eventType === "stream/done";
+
+            if (isStarted) {
               setIsTalking(true);
-            } else if (eventType === "speak_ended" || eventType === "done" ||
-                       (msg.type === "chat/answer" && msg.state === "done") ||
-                       eventType === "stream/done") {
+            } else if (isDone) {
               setIsTalking(false);
               setTimeout(() => setSubtitleText(""), 3000);
               if (speakEndedResolveRef.current) {
@@ -984,6 +967,8 @@ export default function LiveDesk() {
             streamId: didStreamIdRef.current,
             sessionId: didSessionIdRef.current,
             text: cue,
+            agentType: currentAgent || "admin",
+            language: selectedLanguage,
           }),
         }).catch(() => {});
       } else if (hasHeygen) {
