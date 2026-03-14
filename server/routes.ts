@@ -841,12 +841,12 @@ export async function registerRoutes(
 
   app.post("/api/avatar/speak", async (req, res) => {
     try {
-      const { sessionToken, text, provider, agentId, streamId, sessionId: didSessionId } = req.body;
+      const { sessionToken, text, provider, agentId, streamId, sessionId: didSessionId, agentType, language } = req.body;
       if (provider === "did") {
         if (!agentId || !streamId || !didSessionId || !text) {
           return res.status(400).json({ error: "agentId, streamId, sessionId, and text required for D-ID" });
         }
-        await sendDIDSpeak(agentId, streamId, didSessionId, text);
+        await sendDIDSpeak(agentId, streamId, didSessionId, text, agentType || "admin", language || "en");
         return res.json({ success: true });
       }
       if (!sessionToken || !text) {
