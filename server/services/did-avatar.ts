@@ -61,8 +61,8 @@ const PRESENTER_MAP_EN: Record<string, DIDPresenterConfig> = {
     gender: "male",
   },
   power_gen: {
-    presenterId: "v2_public_Fiona_NoHands_BlueShirt_Lab@5HRTMswT4U",
-    sourceUrl: "https://clips-presenters.d-id.com/v2/Fiona_NoHands_BlueShirt_Lab/5HRTMswT4U/image.png",
+    presenterId: "v2_public_Amber_WhiteBlueShirt_Outdoor@k_pw06LqHE",
+    sourceUrl: "https://clips-presenters.d-id.com/v2/Amber_WhiteBlueShirt_Outdoor/k_pw06LqHE/image.png",
     voiceType: "microsoft",
     voiceId: "en-US-EmmaMultilingualNeural",
     name: "Sarah C.",
@@ -120,8 +120,8 @@ const PRESENTER_MAP_AR: Record<string, DIDPresenterConfig> = {
     gender: "male",
   },
   power_gen: {
-    presenterId: "v2_public_Fiona_NoHands_BlueShirt_Lab@5HRTMswT4U",
-    sourceUrl: "https://clips-presenters.d-id.com/v2/Fiona_NoHands_BlueShirt_Lab/5HRTMswT4U/image.png",
+    presenterId: "v2_public_Amber_WhiteBlueShirt_Outdoor@k_pw06LqHE",
+    sourceUrl: "https://clips-presenters.d-id.com/v2/Amber_WhiteBlueShirt_Outdoor/k_pw06LqHE/image.png",
     voiceType: "microsoft",
     voiceId: "ar-SA-ZariyahNeural",
     name: "ليلى",

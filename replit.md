@@ -81,6 +81,12 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
 - **Pro Diagnostic Report**: Detailed JSON with root cause matrix (evidence + test methods), diagnostic tree, tools required, safety checklist, labor estimate with skill level, parts list with alternatives, procedure steps, calibration steps, preventive maintenance, recommendations, urgency level
 - **SVG Diagram**: Auto-generated technical diagram for Pro reports
 - **Report Modal**: Cinematic dark-theme with section headers, confidence badges, print-optimized layout
+- **Visual Charts (Recharts)**:
+  - Root Cause Analysis: Horizontal bar chart showing probability distribution (high/medium/low color-coded)
+  - Likely Causes: Donut pie chart with confidence-weighted segments
+  - Urgency Level: Radial gauge with severity-appropriate coloring (critical→red, high→orange, medium→yellow, low→green)
+  - Labor Estimate: Progress bar relative to 40hr work week + skill level bar indicator
+  - Diagnostic Steps: Timeline flow with connected nodes (vertical line + numbered circles)
 - **Print**: Professional print stylesheet with AMERICAN IRON branding, proper typography, page-break-inside:avoid
 - **Share**: Public share via token URL, email report, copy link
 
