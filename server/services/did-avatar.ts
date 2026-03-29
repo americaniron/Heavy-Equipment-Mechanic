@@ -108,7 +108,7 @@ const PRESENTER_MAP_AR: Record<string, DIDPresenterConfig> = {
     sourceUrl: "https://clips-presenters.d-id.com/v2/Amber_BlackJacket_HomeOffice/9WuHtiUDnL/Sc6QllBjEE/image.png",
     voiceType: "microsoft",
     voiceId: "ar-SA-ZariyahNeural",
-    name: "سارة",
+    name: "فاطمة",
     gender: "female",
   },
   heavy_equipment: {

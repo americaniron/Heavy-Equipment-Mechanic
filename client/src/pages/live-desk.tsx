@@ -887,7 +887,7 @@ export default function LiveDesk() {
       setCurrentAgent("admin");
 
       const introText = selectedLanguage === "ar"
-        ? "مرحباً! أنا سارة، مديرة الاستقبال في أمريكان أيرون. أهلاً وسهلاً بك! " +
+        ? "مرحباً! أنا فاطمة، مسؤولة الاستقبال في أمريكان أيرون. أهلاً وسهلاً بك! " +
           "أنا هنا لمساعدتك. أخبرني عن المشكلة التي تواجهها مع معداتك وسأوصلك بالميكانيكي المتخصص المناسب. " +
           "ما الذي يمكنني مساعدتك فيه اليوم؟"
         : "Hi there! I'm Sarah, the front desk admin here at American Iron. Welcome! " +
@@ -2045,12 +2045,12 @@ export default function LiveDesk() {
                 <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
                 <span className="text-white text-sm font-medium" data-testid="text-name-tag-name">
                   {currentAgent === "admin"
-                    ? "Sarah"
+                    ? (selectedLanguage === "ar" ? "فاطمة" : "Sarah")
                     : currentMechanic?.name || "Specialist"}
                 </span>
                 <span className="text-white/50 text-xs">
                   {currentAgent === "admin"
-                    ? "Front Desk"
+                    ? (selectedLanguage === "ar" ? "مسؤولة الاستقبال" : "Front Desk")
                     : currentMechanic?.title || "Mechanic"}
                 </span>
               </div>
