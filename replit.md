@@ -65,8 +65,8 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
   - LiveKit-based: FULL mode, server creates session → returns LiveKit URL + token → client connects to LiveKit Room
   - Speak via LiveKit data channel: `avatar.speak_text` on `agent-control` topic
   - Service file: `server/services/avatar.ts`
-- **Fallback Chain**: D-ID → HeyGen → Browser TTS (speechSynthesis)
-- **Provider Detection**: Server tries D-ID first; on failure, falls back to HeyGen. Response includes `provider: "did"` or `provider: "heygen"`. Client reads provider to determine connection method.
+- **Fallback Chain**: HeyGen (primary) → D-ID (fallback) → Browser TTS (last resort)
+- **Provider Detection**: Server tries HeyGen first; on failure, falls back to D-ID. Response includes `provider: "heygen"` or `provider: "did"`. Client reads provider to determine connection method.
 - **Speak Routing**: `sendAvatarSpeakCommand` checks `avatarProviderRef` → D-ID uses `/api/avatar/speak` REST call, HeyGen uses LiveKit data channel, fallback uses browser TTS
 - **Voice Input**: Client-side MediaRecorder captures user mic audio with VAD (silence detection) → sends to `/api/transcribe` endpoint → OpenAI Whisper STT → transcribed text fed to `handleUserMessage` → GPT-4o response → avatar speak command
 - **English Avatars**: Sarah (admin), Bryan (heavy equip), Elenora (power gen), Pedro (marine), Thaddeus (hydraulics), Anastasia (electrical), Marcus (parts)

@@ -796,25 +796,32 @@ export async function registerRoutes(
       const aType = agentType || "admin";
       const lang = language || "en";
 
+      const protocol = req.headers["x-forwarded-proto"] || "https";
+      const host = req.get("host");
+      const backgroundUrl = `${protocol}://${host}/static/shop_background.png`;
+
+      try {
+        const heygenResult = await createAvatarSession(aType, backgroundUrl, lang);
+        console.log(`[Avatar] Using HeyGen (primary) for ${aType}/${lang}`);
+        return res.json({ ...heygenResult, provider: "heygen" });
+      } catch (heygenErr: any) {
+        console.warn(`[Avatar] HeyGen failed, falling back to D-ID:`, heygenErr.message);
+      }
+
       const credits = await checkDIDCredits();
       if (credits > 0) {
         try {
           const didResult = await createDIDStream(aType, lang);
-          console.log(`[Avatar] Using D-ID for ${aType}/${lang} (credits: ${credits})`);
+          console.log(`[Avatar] Using D-ID (fallback) for ${aType}/${lang} (credits: ${credits})`);
           return res.json(didResult);
         } catch (didErr: any) {
-          console.warn(`[Avatar] D-ID failed, falling back to HeyGen:`, didErr.message);
+          console.warn(`[Avatar] D-ID fallback also failed:`, didErr.message);
         }
       } else {
-        console.log(`[Avatar] D-ID credits exhausted (${credits}), skipping to HeyGen`);
+        console.log(`[Avatar] D-ID credits exhausted (${credits}), cannot use as fallback`);
       }
 
-      const protocol = req.headers["x-forwarded-proto"] || "https";
-      const host = req.get("host");
-      const backgroundUrl = `${protocol}://${host}/static/shop_background.png`;
-      const heygenResult = await createAvatarSession(aType, backgroundUrl, lang);
-      console.log(`[Avatar] Using HeyGen fallback for ${aType}/${lang}`);
-      res.json({ ...heygenResult, provider: "heygen" });
+      throw new Error("All avatar providers failed (HeyGen primary + D-ID fallback)");
     } catch (error: any) {
       console.error("Avatar session creation error (both providers failed):", error);
       res.status(500).json({ error: error.message });
