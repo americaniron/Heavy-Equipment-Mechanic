@@ -1404,10 +1404,17 @@ export default function LiveDesk() {
     ];
 
     const features = [
-      { icon: User, text: "Face-to-face AI-powered video consultations" },
-      { icon: HardHat, text: "Decades of combined specialist experience" },
-      { icon: FileText, text: "Detailed diagnostic reports for your service team" },
-      { icon: Shield, text: "Encrypted and secure — your data stays private" },
+      { icon: User, text: "Face-to-face AI video consultations — no travel, no waiting" },
+      { icon: HardHat, text: "6 specialist mechanics covering every system" },
+      { icon: FileText, text: "Pro diagnostic reports with parts lists & procedures" },
+      { icon: Shield, text: "Encrypted, secure & available 24/7 worldwide" },
+    ];
+
+    const impactStats = [
+      { value: "90%", label: "COST REDUCTION", sub: "vs. on-site diagnostic visit" },
+      { value: "< 5min", label: "TIME TO DIAGNOSIS", sub: "instant AI-powered analysis" },
+      { value: "24/7", label: "ALWAYS AVAILABLE", sub: "no appointments needed" },
+      { value: "6", label: "EXPERT DIVISIONS", sub: "every system covered" },
     ];
 
     if (activeView === "services") {
@@ -1614,29 +1621,30 @@ export default function LiveDesk() {
           </div>
         )}
 
-        <nav className="fixed top-0 left-0 right-0 z-50 bg-[#111111]/90 backdrop-blur-md border-b border-[#FFCD11]/10" data-testid="nav-bar">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        <nav className="fixed top-0 left-0 right-0 z-50" data-testid="nav-bar">
+          <div className="absolute inset-0 bg-[#111111]/80 backdrop-blur-xl border-b border-[#FFCD11]/5" />
+          <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <img src={logoPath} alt="AMERICAN IRON" className="h-12 w-auto" data-testid="img-logo-nav" />
+              <img src={logoPath} alt="AMERICAN IRON" className="h-10 w-auto" data-testid="img-logo-nav" />
             </div>
-            <div className="hidden md:flex items-center gap-6 text-sm text-gray-400">
-              <button onClick={() => setShowAboutVideo(true)} className="hover:text-[#FFCD11] transition-colors" data-testid="link-about">About the Shop</button>
+            <div className="hidden md:flex items-center gap-5 text-xs text-gray-500 uppercase tracking-wider font-medium">
+              <button onClick={() => setShowAboutVideo(true)} className="hover:text-[#FFCD11] transition-colors" data-testid="link-about">About</button>
               <button onClick={() => setActiveView("services")} className="hover:text-[#FFCD11] transition-colors" data-testid="link-services">Services</button>
-              <a href="#why" className="hover:text-[#FFCD11] transition-colors" data-testid="link-why">Why AMERICAN IRON</a>
-              <a href="/portal" className="hover:text-[#FFCD11] transition-colors font-medium" data-testid="link-portal">Customer Portal</a>
+              <a href="#why" className="hover:text-[#FFCD11] transition-colors" data-testid="link-why">Why Us</a>
+              <a href="/portal" className="hover:text-[#FFCD11] transition-colors" data-testid="link-portal">Portal</a>
               <Button
                 size="sm"
-                className="bg-[#FFCD11] text-black hover:bg-[#e6b800] font-bold"
+                className="bg-[#FFCD11] text-black hover:bg-[#e6b800] font-black text-xs tracking-wider rounded-full px-5"
                 onClick={() => document.getElementById("speak-admin-section")?.scrollIntoView({ behavior: "smooth" })}
                 data-testid="button-nav-speak-admin"
               >
-                SPEAK WITH ADMIN
+                START NOW
               </Button>
             </div>
           </div>
         </nav>
 
-        <section className="relative min-h-screen flex items-center justify-center pt-16" data-testid="hero-section">
+        <section className="relative min-h-screen flex flex-col" data-testid="hero-section">
           <div className="absolute inset-0 overflow-hidden">
             <video
               ref={heroVideoRef}
@@ -1645,237 +1653,282 @@ export default function LiveDesk() {
               muted
               playsInline
               aria-hidden="true"
-              className="w-full h-full object-cover opacity-60"
+              className="w-full h-full object-cover"
               data-testid="video-hero-bg"
               poster={heroFacilityPath}
               src={workshopVideoPath}
+              style={{ filter: "brightness(0.3) saturate(0.8)" }}
             />
-            <div className="absolute inset-0 bg-gradient-to-b from-[#111111]/80 via-[#111111]/30 to-[#111111]/80" />
-            <div className="absolute inset-0 bg-gradient-to-r from-[#111111]/60 via-transparent to-[#111111]/60" />
+            <div className="absolute inset-0 bg-gradient-to-b from-[#111111] via-transparent to-[#111111]" />
+            <div className="absolute inset-0 bg-[#111111]/40" />
           </div>
 
-          <div className="absolute top-0 left-0 right-0 h-1 bg-[#FFCD11]" />
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-[#FFCD11] to-transparent" />
 
-          <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 text-center space-y-8">
-            <img
-              src={logoPath}
-              alt="AMERICAN IRON"
-              className="h-40 sm:h-56 w-auto mx-auto drop-shadow-2xl"
-              data-testid="img-logo-hero"
-            />
-
-            <div className="space-y-4">
-              <p className="text-[#FFCD11] text-sm sm:text-base font-bold tracking-[0.3em] uppercase" data-testid="text-tagline">
-                LIVE AI ENGINEER DESK
-              </p>
-              <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-white leading-tight" data-testid="text-brand-name">
-                YOUR EQUIPMENT.<br />OUR EXPERTISE.<br />
-                <span className="text-[#FFCD11]">REAL-TIME DIAGNOSTICS.</span>
-              </h1>
-              <p className="text-gray-400 text-base sm:text-lg max-w-2xl mx-auto leading-relaxed" data-testid="text-page-title">
-                Walk into our virtual repair facility and speak face-to-face with AI-powered specialist mechanics.
-                Get expert diagnostics for heavy equipment, power generation, marine, hydraulic, and electrical systems.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-3xl mx-auto">
-              <Button
-                size="lg"
-                className="h-14 text-xs sm:text-sm font-black bg-[#FFCD11] text-black hover:bg-[#e6b800] rounded-lg shadow-lg shadow-[#FFCD11]/20"
-                onClick={() => setShowAboutVideo(true)}
-                data-testid="button-hero-about"
-              >
-                <Play className="w-4 h-4 mr-1.5" />
-                ABOUT THE SHOP
-              </Button>
-              <Button
-                size="lg"
-                className="h-14 text-xs sm:text-sm font-black bg-[#FFCD11] text-black hover:bg-[#e6b800] rounded-lg shadow-lg shadow-[#FFCD11]/20"
-                onClick={() => document.getElementById("speak-admin-section")?.scrollIntoView({ behavior: "smooth" })}
-                data-testid="button-hero-speak-admin"
-              >
-                <MessageCircle className="w-4 h-4 mr-1.5" />
-                SPEAK WITH ADMIN
-              </Button>
-              <Button
-                size="lg"
-                className="h-14 text-xs sm:text-sm font-black bg-[#FFCD11] text-black hover:bg-[#e6b800] rounded-lg shadow-lg shadow-[#FFCD11]/20"
-                onClick={() => setActiveView("services")}
-                data-testid="button-hero-explore"
-              >
-                <Search className="w-4 h-4 mr-1.5" />
-                EXPLORE SERVICES
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                className="h-14 text-xs sm:text-sm font-black border-[#FFCD11]/40 text-[#FFCD11] hover:bg-[#FFCD11]/10 rounded-lg"
-                onClick={() => document.getElementById("walk-in-section")?.scrollIntoView({ behavior: "smooth" })}
-                data-testid="button-hero-walkin"
-              >
-                <ArrowRight className="w-4 h-4 mr-1.5" />
-                WALK IN NOW
-              </Button>
-            </div>
-
-            <div className="flex items-center justify-center gap-6 pt-4 text-xs text-gray-500">
-              <div className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-[#FFCD11]" />
-                <span>No Appointment Needed</span>
+          <div className="relative z-10 flex-1 flex items-center justify-center px-4 sm:px-6 pt-14">
+            <div className="max-w-6xl mx-auto w-full text-center space-y-6 sm:space-y-8">
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#FFCD11]/10 border border-[#FFCD11]/20 mb-2">
+                <div className="w-2 h-2 rounded-full bg-[#FFCD11] animate-pulse" />
+                <span className="text-[#FFCD11] text-[10px] sm:text-xs font-bold tracking-[0.25em] uppercase">LIVE AI ENGINEER DESK — ONLINE NOW</span>
               </div>
-              <div className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-[#FFCD11]" />
-                <span>Instant AI Diagnosis</span>
+
+              <img
+                src={logoPath}
+                alt="AMERICAN IRON"
+                className="h-28 sm:h-40 lg:h-48 w-auto mx-auto drop-shadow-[0_0_40px_rgba(255,205,17,0.15)]"
+                data-testid="img-logo-hero"
+              />
+
+              <div className="space-y-4 sm:space-y-5">
+                <h1 className="text-4xl sm:text-6xl lg:text-7xl xl:text-8xl font-black text-white leading-[0.9] tracking-tight" data-testid="text-brand-name">
+                  TALK TO A MECHANIC.<br />
+                  <span className="text-[#FFCD11] drop-shadow-[0_0_30px_rgba(255,205,17,0.3)]">RIGHT NOW.</span>
+                </h1>
+                <p className="text-gray-300 text-lg sm:text-xl lg:text-2xl max-w-3xl mx-auto leading-relaxed font-light" data-testid="text-page-title">
+                  AI-powered video diagnostics for heavy equipment.
+                  <span className="text-white font-medium"> No appointment. No travel. No hourly rate.</span>
+                </p>
               </div>
-              <div className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-[#FFCD11]" />
-                <span>Expert Report Included</span>
+
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 pt-2">
+                <Button
+                  size="lg"
+                  className="h-16 px-10 text-base sm:text-lg font-black bg-[#FFCD11] text-black hover:bg-[#e6b800] rounded-full shadow-[0_0_40px_rgba(255,205,17,0.3)] hover:shadow-[0_0_60px_rgba(255,205,17,0.4)] transition-all duration-300"
+                  onClick={() => document.getElementById("speak-admin-section")?.scrollIntoView({ behavior: "smooth" })}
+                  data-testid="button-hero-speak-admin"
+                >
+                  <MessageCircle className="w-5 h-5 mr-2" />
+                  START FREE CONSULTATION
+                </Button>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="h-16 px-8 text-sm font-bold border-white/20 text-white hover:bg-white/5 rounded-full"
+                  onClick={() => setShowAboutVideo(true)}
+                  data-testid="button-hero-about"
+                >
+                  <Play className="w-4 h-4 mr-2" />
+                  SEE HOW IT WORKS
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-6 max-w-3xl mx-auto pt-6 sm:pt-10">
+                {impactStats.map((stat, i) => (
+                  <div key={i} className="text-center" data-testid={`stat-${i}`}>
+                    <p className="text-2xl sm:text-3xl lg:text-4xl font-black text-[#FFCD11] leading-none">{stat.value}</p>
+                    <p className="text-[9px] sm:text-[10px] font-bold text-white/60 tracking-[0.15em] uppercase mt-1.5">{stat.label}</p>
+                    <p className="text-[8px] sm:text-[9px] text-white/30 mt-0.5">{stat.sub}</p>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
 
-          <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-[#111111] to-transparent" />
+          <div className="relative z-10 pb-8 text-center">
+            <button
+              onClick={() => document.getElementById("value-prop-section")?.scrollIntoView({ behavior: "smooth" })}
+              className="text-white/30 hover:text-[#FFCD11] transition-colors animate-bounce"
+              data-testid="button-scroll-down"
+            >
+              <ChevronDown className="w-6 h-6" />
+            </button>
+          </div>
+
+          <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-[#111111] to-transparent" />
         </section>
 
-        <section id="services" className="relative py-20 bg-[#111111]" data-testid="services-section">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="text-center mb-16">
-              <p className="text-[#FFCD11] text-sm font-bold tracking-[0.2em] uppercase mb-3">OUR SPECIALTIES</p>
-              <h2 className="text-3xl sm:text-4xl font-black text-white" data-testid="text-services-heading">
-                SIX EXPERT DIVISIONS.<br />ONE POWERFUL FACILITY.
+        <section id="value-prop-section" className="relative py-16 sm:py-20 bg-[#111111]" data-testid="value-prop-section">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6">
+            <div className="text-center mb-12 sm:mb-16">
+              <p className="text-[#FFCD11] text-xs font-bold tracking-[0.3em] uppercase mb-4">THE OLD WAY IS OVER</p>
+              <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-white leading-tight max-w-4xl mx-auto" data-testid="text-value-heading">
+                WHY FLY A TECHNICIAN OUT WHEN YOU CAN
+                <span className="text-[#FFCD11]"> TALK TO ONE INSTANTLY?</span>
               </h2>
-              <p className="text-gray-400 mt-4 max-w-xl mx-auto">
-                Each specialist brings decades of real-world experience to diagnose your equipment issues in real time.
-              </p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8">
+              <div className="relative group">
+                <div className="absolute inset-0 bg-gradient-to-b from-red-500/5 to-transparent rounded-2xl" />
+                <div className="relative p-6 sm:p-8 rounded-2xl border border-red-500/10 bg-[#1a1a1a]/50">
+                  <div className="text-red-400/60 text-xs font-bold tracking-[0.2em] uppercase mb-4">THE OLD WAY</div>
+                  <div className="space-y-3 text-sm text-gray-500">
+                    <div className="flex items-start gap-2"><X className="w-4 h-4 shrink-0 mt-0.5 text-red-400/40" /><span>$2,000+ travel & diagnostic fees</span></div>
+                    <div className="flex items-start gap-2"><X className="w-4 h-4 shrink-0 mt-0.5 text-red-400/40" /><span>Days or weeks to schedule</span></div>
+                    <div className="flex items-start gap-2"><X className="w-4 h-4 shrink-0 mt-0.5 text-red-400/40" /><span>Equipment sitting idle, losing money</span></div>
+                    <div className="flex items-start gap-2"><X className="w-4 h-4 shrink-0 mt-0.5 text-red-400/40" /><span>Limited to one specialist's opinion</span></div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="relative group md:-mt-4">
+                <div className="absolute -inset-[1px] bg-gradient-to-b from-[#FFCD11]/30 to-[#FFCD11]/5 rounded-2xl" />
+                <div className="relative p-6 sm:p-8 rounded-2xl bg-[#1a1a1a] border border-[#FFCD11]/20">
+                  <div className="text-[#FFCD11] text-xs font-bold tracking-[0.2em] uppercase mb-4">AMERICAN IRON WAY</div>
+                  <div className="space-y-3 text-sm text-gray-300">
+                    <div className="flex items-start gap-2"><CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-[#FFCD11]" /><span>Free AI-powered diagnostic session</span></div>
+                    <div className="flex items-start gap-2"><CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-[#FFCD11]" /><span>Instant — start in under 60 seconds</span></div>
+                    <div className="flex items-start gap-2"><CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-[#FFCD11]" /><span>Get your crew working the same day</span></div>
+                    <div className="flex items-start gap-2"><CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-[#FFCD11]" /><span>6 specialists, all available at once</span></div>
+                  </div>
+                  <div className="mt-5 pt-4 border-t border-[#FFCD11]/10 text-center">
+                    <span className="text-[#FFCD11] text-xs font-black tracking-wider">GAME CHANGER</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="relative group">
+                <div className="absolute inset-0 bg-gradient-to-b from-[#FFCD11]/3 to-transparent rounded-2xl" />
+                <div className="relative p-6 sm:p-8 rounded-2xl border border-white/5 bg-[#1a1a1a]/50">
+                  <div className="text-white/40 text-xs font-bold tracking-[0.2em] uppercase mb-4">WHAT YOU GET</div>
+                  <div className="space-y-3 text-sm text-gray-400">
+                    <div className="flex items-start gap-2"><Zap className="w-4 h-4 shrink-0 mt-0.5 text-[#FFCD11]/60" /><span>Live face-to-face video with AI mechanic</span></div>
+                    <div className="flex items-start gap-2"><FileText className="w-4 h-4 shrink-0 mt-0.5 text-[#FFCD11]/60" /><span>Pro diagnostic report with parts list</span></div>
+                    <div className="flex items-start gap-2"><Wrench className="w-4 h-4 shrink-0 mt-0.5 text-[#FFCD11]/60" /><span>Step-by-step repair procedures</span></div>
+                    <div className="flex items-start gap-2"><Shield className="w-4 h-4 shrink-0 mt-0.5 text-[#FFCD11]/60" /><span>Arabic & English support</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="services" className="relative py-16 sm:py-20 bg-[#0d0d0d]" data-testid="services-section">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center mb-12 sm:mb-16">
+              <p className="text-[#FFCD11] text-xs font-bold tracking-[0.3em] uppercase mb-3">6 SPECIALIST DIVISIONS</p>
+              <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-white" data-testid="text-services-heading">
+                EVERY SYSTEM. <span className="text-[#FFCD11]">COVERED.</span>
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5">
               {services.map((svc, i) => (
                 <div
                   key={i}
-                  className="group relative rounded-xl overflow-hidden border border-white/5 bg-[#1a1a1a] hover:border-[#FFCD11]/30 transition-all duration-300 cursor-pointer"
+                  className="group relative rounded-xl sm:rounded-2xl overflow-hidden cursor-pointer"
                   onClick={() => { setExpandedService(i); setActiveView("services"); }}
                   data-testid={`card-service-${i}`}
                 >
-                  <div className="h-44 overflow-hidden">
+                  <div className="aspect-[4/3] overflow-hidden">
                     <img
                       src={svc.image}
                       alt={svc.title}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-70 group-hover:opacity-90"
+                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                      style={{ filter: "brightness(0.4)" }}
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-[#1a1a1a] via-[#1a1a1a]/50 to-transparent" />
                   </div>
-                  <div className="relative p-5 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-md bg-[#FFCD11]/10 flex items-center justify-center">
-                        <svc.icon className="w-4 h-4 text-[#FFCD11]" />
-                      </div>
-                      <h3 className="text-sm font-black text-white tracking-wide">{svc.title}</h3>
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
+                  <div className="absolute inset-0 border border-white/5 rounded-xl sm:rounded-2xl group-hover:border-[#FFCD11]/30 transition-colors duration-300" />
+                  <div className="absolute bottom-0 left-0 right-0 p-3 sm:p-5">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <svc.icon className="w-4 h-4 text-[#FFCD11]" />
+                      <h3 className="text-xs sm:text-sm font-black text-white tracking-wide">{svc.title}</h3>
                     </div>
-                    <p className="text-gray-400 text-sm leading-relaxed">{svc.desc}</p>
-                    <div className="flex items-center gap-1 text-[#FFCD11] text-xs font-bold pt-1">
-                      <span>View Details</span>
+                    <p className="text-gray-400 text-[10px] sm:text-xs leading-relaxed hidden sm:block">{svc.desc}</p>
+                    <div className="flex items-center gap-1 text-[#FFCD11] text-[10px] sm:text-xs font-bold mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <span>Learn More</span>
                       <ChevronRight className="w-3 h-3" />
                     </div>
                   </div>
                 </div>
               ))}
+            </div>
 
-              <button
-                className="relative rounded-xl overflow-hidden border border-[#FFCD11]/20 bg-gradient-to-br from-[#FFCD11]/10 to-[#1a1a1a] flex flex-col items-center justify-center p-8 text-center cursor-pointer hover:border-[#FFCD11]/40 transition-all duration-300"
+            <div className="mt-8 sm:mt-10 text-center">
+              <Button
+                size="lg"
+                className="h-14 px-10 font-black bg-[#FFCD11] text-black hover:bg-[#e6b800] rounded-full shadow-[0_0_30px_rgba(255,205,17,0.2)]"
                 onClick={() => document.getElementById("speak-admin-section")?.scrollIntoView({ behavior: "smooth" })}
                 data-testid="card-service-speak-admin"
               >
-                <div className="w-14 h-14 rounded-full bg-[#FFCD11]/20 flex items-center justify-center mb-4">
-                  <MessageCircle className="w-7 h-7 text-[#FFCD11]" />
-                </div>
-                <h3 className="text-lg font-black text-[#FFCD11] mb-2">SPEAK WITH ADMIN</h3>
-                <p className="text-gray-400 text-sm">Our front desk admin will connect you with the right specialist</p>
-              </button>
+                <MessageCircle className="w-5 h-5 mr-2" />
+                TALK TO A SPECIALIST NOW
+              </Button>
             </div>
           </div>
         </section>
 
-        <section className="relative py-20 overflow-hidden" data-testid="how-it-works-section">
-          <div className="absolute inset-0 bg-gradient-to-b from-[#111111] via-[#1a1a1a] to-[#111111]" />
-          <div className="absolute left-0 top-1/2 -translate-y-1/2 w-96 h-96 bg-[#FFCD11]/3 rounded-full blur-3xl" />
+        <section className="relative py-16 sm:py-24 overflow-hidden" data-testid="how-it-works-section">
+          <div className="absolute inset-0 bg-[#111111]" />
+          <div className="absolute right-0 top-0 w-[500px] h-[500px] bg-[#FFCD11]/[0.02] rounded-full blur-[120px]" />
+          <div className="absolute left-0 bottom-0 w-[400px] h-[400px] bg-[#FFCD11]/[0.02] rounded-full blur-[100px]" />
 
           <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6">
-            <div className="text-center mb-16">
-              <p className="text-[#FFCD11] text-sm font-bold tracking-[0.2em] uppercase mb-3">HOW IT WORKS</p>
-              <h2 className="text-3xl sm:text-4xl font-black text-white" data-testid="text-how-heading">
-                THREE STEPS TO A DIAGNOSIS
+            <div className="text-center mb-12 sm:mb-16">
+              <p className="text-[#FFCD11] text-xs font-bold tracking-[0.3em] uppercase mb-3">DEAD SIMPLE</p>
+              <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-white" data-testid="text-how-heading">
+                60 SECONDS TO <span className="text-[#FFCD11]">EXPERT HELP</span>
               </h2>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-10">
               {[
-                { step: "01", title: "SPEAK WITH ADMIN", desc: "Click the button and you're instantly connected to our friendly AI front desk admin — she'll welcome you and guide you through the process." },
-                { step: "02", title: "DESCRIBE THE ISSUE", desc: "Tell our admin about your equipment and the problem you're experiencing. She'll route you to the right specialist." },
-                { step: "03", title: "GET YOUR DIAGNOSIS", desc: "Your specialist walks you through a real-time diagnosis and delivers a detailed report for your service team." },
+                { step: "1", title: "CLICK START", desc: "Hit the button. Our AI front desk admin greets you instantly — no forms, no sign-ups, no wait.", icon: Play },
+                { step: "2", title: "DESCRIBE IT", desc: "Talk naturally about your equipment issue. The admin connects you to the right specialist mechanic.", icon: MessageCircle },
+                { step: "3", title: "GET THE REPORT", desc: "Your specialist diagnoses the problem live and delivers a pro report with parts, procedures & diagrams.", icon: FileText },
               ].map((item, i) => (
-                <div key={i} className="text-center space-y-4" data-testid={`step-${i}`}>
-                  <div className="text-5xl font-black text-[#FFCD11]/20">{item.step}</div>
-                  <h3 className="text-lg font-black text-white">{item.title}</h3>
-                  <p className="text-gray-400 text-sm leading-relaxed">{item.desc}</p>
+                <div key={i} className="relative text-center" data-testid={`step-${i}`}>
+                  <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-[#FFCD11]/10 border border-[#FFCD11]/20 flex items-center justify-center mx-auto mb-5">
+                    <item.icon className="w-7 h-7 sm:w-8 sm:h-8 text-[#FFCD11]" />
+                  </div>
+                  <div className="text-[#FFCD11]/20 text-6xl sm:text-7xl font-black absolute -top-2 left-1/2 -translate-x-1/2 pointer-events-none select-none">{item.step}</div>
+                  <h3 className="text-base sm:text-lg font-black text-white mb-2">{item.title}</h3>
+                  <p className="text-gray-400 text-xs sm:text-sm leading-relaxed max-w-xs mx-auto">{item.desc}</p>
                 </div>
               ))}
             </div>
           </div>
         </section>
 
-        <section id="why" className="relative py-20 bg-[#111111]" data-testid="why-section">
-          <div className="max-w-5xl mx-auto px-4 sm:px-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-              <div className="space-y-8">
-                <div>
-                  <p className="text-[#FFCD11] text-sm font-bold tracking-[0.2em] uppercase mb-3">WHY AMERICAN IRON</p>
-                  <h2 className="text-3xl sm:text-4xl font-black text-white leading-tight" data-testid="text-why-heading">
-                    BUILT FOR THE PEOPLE WHO BUILD THE WORLD
-                  </h2>
-                </div>
+        <section id="why" className="relative py-16 sm:py-20 bg-[#0d0d0d]" data-testid="why-section">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6">
+            <div className="text-center mb-12 sm:mb-16">
+              <p className="text-[#FFCD11] text-xs font-bold tracking-[0.3em] uppercase mb-3">WHY AMERICAN IRON</p>
+              <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-white leading-tight max-w-4xl mx-auto" data-testid="text-why-heading">
+                BUILT FOR THE PEOPLE WHO <span className="text-[#FFCD11]">BUILD THE WORLD</span>
+              </h2>
+            </div>
 
-                <div className="space-y-5">
-                  {features.map((feat, i) => (
-                    <div key={i} className="flex items-start gap-4" data-testid={`feature-${i}`}>
-                      <div className="w-10 h-10 rounded-lg bg-[#FFCD11]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <feat.icon className="w-5 h-5 text-[#FFCD11]" />
-                      </div>
-                      <p className="text-gray-300 text-sm leading-relaxed pt-2">{feat.text}</p>
-                    </div>
-                  ))}
-                </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 sm:gap-12 items-center">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {features.map((feat, i) => (
+                  <div key={i} className="p-5 sm:p-6 rounded-2xl bg-[#1a1a1a] border border-white/5 hover:border-[#FFCD11]/20 transition-colors" data-testid={`feature-${i}`}>
+                    <feat.icon className="w-6 h-6 text-[#FFCD11] mb-3" />
+                    <p className="text-gray-300 text-sm leading-relaxed">{feat.text}</p>
+                  </div>
+                ))}
               </div>
 
               <div className="relative">
-                <div className="rounded-xl overflow-hidden border border-white/10">
-                  <img src={heroFacilityPath} alt="AMERICAN IRON Facility" className="w-full h-auto" />
+                <div className="rounded-2xl overflow-hidden border border-white/5">
+                  <img src={heroFacilityPath} alt="AMERICAN IRON Facility" className="w-full h-auto" style={{ filter: "brightness(0.7) saturate(1.1)" }} />
                 </div>
-                <div className="absolute -bottom-4 -right-4 w-24 h-24 bg-[#FFCD11]/10 rounded-full blur-2xl" />
+                <div className="absolute -bottom-3 -right-3 px-5 py-3 bg-[#FFCD11] rounded-xl">
+                  <p className="text-black text-xs font-black tracking-wider">REVOLUTIONARY AI DIAGNOSTICS</p>
+                </div>
               </div>
             </div>
           </div>
         </section>
 
-        <section id="speak-admin-section" className="relative py-24 overflow-hidden" data-testid="speak-admin-section">
-          <div className="absolute inset-0 bg-gradient-to-b from-[#111111] via-[#0d0d0d] to-[#111111]" />
+        <section id="speak-admin-section" className="relative py-20 sm:py-28 overflow-hidden" data-testid="speak-admin-section">
+          <div className="absolute inset-0 bg-[#111111]" />
           <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSA2MCAwIEwgMCAwIDAgNjAiIGZpbGw9Im5vbmUiIHN0cm9rZT0icmdiYSgyNTUsMjA1LDE3LDAuMDMpIiBzdHJva2Utd2lkdGg9IjEiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IGZpbGw9InVybCgjZ3JpZCkiIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiLz48L3N2Zz4=')] opacity-50" />
+          <div className="absolute left-1/2 top-0 -translate-x-1/2 w-[600px] h-[600px] bg-[#FFCD11]/[0.03] rounded-full blur-[150px]" />
 
           <div className="relative z-10 max-w-lg mx-auto px-4 sm:px-6 text-center space-y-8">
-            <div className="w-20 h-20 rounded-full bg-[#FFCD11]/10 border-2 border-[#FFCD11]/30 flex items-center justify-center mx-auto">
-              <User className="w-10 h-10 text-[#FFCD11]" />
-            </div>
-
-            <div className="space-y-3">
-              <h2 className="text-2xl sm:text-3xl font-black text-white" data-testid="text-speak-admin-heading">
-                SPEAK WITH OUR ADMIN
+            <div>
+              <p className="text-[#FFCD11] text-xs font-bold tracking-[0.3em] uppercase mb-4">READY WHEN YOU ARE</p>
+              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-white leading-tight" data-testid="text-speak-admin-heading">
+                START YOUR<br /><span className="text-[#FFCD11]">FREE SESSION</span>
               </h2>
-              <p className="text-gray-400 text-sm leading-relaxed max-w-md mx-auto">
-                Meet our friendly front desk admin — she'll welcome you, learn about your equipment, and connect you with the right specialist. Cheerful, professional, and ready to help.
+              <p className="text-gray-400 text-sm leading-relaxed max-w-md mx-auto mt-4">
+                Our AI front desk admin connects you to the right specialist in seconds. No sign-up required. Just click and talk.
               </p>
             </div>
 
-            <div className="bg-white/5 backdrop-blur-sm rounded-xl border border-[#FFCD11]/15 p-6 space-y-5">
+            <div className="bg-[#1a1a1a] backdrop-blur-sm rounded-2xl border border-[#FFCD11]/10 p-6 sm:p-8 space-y-5 shadow-[0_0_60px_rgba(255,205,17,0.05)]">
               <div className="space-y-2">
                 <label className="text-xs font-bold text-gray-300 uppercase tracking-wider">Select Language</label>
                 <div className="flex gap-3">
@@ -1950,59 +2003,61 @@ export default function LiveDesk() {
           </div>
         </section>
 
-        <section id="walk-in-section" className="relative py-16 overflow-hidden" data-testid="walkin-section">
-          <div className="absolute inset-0 bg-[#111111]" />
-          <div className="relative z-10 max-w-3xl mx-auto px-4 sm:px-6 text-center space-y-6">
-            <div className="flex items-center justify-center gap-3">
-              <div className="h-px flex-1 bg-gradient-to-r from-transparent to-[#FFCD11]/20" />
-              <span className="text-[#FFCD11] text-xs font-bold tracking-[0.2em]">OR</span>
-              <div className="h-px flex-1 bg-gradient-to-l from-transparent to-[#FFCD11]/20" />
+        <section id="walk-in-section" className="relative py-16 sm:py-20 overflow-hidden" data-testid="walkin-section">
+          <div className="absolute inset-0 bg-gradient-to-b from-[#111111] to-[#0d0d0d]" />
+          <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6">
+            <div className="rounded-2xl sm:rounded-3xl border border-[#FFCD11]/10 bg-gradient-to-br from-[#FFCD11]/[0.04] to-transparent p-8 sm:p-12 text-center space-y-6">
+              <h3 className="text-2xl sm:text-3xl font-black text-white">
+                ALREADY KNOW WHAT YOU NEED?
+              </h3>
+              <p className="text-gray-400 text-sm max-w-md mx-auto">
+                Skip straight to a live session. No browsing required — our admin will handle the rest.
+              </p>
+              <Button
+                size="lg"
+                className="h-14 px-10 font-black bg-[#FFCD11] text-black hover:bg-[#e6b800] rounded-full shadow-[0_0_30px_rgba(255,205,17,0.15)]"
+                onClick={() => {
+                  if (!consentGiven) {
+                    document.getElementById("speak-admin-section")?.scrollIntoView({ behavior: "smooth" });
+                    toast({ title: "Please check the consent box first", variant: "destructive" });
+                    return;
+                  }
+                  startSession();
+                }}
+                disabled={isConnecting}
+                data-testid="button-quick-walkin"
+              >
+                {isConnecting ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                    CONNECTING...
+                  </>
+                ) : (
+                  <>
+                    <ArrowRight className="w-5 h-5 mr-2" />
+                    WALK IN NOW
+                  </>
+                )}
+              </Button>
             </div>
-            <h3 className="text-xl font-black text-white">JUST WANT TO WALK IN?</h3>
-            <p className="text-gray-400 text-sm max-w-md mx-auto">
-              Skip the intro and jump straight into a session. Our admin will greet you and get started right away.
-            </p>
-            <Button
-              variant="outline"
-              size="lg"
-              className="h-12 px-8 font-black border-[#FFCD11]/30 text-[#FFCD11] hover:bg-[#FFCD11]/10 rounded-lg"
-              onClick={() => {
-                if (!consentGiven) {
-                  document.getElementById("speak-admin-section")?.scrollIntoView({ behavior: "smooth" });
-                  toast({ title: "Please check the consent box first", variant: "destructive" });
-                  return;
-                }
-                startSession();
-              }}
-              disabled={isConnecting}
-              data-testid="button-quick-walkin"
-            >
-              {isConnecting ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                  CONNECTING...
-                </>
-              ) : (
-                <>
-                  <ArrowRight className="w-4 h-4 mr-2" />
-                  WALK IN NOW
-                </>
-              )}
-            </Button>
           </div>
         </section>
 
-        <footer className="relative border-t border-white/5 bg-[#0d0d0d] py-10" data-testid="footer">
+        <footer className="relative border-t border-white/5 bg-[#0a0a0a] py-12 sm:py-16" data-testid="footer">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-              <div className="flex items-center gap-3">
-                <img src={logoPath} alt="AMERICAN IRON" className="h-10 w-auto" data-testid="img-logo-footer" />
-                <div className="text-xs text-gray-500">
-                  <p>AI-Powered Heavy Equipment Diagnostics</p>
-                  <p className="mt-0.5">americanironus.com</p>
-                </div>
+            <div className="flex flex-col items-center gap-6 text-center">
+              <img src={logoPath} alt="AMERICAN IRON" className="h-16 w-auto opacity-60" data-testid="img-logo-footer" />
+              <p className="text-xs text-gray-600 max-w-md">
+                AI-Powered Heavy Equipment Diagnostics. Revolutionary service for the people who build the world.
+              </p>
+              <div className="flex items-center gap-6 text-[10px] text-gray-600 uppercase tracking-wider">
+                <a href="/portal" className="hover:text-[#FFCD11] transition-colors">Customer Portal</a>
+                <span className="text-gray-800">|</span>
+                <a href="/admin" className="hover:text-[#FFCD11] transition-colors">Admin</a>
+                <span className="text-gray-800">|</span>
+                <span>americanironus.com</span>
               </div>
-              <div className="text-xs text-gray-600">
+              <div className="text-[10px] text-gray-700">
                 &copy; {new Date().getFullYear()} AMERICAN IRON. All rights reserved.
               </div>
             </div>
