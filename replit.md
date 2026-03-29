@@ -70,7 +70,7 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
 - **Speak Routing**: `sendAvatarSpeakCommand` checks `avatarProviderRef` → D-ID uses `/api/avatar/speak` REST call, HeyGen uses LiveKit data channel, fallback uses browser TTS
 - **Voice Input**: Client-side MediaRecorder captures user mic audio with VAD (silence detection) → sends to `/api/transcribe` endpoint → OpenAI Whisper STT → transcribed text fed to `handleUserMessage` → GPT-4o response → avatar speak command
 - **English Avatars**: Sarah (admin), Bryan (heavy equip), Elenora (power gen), Pedro (marine), Thaddeus (hydraulics), Anastasia (electrical), Marcus (parts)
-- **Arabic Avatars**: سارة (admin), خالد (heavy equip), ليلى (power gen), عمر (marine), حسن (hydraulics), نور (electrical), طارق (parts)
+- **Arabic Avatars**: فاطمة (admin), خالد (heavy equip), ليلى (power gen), عمر (marine), حسن (hydraulics), نور (electrical), طارق (parts)
 - **Body Gestures**: All avatar personas include natural body language instructions
 - **Speaking Style**: Strict no-filler instructions — no verbal fillers; direct substantive responses only
 - **Idle Timeout**: 2-minute warning, 3-minute auto-disconnect with avatar goodbye message (English/Arabic)
