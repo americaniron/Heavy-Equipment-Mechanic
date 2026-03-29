@@ -21,6 +21,7 @@ import {
   HardHat, Cog, ArrowRight, CheckCircle2, Star, Play, MessageCircle,
   Search, ChevronDown, ChevronUp, Package
 } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, Cell, ResponsiveContainer, PieChart, Pie, RadialBarChart, RadialBar } from "recharts";
 import shopBackgroundPath from "@assets/shop_background.png";
 import logoPath from "@assets/american-iron-logo_1772935008934.png";
 import heroFacilityPath from "@assets/hero_facility.png";
@@ -195,9 +196,19 @@ export default function LiveDesk() {
     setIsListening(false);
   }, [cleanupAudioNodes]);
 
+  const isTalkingRef = useRef(false);
+  useEffect(() => { isTalkingRef.current = isTalking; }, [isTalking]);
+
   const startVoiceCapture = useCallback(async () => {
     if (isRecordingRef.current) return;
+    if (isTalkingRef.current || isProcessingRef.current) {
+      console.log("[Voice] Skipping capture — avatar talking or processing");
+      return;
+    }
     manualStopRef.current = false;
+
+    await new Promise(r => setTimeout(r, 800));
+    if (isTalkingRef.current || manualStopRef.current) return;
 
     try {
       if (!audioStreamRef.current || audioStreamRef.current.getTracks().every(t => t.readyState === "ended")) {
@@ -230,7 +241,7 @@ export default function LiveDesk() {
       recordingChunksRef.current = [];
 
       recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) recordingChunksRef.current.push(e.data);
+        if (e.data.size > 0 && !isTalkingRef.current) recordingChunksRef.current.push(e.data);
       };
 
       recorder.onerror = () => {
@@ -243,7 +254,7 @@ export default function LiveDesk() {
         isRecordingRef.current = false;
         cleanupAudioNodes();
 
-        if (manualStopRef.current) {
+        if (manualStopRef.current || isTalkingRef.current) {
           recordingChunksRef.current = [];
           return;
         }
@@ -252,7 +263,7 @@ export default function LiveDesk() {
         recordingChunksRef.current = [];
 
         if (blob.size < 1000) {
-          setTimeout(() => startVoiceCapture(), 200);
+          setTimeout(() => startVoiceCapture(), 300);
           return;
         }
 
@@ -265,11 +276,11 @@ export default function LiveDesk() {
           if (!res.ok) throw new Error("Transcription failed");
           const { text } = await res.json();
 
-          if (text && text.trim().length > 1) {
+          if (text && text.trim().length > 2) {
             console.log("Transcribed:", text);
             await handleUserMessageRef.current(text.trim());
           } else {
-            setTimeout(() => startVoiceCapture(), 200);
+            setTimeout(() => startVoiceCapture(), 300);
           }
         } catch (err) {
           console.error("Transcription error:", err);
@@ -284,13 +295,18 @@ export default function LiveDesk() {
 
       let speechDetected = false;
       let silenceStart = 0;
-      const SILENCE_THRESHOLD = 15;
-      const SPEECH_THRESHOLD = 25;
-      const SILENCE_DURATION = 1500;
+      const SILENCE_THRESHOLD = 18;
+      const SPEECH_THRESHOLD = 30;
+      const SILENCE_DURATION = 1800;
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
       const checkAudio = () => {
         if (!isRecordingRef.current || manualStopRef.current) return;
+
+        if (isTalkingRef.current) {
+          vadFrameRef.current = requestAnimationFrame(checkAudio);
+          return;
+        }
 
         analyser.getByteFrequencyData(dataArray);
         let sum = 0;
@@ -998,8 +1014,6 @@ export default function LiveDesk() {
     setIsListening(false);
     conversationRef.current.push({ role: "user", content: userMsg });
 
-    sendAvatarListeningCue();
-
     try {
       const response = await fetch(`/api/sessions/${currentSession.id}/message`, {
         method: "POST",
@@ -1041,6 +1055,9 @@ export default function LiveDesk() {
               setVerifyTarget(event.target);
               setVerifyType(event.targetType);
               setShowVerifyModal(true);
+              if (event.delivered === false) {
+                toast({ title: "Delivery Issue", description: "Verification code could not be sent. Please check your contact info or try again.", variant: "destructive" });
+              }
             } else if (event.type === "verify_result") {
               if (event.verified) {
                 setVerificationStatus("verified");
@@ -2673,13 +2690,38 @@ function CinematicReportContent({ content }: { content: any }) {
               <div><span className="text-white/40 uppercase tracking-wider">SMU/Hours</span><p className="text-white/80 mt-0.5">{content.smuHours}</p></div>
             )}
             {content.urgencyLevel && (
-              <div><span className="text-white/40 uppercase tracking-wider">Urgency</span>
-                <span className={`inline-block mt-1 text-xs font-bold px-2.5 py-1 rounded-full border ${
-                  content.urgencyLevel.toLowerCase() === "critical" ? "bg-red-500/20 text-red-400 border-red-500/30" :
-                  content.urgencyLevel.toLowerCase() === "high" ? "bg-orange-500/20 text-orange-400 border-orange-500/30" :
-                  content.urgencyLevel.toLowerCase() === "medium" ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/30" :
-                  "bg-green-500/20 text-green-400 border-green-500/30"
-                }`}>{content.urgencyLevel}</span>
+              <div className="col-span-2">
+                <span className="text-white/40 uppercase tracking-wider text-xs">Urgency Level</span>
+                <div className="flex items-center gap-4 mt-2">
+                  <div className="w-16 h-16">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RadialBarChart cx="50%" cy="50%" innerRadius="60%" outerRadius="100%" startAngle={180} endAngle={0}
+                        data={[{
+                          value: content.urgencyLevel.toLowerCase() === "critical" ? 100 :
+                                 content.urgencyLevel.toLowerCase() === "high" ? 75 :
+                                 content.urgencyLevel.toLowerCase() === "medium" ? 50 : 25,
+                          fill: content.urgencyLevel.toLowerCase() === "critical" ? "#ef4444" :
+                                content.urgencyLevel.toLowerCase() === "high" ? "#f97316" :
+                                content.urgencyLevel.toLowerCase() === "medium" ? "#eab308" : "#22c55e"
+                        }]}>
+                        <RadialBar dataKey="value" cornerRadius={4} background={{ fill: "rgba(255,255,255,0.05)" }} />
+                      </RadialBarChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div>
+                    <span className={`inline-block text-sm font-bold px-3 py-1.5 rounded-full border ${
+                      content.urgencyLevel.toLowerCase() === "critical" ? "bg-red-500/20 text-red-400 border-red-500/30" :
+                      content.urgencyLevel.toLowerCase() === "high" ? "bg-orange-500/20 text-orange-400 border-orange-500/30" :
+                      content.urgencyLevel.toLowerCase() === "medium" ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/30" :
+                      "bg-green-500/20 text-green-400 border-green-500/30"
+                    }`}>{content.urgencyLevel}</span>
+                    <p className="text-white/30 text-[10px] mt-1">
+                      {content.urgencyLevel.toLowerCase() === "critical" ? "Immediate action required" :
+                       content.urgencyLevel.toLowerCase() === "high" ? "Address as soon as possible" :
+                       content.urgencyLevel.toLowerCase() === "medium" ? "Schedule for repair" : "Monitor and plan"}
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -2710,6 +2752,25 @@ function CinematicReportContent({ content }: { content: any }) {
       {content.likelyCauses && Array.isArray(content.likelyCauses) && (
         <div>
           <SectionHeader icon={<Search className="w-4 h-4 text-[#FFCD11]" />} title="Likely Causes" />
+          {content.likelyCauses.length >= 2 && (
+            <div className="flex justify-center mb-4">
+              <div className="w-36 h-36">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={(content.likelyCauses as any[]).map((cause: any, i: number) => ({
+                      name: cause.cause?.substring(0, 15) || `#${i+1}`,
+                      value: cause.confidence?.toLowerCase() === "high" ? 45 : cause.confidence?.toLowerCase() === "medium" ? 30 : 15,
+                      fill: cause.confidence?.toLowerCase() === "high" ? "#ef4444" : cause.confidence?.toLowerCase() === "medium" ? "#eab308" : "#3b82f6"
+                    }))} cx="50%" cy="50%" innerRadius={30} outerRadius={55} paddingAngle={3} dataKey="value" stroke="none">
+                      {(content.likelyCauses as any[]).map((cause: any, i: number) => (
+                        <Cell key={i} fill={cause.confidence?.toLowerCase() === "high" ? "#ef4444" : cause.confidence?.toLowerCase() === "medium" ? "#eab308" : "#3b82f6"} fillOpacity={0.6} />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
           <div className="space-y-2">
             {(content.likelyCauses as any[]).map((cause: any, i: number) => (
               <div key={i} className="bg-white/5 rounded-lg border border-white/10 p-4">
@@ -2728,6 +2789,27 @@ function CinematicReportContent({ content }: { content: any }) {
       {content.rootCauseMatrix && Array.isArray(content.rootCauseMatrix) && (
         <div>
           <SectionHeader icon={<Cog className="w-4 h-4 text-[#FFCD11]" />} title="Root Cause Analysis" />
+          {content.rootCauseMatrix.length >= 2 && (
+            <div className="bg-white/5 rounded-xl border border-white/10 p-4 mb-4">
+              <p className="text-[10px] text-white/30 uppercase tracking-wider mb-2 font-medium">Probability Distribution</p>
+              <ResponsiveContainer width="100%" height={content.rootCauseMatrix.length * 38 + 10}>
+                <BarChart data={(content.rootCauseMatrix as any[]).map((item: any, i: number) => ({
+                  name: (item.cause || `Cause ${i+1}`).length > 25 ? (item.cause || `Cause ${i+1}`).substring(0, 22) + "..." : (item.cause || `Cause ${i+1}`),
+                  value: item.probability?.toLowerCase() === "high" ? 85 : item.probability?.toLowerCase() === "medium" ? 55 : 25,
+                  color: item.probability?.toLowerCase() === "high" ? "#ef4444" : item.probability?.toLowerCase() === "medium" ? "#eab308" : "#3b82f6"
+                }))} layout="vertical" margin={{ top: 0, right: 30, left: 0, bottom: 0 }}>
+                  <XAxis type="number" domain={[0, 100]} hide />
+                  <YAxis type="category" dataKey="name" width={120} tick={{ fill: "rgba(255,255,255,0.6)", fontSize: 10 }} axisLine={false} tickLine={false} />
+                  <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={14}>
+                    {(content.rootCauseMatrix as any[]).map((_: any, i: number) => {
+                      const prob = (content.rootCauseMatrix as any[])[i]?.probability?.toLowerCase();
+                      return <Cell key={i} fill={prob === "high" ? "#ef4444" : prob === "medium" ? "#eab308" : "#3b82f6"} fillOpacity={0.7} />;
+                    })}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
           <div className="space-y-3">
             {(content.rootCauseMatrix as any[]).map((item: any, i: number) => (
               <div key={i} className="bg-white/5 rounded-xl border border-white/10 p-4">
@@ -2761,20 +2843,40 @@ function CinematicReportContent({ content }: { content: any }) {
       {content.diagnosticTree && Array.isArray(content.diagnosticTree) && (
         <div>
           <SectionHeader icon={<ArrowRight className="w-4 h-4 text-[#FFCD11]" />} title="Diagnostic Steps" />
-          <div className="space-y-2">
-            {(content.diagnosticTree as any[]).map((step: any, i: number) => (
-              <div key={i} className="bg-white/5 rounded-lg border border-white/10 p-4">
-                <div className="flex items-start gap-3">
-                  <span className="w-8 h-8 rounded-full bg-[#FFCD11]/15 text-[#FFCD11] flex items-center justify-center text-xs font-bold shrink-0">{step.step}</span>
-                  <div className="pt-1 flex-1">
-                    <p className="text-white/90 font-medium">{step.action}</p>
-                    {step.expectedResult && <p className="text-white/40 text-xs mt-1.5"><span className="text-white/30">Expected:</span> {step.expectedResult}</p>}
-                    {step.ifFail && <p className="text-red-400/70 text-xs mt-1"><span className="text-red-400/50">If fails:</span> {step.ifFail}</p>}
-                    {step.toolRequired && <p className="text-blue-400/60 text-xs mt-1"><span className="text-blue-400/50">Tool:</span> {step.toolRequired}</p>}
+          <div className="relative">
+            <div className="absolute left-[19px] top-4 bottom-4 w-0.5 bg-gradient-to-b from-[#FFCD11]/40 via-[#FFCD11]/20 to-transparent" />
+            <div className="space-y-1">
+              {(content.diagnosticTree as any[]).map((step: any, i: number) => (
+                <div key={i} className="relative pl-12">
+                  <div className="absolute left-0 top-3">
+                    <div className="w-10 h-10 rounded-full bg-[#111] border-2 border-[#FFCD11]/40 flex items-center justify-center">
+                      <span className="text-[#FFCD11] text-xs font-bold">{step.step || i + 1}</span>
+                    </div>
+                  </div>
+                  <div className="bg-white/5 rounded-lg border border-white/10 p-4 ml-2">
+                    <p className="text-white/90 font-medium text-sm">{step.action}</p>
+                    {step.expectedResult && (
+                      <div className="mt-2 flex items-start gap-2">
+                        <CheckCircle2 className="w-3 h-3 shrink-0 mt-0.5 text-green-400/60" />
+                        <p className="text-green-400/60 text-xs">{step.expectedResult}</p>
+                      </div>
+                    )}
+                    {step.ifFail && (
+                      <div className="mt-1.5 flex items-start gap-2">
+                        <X className="w-3 h-3 shrink-0 mt-0.5 text-red-400/60" />
+                        <p className="text-red-400/60 text-xs">{step.ifFail}</p>
+                      </div>
+                    )}
+                    {step.toolRequired && (
+                      <div className="mt-1.5 flex items-start gap-2">
+                        <Wrench className="w-3 h-3 shrink-0 mt-0.5 text-blue-400/60" />
+                        <p className="text-blue-400/60 text-xs">{step.toolRequired}</p>
+                      </div>
+                    )}
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -2822,14 +2924,29 @@ function CinematicReportContent({ content }: { content: any }) {
         <div className="bg-white/5 rounded-xl border border-white/10 p-5">
           <SectionHeader icon={<User className="w-4 h-4 text-[#FFCD11]" />} title="Labor Estimate" />
           <div className="grid grid-cols-2 gap-4 text-xs">
-            <div className="bg-white/5 rounded-lg p-3 text-center">
+            <div className="bg-white/5 rounded-lg p-4 text-center relative overflow-hidden">
               <p className="text-white/40 uppercase tracking-wider mb-1">Estimated Hours</p>
               <p className="text-2xl font-bold text-[#FFCD11]">{content.laborEstimate.minHours} - {content.laborEstimate.maxHours}</p>
+              <div className="mt-2 h-1.5 bg-white/5 rounded-full overflow-hidden">
+                <div className="h-full rounded-full bg-gradient-to-r from-[#FFCD11]/40 to-[#FFCD11]" style={{
+                  width: `${Math.min(100, ((content.laborEstimate.maxHours || 8) / 40) * 100)}%`
+                }} />
+              </div>
+              <p className="text-white/20 text-[9px] mt-1">of typical 40hr work week</p>
             </div>
             {content.laborEstimate.skillLevel && (
-              <div className="bg-white/5 rounded-lg p-3 text-center">
+              <div className="bg-white/5 rounded-lg p-4 text-center">
                 <p className="text-white/40 uppercase tracking-wider mb-1">Skill Level</p>
-                <p className="text-lg font-semibold text-white/80">{content.laborEstimate.skillLevel}</p>
+                <div className="flex justify-center gap-1 mt-2">
+                  {[1,2,3,4,5].map(level => {
+                    const skillVal = content.laborEstimate.skillLevel?.toLowerCase().includes("advanced") ? 5 :
+                      content.laborEstimate.skillLevel?.toLowerCase().includes("intermediate") ? 3 :
+                      content.laborEstimate.skillLevel?.toLowerCase().includes("expert") ? 5 :
+                      content.laborEstimate.skillLevel?.toLowerCase().includes("journeyman") ? 4 : 2;
+                    return <div key={level} className={`w-3 h-6 rounded-sm ${level <= skillVal ? "bg-[#FFCD11]" : "bg-white/10"}`} />;
+                  })}
+                </div>
+                <p className="text-white/80 text-xs font-medium mt-2">{content.laborEstimate.skillLevel}</p>
               </div>
             )}
           </div>

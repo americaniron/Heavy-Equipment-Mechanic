@@ -33,11 +33,15 @@ const verificationEmailHtml = (code: string) => `
 `;
 
 async function sendEmailViaResend(target: string, code: string): Promise<boolean> {
-  if (!process.env.RESEND_API_KEY) return false;
+  if (!process.env.RESEND_API_KEY) {
+    console.warn(`[VERIFICATION] RESEND_API_KEY not set, skipping Resend`);
+    return false;
+  }
   try {
     const { Resend } = await import("resend");
     const resend = new Resend(process.env.RESEND_API_KEY);
-    const fromEmail = process.env.RESEND_FROM_EMAIL || "AMERICAN IRON <noreply@americaniron1.com>";
+    const fromEmail = process.env.RESEND_FROM_EMAIL || "AMERICAN IRON <onboarding@resend.dev>";
+    console.log(`[VERIFICATION] Sending via Resend from: ${fromEmail} to: ${target.substring(0, 3)}***`);
     const result = await resend.emails.send({
       from: fromEmail,
       to: [target],
@@ -45,10 +49,10 @@ async function sendEmailViaResend(target: string, code: string): Promise<boolean
       html: verificationEmailHtml(code),
     });
     if (result.error) {
-      console.error(`[VERIFICATION] Resend error for ${target.substring(0, 3)}***:`, result.error.message);
+      console.error(`[VERIFICATION] Resend error for ${target.substring(0, 3)}***:`, JSON.stringify(result.error));
       return false;
     }
-    console.log(`[VERIFICATION] Email sent via Resend to ${target.substring(0, 3)}***`);
+    console.log(`[VERIFICATION] Email sent via Resend to ${target.substring(0, 3)}***, id: ${result.data?.id}`);
     return true;
   } catch (err: any) {
     console.error(`[VERIFICATION] Resend delivery failed for ${target.substring(0, 3)}***:`, err.message);
@@ -57,7 +61,10 @@ async function sendEmailViaResend(target: string, code: string): Promise<boolean
 }
 
 async function sendEmailViaSMTP(target: string, code: string): Promise<boolean> {
-  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) return false;
+  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+    console.warn(`[VERIFICATION] SMTP credentials not set (SMTP_USER: ${!!process.env.SMTP_USER}, SMTP_PASS: ${!!process.env.SMTP_PASS})`);
+    return false;
+  }
   try {
     const nodemailer = await import("nodemailer");
     const smtpPort = parseInt(process.env.SMTP_PORT || "587");
@@ -488,8 +495,9 @@ export async function registerRoutes(
               verified: false,
               expiresAt,
             });
-            await deliverVerificationCode(verifyData.target, verifyData.targetType, code);
-            res.write(`data: ${JSON.stringify({ type: "verify_request", target: verifyData.target, targetType: verifyData.targetType })}\n\n`);
+            const delivered = await deliverVerificationCode(verifyData.target, verifyData.targetType, code);
+            console.log(`[VERIFICATION] Code sent for ${verifyData.targetType} ${verifyData.target.substring(0,3)}***: delivered=${delivered}`);
+            res.write(`data: ${JSON.stringify({ type: "verify_request", target: verifyData.target, targetType: verifyData.targetType, delivered })}\n\n`);
           } catch (e) {
             console.error("Verify request parse error:", e);
           }
