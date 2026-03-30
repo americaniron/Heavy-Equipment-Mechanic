@@ -68,7 +68,11 @@ async function sendEmailViaSMTP(target: string, code: string): Promise<boolean> 
   try {
     const nodemailer = await import("nodemailer");
     const smtpHost = process.env.SMTP_HOST || "smtp.gmail.com";
-    const smtpPort = parseInt(process.env.SMTP_PORT || "587");
+    let smtpPort = parseInt(process.env.SMTP_PORT || "587");
+    if (smtpHost.includes("gmail.com") && smtpPort !== 465 && smtpPort !== 587 && smtpPort !== 25) {
+      console.warn(`[VERIFICATION] SMTP port ${smtpPort} invalid for Gmail, using 587`);
+      smtpPort = 587;
+    }
     console.log(`[VERIFICATION] SMTP connecting to ${smtpHost}:${smtpPort}`);
     const transporter = nodemailer.createTransport({
       host: smtpHost,
