@@ -80,7 +80,7 @@ async function sendEmailViaSMTP(target: string, code: string): Promise<boolean> 
       secure: smtpPort === 465,
       auth: {
         user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
+        pass: (process.env.SMTP_PASS || "").replace(/\s/g, ""),
       },
       tls: {
         rejectUnauthorized: false,
