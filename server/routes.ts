@@ -40,7 +40,7 @@ async function sendEmailViaResend(target: string, code: string): Promise<boolean
   try {
     const { Resend } = await import("resend");
     const resend = new Resend(process.env.RESEND_API_KEY);
-    const fromEmail = process.env.RESEND_FROM_EMAIL || "AMERICAN IRON <onboarding@resend.dev>";
+    const fromEmail = process.env.RESEND_FROM_EMAIL || "AMERICAN IRON <noreply@americanironus.com>";
     console.log(`[VERIFICATION] Sending via Resend from: ${fromEmail} to: ${target.substring(0, 3)}***`);
     const result = await resend.emails.send({
       from: fromEmail,
@@ -67,18 +67,24 @@ async function sendEmailViaSMTP(target: string, code: string): Promise<boolean> 
   }
   try {
     const nodemailer = await import("nodemailer");
+    const smtpHost = process.env.SMTP_HOST || "smtp.gmail.com";
     const smtpPort = parseInt(process.env.SMTP_PORT || "587");
+    console.log(`[VERIFICATION] SMTP connecting to ${smtpHost}:${smtpPort}`);
     const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || "smtp.gmail.com",
+      host: smtpHost,
       port: smtpPort,
       secure: smtpPort === 465,
       auth: {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS,
       },
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-      socketTimeout: 10000,
+      tls: {
+        rejectUnauthorized: false,
+        ciphers: "SSLv3",
+      },
+      connectionTimeout: 15000,
+      greetingTimeout: 15000,
+      socketTimeout: 15000,
     });
     await transporter.sendMail({
       from: `"AMERICAN IRON" <${process.env.SMTP_USER}>`,
@@ -89,7 +95,7 @@ async function sendEmailViaSMTP(target: string, code: string): Promise<boolean> 
     console.log(`[VERIFICATION] Email sent via SMTP to ${target.substring(0, 3)}***`);
     return true;
   } catch (err: any) {
-    console.error(`[VERIFICATION] SMTP delivery failed for ${target.substring(0, 3)}***:`, err.message);
+    console.error(`[VERIFICATION] SMTP delivery failed for ${target.substring(0, 3)}*** (host: ${process.env.SMTP_HOST}, port: ${process.env.SMTP_PORT}):`, err.message);
     return false;
   }
 }
