@@ -7,7 +7,7 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
 - **Frontend**: React + Vite + Tailwind CSS + shadcn/ui (single-page, full-screen video UI)
 - **Backend**: Express.js with TypeScript
 - **Database**: PostgreSQL with Drizzle ORM
-- **AI Engine**: OpenAI (GPT-4o) via Replit AI Integrations
+- **AI Engine**: Dual-engine — Claude Sonnet (admin conversations) + Claude Opus (specialist diagnostics) via Anthropic SDK, with GPT-4o fallback and report generation via Replit AI Integrations
 - **Video Avatars**: HeyGen LiveAvatar (primary, LiveKit) → D-ID Agents Streams API (fallback, WebRTC, Full-HD body gestures, auto-fallback on 402) → browser TTS (last resort)
 - **Voice**: HeyGen LiveKit audio tracks / D-ID Microsoft Multilingual Neural voices + browser SpeechSynthesis fallback
 - **Voice Capture**: Always-hot mic system with VAD (Voice Activity Detection), auto-restart after avatar speech, mute/unmute toggle, 1200ms silence detection, pre-acquired audio stream for zero-latency restart
@@ -18,7 +18,7 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
 ## Key Files
 - `shared/schema.ts` - Database schema (sessions, messages, files, reports, customers, equipment, serviceRequests, workOrders, maintenanceSchedules, supportTickets, documents, invoices, verificationCodes, visitLogs)
 - `server/routes.ts` - All API endpoints with session token auth + portal auth + admin portal auth + verification endpoints
-- `server/services/ai-engine.ts` - OpenAI conversation engine (Admin + 6 Specialist system prompts, with verification step integration)
+- `server/services/ai-engine.ts` - Dual-engine AI (Claude Sonnet for admin, Claude Opus for specialists, GPT-4o fallback + reports). Deeply enriched specialist prompts with manufacturer-specific fault codes, diagnostic patterns, and technical specifications
 - `server/services/avatar.ts` - HeyGen LiveAvatar API integration (session creation with H264/high quality, start, stop)
 - `server/services/did-avatar.ts` - D-ID Agents Streams API (agent creation with cached agents, WebRTC streams, speak, ICE/SDP relay, per-session stream cleanup)
 - `server/storage.ts` - Database CRUD operations for all tables including verification codes and visit logs
