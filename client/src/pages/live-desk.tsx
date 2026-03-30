@@ -161,6 +161,10 @@ export default function LiveDesk() {
   const recordingChunksRef = useRef<Blob[]>([]);
   const vadFrameRef = useRef<number>(0);
   const manualStopRef = useRef(false);
+  const micMutedRef = useRef(false);
+  const [micMuted, setMicMuted] = useState(false);
+  const voiceCaptureActiveRef = useRef(false);
+  const voiceCaptureStartingRef = useRef(false);
   const sessionDataRef = useRef<SessionData | null>(null);
   const isProcessingRef = useRef(false);
   const handleUserMessageRef = useRef<(msg: string) => Promise<void>>(() => Promise.resolve());
@@ -184,8 +188,20 @@ export default function LiveDesk() {
     }
   }, []);
 
+  const ensureMicStream = useCallback(async () => {
+    if (audioStreamRef.current && audioStreamRef.current.getTracks().some(t => t.readyState === "live")) {
+      return audioStreamRef.current;
+    }
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, sampleRate: 16000 }
+    });
+    audioStreamRef.current = stream;
+    return stream;
+  }, []);
+
   const stopVoiceCapture = useCallback(() => {
     manualStopRef.current = true;
+    voiceCaptureActiveRef.current = false;
     isRecordingRef.current = false;
     cleanupAudioNodes();
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
@@ -199,21 +215,25 @@ export default function LiveDesk() {
   const isTalkingRef = useRef(false);
   useEffect(() => { isTalkingRef.current = isTalking; }, [isTalking]);
 
-  const startVoiceCapture = useCallback(async () => {
-    if (isRecordingRef.current) return;
-    if (isTalkingRef.current || isProcessingRef.current) {
-      console.log("[Voice] Skipping capture — avatar talking or processing");
+  useEffect(() => {
+    if (!isTalking && !isProcessing && !introPlaying && avatarReady && sessionData && !micMuted && !manualStopRef.current) {
+      if (!isRecordingRef.current && voiceCaptureActiveRef.current) {
+        console.log("[Voice] Avatar stopped talking — auto-restarting mic");
+        startVoiceCaptureImmediate();
+      }
+    }
+  }, [isTalking, isProcessing, introPlaying, avatarReady, sessionData, micMuted]);
+
+  const startVoiceCaptureImmediate = useCallback(async () => {
+    if (isRecordingRef.current || voiceCaptureStartingRef.current) return;
+    if (isTalkingRef.current || isProcessingRef.current || micMutedRef.current) {
       return;
     }
+    voiceCaptureStartingRef.current = true;
     manualStopRef.current = false;
 
-    await new Promise(r => setTimeout(r, 800));
-    if (isTalkingRef.current || manualStopRef.current) return;
-
     try {
-      if (!audioStreamRef.current || audioStreamRef.current.getTracks().every(t => t.readyState === "ended")) {
-        audioStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
-      }
+      const stream = await ensureMicStream();
 
       if (!audioContextRef.current || audioContextRef.current.state === "closed") {
         audioContextRef.current = new AudioContext();
@@ -224,7 +244,7 @@ export default function LiveDesk() {
 
       cleanupAudioNodes();
 
-      const source = audioContextRef.current.createMediaStreamSource(audioStreamRef.current);
+      const source = audioContextRef.current.createMediaStreamSource(stream);
       analyserSourceRef.current = source;
       const analyser = audioContextRef.current.createAnalyser();
       analyser.fftSize = 512;
@@ -237,11 +257,13 @@ export default function LiveDesk() {
           ? "audio/webm"
           : "audio/mp4";
 
-      const recorder = new MediaRecorder(audioStreamRef.current, { mimeType });
+      const recorder = new MediaRecorder(stream, { mimeType });
       recordingChunksRef.current = [];
 
       recorder.ondataavailable = (e) => {
-        if (e.data.size > 0 && !isTalkingRef.current) recordingChunksRef.current.push(e.data);
+        if (e.data.size > 0 && !isTalkingRef.current && !micMutedRef.current) {
+          recordingChunksRef.current.push(e.data);
+        }
       };
 
       recorder.onerror = () => {
@@ -254,7 +276,7 @@ export default function LiveDesk() {
         isRecordingRef.current = false;
         cleanupAudioNodes();
 
-        if (manualStopRef.current || isTalkingRef.current) {
+        if (manualStopRef.current || isTalkingRef.current || micMutedRef.current) {
           recordingChunksRef.current = [];
           return;
         }
@@ -263,7 +285,9 @@ export default function LiveDesk() {
         recordingChunksRef.current = [];
 
         if (blob.size < 1000) {
-          setTimeout(() => startVoiceCapture(), 300);
+          if (voiceCaptureActiveRef.current && !micMutedRef.current) {
+            startVoiceCaptureImmediate();
+          }
           return;
         }
 
@@ -277,18 +301,22 @@ export default function LiveDesk() {
           const { text } = await res.json();
 
           if (text && text.trim().length > 2) {
-            console.log("Transcribed:", text);
+            console.log("[Voice] Transcribed:", text);
             await handleUserMessageRef.current(text.trim());
           } else {
-            setTimeout(() => startVoiceCapture(), 300);
+            if (voiceCaptureActiveRef.current && !micMutedRef.current) {
+              startVoiceCaptureImmediate();
+            }
           }
         } catch (err) {
-          console.error("Transcription error:", err);
-          setTimeout(() => startVoiceCapture(), 500);
+          console.error("[Voice] Transcription error:", err);
+          if (voiceCaptureActiveRef.current && !micMutedRef.current) {
+            startVoiceCaptureImmediate();
+          }
         }
       };
 
-      recorder.start(250);
+      recorder.start(200);
       mediaRecorderRef.current = recorder;
       isRecordingRef.current = true;
       setIsListening(true);
@@ -296,14 +324,14 @@ export default function LiveDesk() {
       let speechDetected = false;
       let silenceStart = 0;
       const SILENCE_THRESHOLD = 18;
-      const SPEECH_THRESHOLD = 30;
-      const SILENCE_DURATION = 1800;
+      const SPEECH_THRESHOLD = 28;
+      const SILENCE_DURATION = 1200;
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
       const checkAudio = () => {
         if (!isRecordingRef.current || manualStopRef.current) return;
 
-        if (isTalkingRef.current) {
+        if (isTalkingRef.current || micMutedRef.current) {
           vadFrameRef.current = requestAnimationFrame(checkAudio);
           return;
         }
@@ -331,11 +359,18 @@ export default function LiveDesk() {
       vadFrameRef.current = requestAnimationFrame(checkAudio);
 
     } catch (err) {
-      console.error("Voice capture error:", err);
+      console.error("[Voice] Capture error:", err);
       isRecordingRef.current = false;
       toast({ title: "Microphone error", description: "Could not access microphone.", variant: "destructive" });
+    } finally {
+      voiceCaptureStartingRef.current = false;
     }
-  }, [cleanupAudioNodes, toast]);
+  }, [cleanupAudioNodes, toast, ensureMicStream]);
+
+  const startVoiceCapture = useCallback(async () => {
+    voiceCaptureActiveRef.current = true;
+    await startVoiceCaptureImmediate();
+  }, [startVoiceCaptureImmediate]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -533,42 +568,43 @@ export default function LiveDesk() {
     try {
       const encoder = new TextEncoder();
 
-      const sentenceMatches = text.match(/[^.!?]+[.!?]+\s*/g) || [];
-      const matched = sentenceMatches.join("");
-      const remainder = text.slice(matched.length).trim();
-      const sentences = [...sentenceMatches];
-      if (remainder) sentences.push(remainder);
-
+      const MAX_CHUNK = 300;
       const chunks: string[] = [];
-      let current = "";
-      for (const s of sentences) {
-        if ((current + s).length > 180 && current) {
-          chunks.push(current.trim());
-          current = s;
-        } else {
-          current += s;
+      if (text.length <= MAX_CHUNK) {
+        chunks.push(text);
+      } else {
+        const sentenceMatches = text.match(/[^.!?]+[.!?]+\s*/g) || [];
+        const matched = sentenceMatches.join("");
+        const remainder = text.slice(matched.length).trim();
+        const sentences = [...sentenceMatches];
+        if (remainder) sentences.push(remainder);
+        let current = "";
+        for (const s of sentences) {
+          if ((current + s).length > MAX_CHUNK && current) {
+            chunks.push(current.trim());
+            current = s;
+          } else {
+            current += s;
+          }
         }
+        if (current.trim()) chunks.push(current.trim());
+        if (chunks.length === 0) chunks.push(text);
       }
-      if (current.trim()) chunks.push(current.trim());
-      if (chunks.length === 0) chunks.push(text);
 
-      for (let i = 0; i < chunks.length; i++) {
+      for (const chunk of chunks) {
         const payload = JSON.stringify({
           event_type: "avatar.speak_text",
           session_id: avatarSessionIdRef.current,
-          text: chunks[i],
+          text: chunk,
         });
         room.localParticipant.publishData(encoder.encode(payload), {
           reliable: true,
           topic: "agent-control",
         });
-        if (i < chunks.length - 1) {
-          await new Promise(r => setTimeout(r, 200));
-        }
       }
 
       setIsTalking(true);
-      console.log("Avatar speak: sent", chunks.length, "chunks, total length:", text.length);
+      console.log("[HeyGen] Avatar speak sent,", chunks.length, "chunks, length:", text.length);
     } catch (err) {
       console.error("Failed to send speak command via LiveKit:", err);
       speakWithBrowser(text);
@@ -873,6 +909,10 @@ export default function LiveDesk() {
     }
 
     setIsConnecting(true);
+    micMutedRef.current = false;
+    setMicMuted(false);
+    voiceCaptureActiveRef.current = false;
+    voiceCaptureStartingRef.current = false;
     try {
       const res = await apiRequest("POST", "/api/sessions", {
         consentGiven: true,
@@ -1008,10 +1048,16 @@ export default function LiveDesk() {
     if (!currentSession || isProcessingRef.current || !userMsg.trim()) return;
 
     resetIdleTimer();
-    stopVoiceCapture();
+    isRecordingRef.current = false;
+    cleanupAudioNodes();
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      try { mediaRecorderRef.current.stop(); } catch {}
+    }
+    mediaRecorderRef.current = null;
+    recordingChunksRef.current = [];
+    setIsListening(false);
     setIsProcessing(true);
     isProcessingRef.current = true;
-    setIsListening(false);
     conversationRef.current.push({ role: "user", content: userMsg });
 
     try {
@@ -1081,8 +1127,8 @@ export default function LiveDesk() {
         conversationRef.current.push({ role: "assistant", content: cleanedText });
         if (cleanedText) await sendAvatarSpeakCommand(cleanedText);
 
-        const estimatedMs = Math.max(3000, cleanedText.length * 80);
-        await waitForSpeakEnd(Math.min(estimatedMs, 45000));
+        const estimatedMs = Math.max(2000, cleanedText.length * 60);
+        await waitForSpeakEnd(Math.min(estimatedMs, 30000));
 
         if (handoffData) {
           await new Promise(r => setTimeout(r, 1500));
@@ -1163,10 +1209,19 @@ export default function LiveDesk() {
 
   const toggleMicrophone = async () => {
     try {
-      if (isListening || isRecordingRef.current) {
-        stopVoiceCapture();
+      if (micMuted) {
+        micMutedRef.current = false;
+        setMicMuted(false);
+        manualStopRef.current = false;
+        voiceCaptureActiveRef.current = true;
+        if (!isRecordingRef.current && !isTalkingRef.current && !isProcessingRef.current) {
+          await startVoiceCaptureImmediate();
+        }
       } else {
-        await startVoiceCapture();
+        micMutedRef.current = true;
+        setMicMuted(true);
+        stopVoiceCapture();
+        voiceCaptureActiveRef.current = true;
       }
     } catch (err) {
       console.error("Mic toggle error:", err);
@@ -2067,7 +2122,7 @@ export default function LiveDesk() {
     );
   }
 
-  const avatarListening = !isTalking && !introPlaying && avatarReady && (isListening || isProcessing);
+  const avatarListening = !isTalking && !introPlaying && avatarReady && !micMuted && (isListening || isProcessing);
 
   return (
     <div className="h-screen w-screen bg-[#1a1a1a] flex flex-col relative overflow-hidden" data-testid="live-desk-active">
@@ -2315,13 +2370,13 @@ export default function LiveDesk() {
             <div className="flex items-center justify-center gap-3">
               <Button
                 size="icon"
-                variant={isListening ? "default" : "secondary"}
-                className={`h-14 w-14 rounded-full ${isListening ? "bg-[#FFCD11] text-black ring-4 ring-[#FFCD11]/30" : "bg-white/10 hover:bg-white/20 border border-white/20"}`}
+                variant={micMuted ? "secondary" : "default"}
+                className={`h-14 w-14 rounded-full ${micMuted ? "bg-red-600/80 hover:bg-red-600 ring-2 ring-red-500/40" : isListening ? "bg-[#FFCD11] text-black ring-4 ring-[#FFCD11]/30 animate-pulse" : "bg-[#FFCD11]/70 text-black ring-2 ring-[#FFCD11]/20"}`}
                 onClick={toggleMicrophone}
                 disabled={!avatarReady}
                 data-testid="button-microphone"
               >
-                {isListening ? <Mic className="w-6 h-6 text-white" /> : <MicOff className="w-6 h-6 text-white" />}
+                {micMuted ? <MicOff className="w-6 h-6 text-white" /> : <Mic className="w-6 h-6" />}
               </Button>
 
               <Button
@@ -2365,11 +2420,19 @@ export default function LiveDesk() {
               </Button>
             </div>
 
-            {isListening && (
-              <p className="text-center text-white/50 text-xs" data-testid="text-listening-hint">
+            {micMuted ? (
+              <p className="text-center text-red-400/70 text-xs" data-testid="text-mic-muted">
+                {selectedLanguage === "ar" ? "الميكروفون مكتوم — اضغط لإلغاء الكتم" : "Mic muted — tap to unmute"}
+              </p>
+            ) : isListening ? (
+              <p className="text-center text-[#FFCD11]/70 text-xs" data-testid="text-listening-hint">
                 {selectedLanguage === "ar" ? "يستمع... تحدث بشكل طبيعي" : "Listening... speak naturally"}
               </p>
-            )}
+            ) : isTalking ? (
+              <p className="text-center text-white/50 text-xs" data-testid="text-avatar-speaking">
+                {selectedLanguage === "ar" ? "يتحدث..." : "Speaking..."}
+              </p>
+            ) : null}
           </div>
         </div>
       </div>
