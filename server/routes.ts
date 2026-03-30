@@ -138,6 +138,81 @@ async function deliverVerificationCode(target: string, targetType: string, code:
   return false;
 }
 
+async function sendQuoteConfirmationEmail(email: string, firstName: string, refNumber: string, validItems: number, totalItems: number): Promise<void> {
+  const html = `
+  <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #111; border: 1px solid #333; border-radius: 8px; overflow: hidden;">
+    <div style="background: #FFCD11; padding: 20px; text-align: center;">
+      <h1 style="margin: 0; color: #111; font-size: 24px; letter-spacing: 4px;">AMERICAN IRON</h1>
+      <p style="margin: 5px 0 0; color: #333; font-size: 14px;">Parts Quote Request Received</p>
+    </div>
+    <div style="padding: 30px; color: #ddd;">
+      <p style="font-size: 16px;">Hi ${firstName},</p>
+      <p>Your parts quote request has been received and is being reviewed by our sales team.</p>
+      <div style="background: #1a1a1a; border: 1px solid #333; border-radius: 6px; padding: 16px; margin: 20px 0;">
+        <p style="margin: 0 0 8px; color: #FFCD11; font-weight: bold;">Reference Number</p>
+        <p style="margin: 0; font-size: 20px; font-weight: bold; letter-spacing: 2px;">${refNumber}</p>
+      </div>
+      <div style="background: #1a1a1a; border: 1px solid #333; border-radius: 6px; padding: 16px; margin: 20px 0;">
+        <p style="margin: 0 0 4px;"><strong style="color: #FFCD11;">Parts Submitted:</strong> ${totalItems} item${totalItems > 1 ? 's' : ''}</p>
+        <p style="margin: 0;"><strong style="color: #FFCD11;">Validated:</strong> ${validItems} of ${totalItems}</p>
+      </div>
+      <p><strong>What happens next:</strong></p>
+      <ol style="padding-left: 20px; line-height: 1.8;">
+        <li>Our sales team will review your parts list</li>
+        <li>We'll prepare a formal quote with accurate pricing</li>
+        <li>You'll receive your official quote via email shortly</li>
+      </ol>
+      <p>You can track the status of your quote request anytime in your <strong>Customer Portal</strong>.</p>
+      <p style="margin-top: 30px; color: #888; font-size: 12px; border-top: 1px solid #333; padding-top: 16px;">
+        If you have any questions, our team is here to help.<br/>
+        &copy; ${new Date().getFullYear()} AMERICAN IRON — americanironus.com
+      </p>
+    </div>
+  </div>`;
+
+  if (process.env.RESEND_API_KEY) {
+    try {
+      const { Resend } = await import("resend");
+      const resend = new Resend(process.env.RESEND_API_KEY);
+      await resend.emails.send({
+        from: process.env.RESEND_FROM_EMAIL || "AMERICAN IRON <noreply@americanironus.com>",
+        to: [email],
+        subject: `Quote Request ${refNumber} Received — AMERICAN IRON`,
+        html,
+      });
+      console.log(`[QUOTE] Confirmation email sent via Resend to ${email.substring(0, 3)}***`);
+      return;
+    } catch (err: any) {
+      console.error(`[QUOTE] Resend failed:`, err.message);
+    }
+  }
+
+  if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+    try {
+      const nodemailer = await import("nodemailer");
+      const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST || "smtp.gmail.com",
+        port: parseInt(process.env.SMTP_PORT || "587"),
+        secure: parseInt(process.env.SMTP_PORT || "587") === 465,
+        auth: { user: process.env.SMTP_USER, pass: (process.env.SMTP_PASS || "").replace(/\s/g, "") },
+        tls: { rejectUnauthorized: false },
+      });
+      await transporter.sendMail({
+        from: `"AMERICAN IRON" <${process.env.SMTP_USER}>`,
+        to: email,
+        subject: `Quote Request ${refNumber} Received — AMERICAN IRON`,
+        html,
+      });
+      console.log(`[QUOTE] Confirmation email sent via SMTP to ${email.substring(0, 3)}***`);
+      return;
+    } catch (err: any) {
+      console.error(`[QUOTE] SMTP failed:`, err.message);
+    }
+  }
+
+  console.warn(`[QUOTE] No email service configured — confirmation email NOT sent for ${refNumber}`);
+}
+
 function generateSessionToken(sessionId: number): string {
   const token = crypto.randomBytes(32).toString("hex");
   sessionTokens.set(sessionId, token);
@@ -441,6 +516,118 @@ export async function registerRoutes(
     try {
       const sessions_list = await storage.getSessionsByCustomer((req as any).customerId);
       res.json(sessions_list);
+    } catch (error: any) { res.status(500).json({ error: error.message }); }
+  });
+
+  app.post("/api/portal/quote-requests", requireAuth, async (req, res) => {
+    try {
+      const cid = (req as any).customerId;
+      const { items, notes, equipmentId, equipmentInfo } = req.body;
+
+      if (!items || !Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ error: "At least one part item is required" });
+      }
+
+      const validationResults = items.map((item: any) => {
+        const errors: string[] = [];
+        if (!item.partNumber || item.partNumber.trim().length < 2) {
+          errors.push("Part number is required (min 2 characters)");
+        }
+        if (!item.quantity || item.quantity < 1 || item.quantity > 9999) {
+          errors.push("Quantity must be between 1 and 9999");
+        }
+        const partNumberPattern = /^[A-Za-z0-9\-\.\/\s]{2,50}$/;
+        if (item.partNumber && !partNumberPattern.test(item.partNumber.trim())) {
+          errors.push("Part number contains invalid characters");
+        }
+        return {
+          ...item,
+          valid: errors.length === 0,
+          errors,
+        };
+      });
+
+      const validCount = validationResults.filter((r: any) => r.valid).length;
+      const invalidCount = validationResults.filter((r: any) => !r.valid).length;
+
+      if (validCount === 0) {
+        return res.status(400).json({
+          error: "No valid parts in the list",
+          validationResults,
+        });
+      }
+
+      const refNumber = `QR-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+
+      const quoteRequest = await storage.createQuoteRequest({
+        customerId: cid,
+        equipmentId: equipmentId ? parseInt(equipmentId) : null,
+        referenceNumber: refNumber,
+        status: "pending_review",
+        notes: notes || null,
+        equipmentInfo: equipmentInfo || null,
+        totalItems: items.length,
+        validatedItems: validCount,
+        invalidItems: invalidCount,
+        adminNotes: null,
+      });
+
+      const createdItems = [];
+      for (const item of validationResults) {
+        const created = await storage.createQuoteRequestItem({
+          quoteRequestId: quoteRequest.id,
+          partNumber: item.partNumber?.trim() || "",
+          description: item.description?.trim() || null,
+          quantity: item.quantity || 1,
+          make: item.make?.trim() || null,
+          model: item.model?.trim() || null,
+          serialNumber: item.serialNumber?.trim() || null,
+          urgency: item.urgency || "standard",
+          validationStatus: item.valid ? "validated" : "invalid",
+          validationNotes: item.valid ? null : item.errors.join("; "),
+        });
+        createdItems.push(created);
+      }
+
+      const customer = await storage.getCustomerById(cid);
+      if (customer?.email) {
+        sendQuoteConfirmationEmail(customer.email, customer.firstName, refNumber, validCount, items.length).catch(err => {
+          console.error("[QUOTE] Email send failed:", err.message);
+        });
+      }
+
+      res.json({
+        quoteRequest,
+        items: createdItems,
+        validationSummary: {
+          total: items.length,
+          valid: validCount,
+          invalid: invalidCount,
+        },
+      });
+    } catch (error: any) {
+      console.error("Quote request error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/portal/quote-requests", requireAuth, async (req, res) => {
+    try {
+      const cid = (req as any).customerId;
+      const quotes = await storage.getQuoteRequests(cid);
+      res.json(quotes);
+    } catch (error: any) { res.status(500).json({ error: error.message }); }
+  });
+
+  app.get("/api/portal/quote-requests/:id", requireAuth, async (req, res) => {
+    try {
+      const cid = (req as any).customerId;
+      const qr = await storage.getQuoteRequestById(parseInt(req.params.id));
+      if (!qr || qr.customerId !== cid) {
+        return res.status(404).json({ error: "Quote request not found" });
+      }
+      const items = await storage.getQuoteRequestItems(qr.id);
+      res.json({ ...qr, items });
     } catch (error: any) { res.status(500).json({ error: error.message }); }
   });
 
