@@ -213,6 +213,130 @@ async function sendQuoteConfirmationEmail(email: string, firstName: string, refN
   console.warn(`[QUOTE] No email service configured — confirmation email NOT sent for ${refNumber}`);
 }
 
+async function sendQuoteNotificationToAdmin(
+  customerName: string,
+  customerEmail: string,
+  customerPhone: string | null,
+  company: string | null,
+  refNumber: string,
+  totalItems: number,
+  items: Array<{ partNumber: string; description?: string; quantity: number; make?: string; urgency?: string }>,
+  equipmentInfo: string | null,
+  notes: string | null
+): Promise<void> {
+  const adminEmail = "adam@americanironus.com";
+
+  const itemRows = items.map((item, i) =>
+    `<tr style="border-bottom: 1px solid #333;">
+      <td style="padding: 8px; color: #ddd;">${i + 1}</td>
+      <td style="padding: 8px; color: #FFCD11; font-weight: bold;">${item.partNumber}</td>
+      <td style="padding: 8px; color: #ddd;">${item.description || '—'}</td>
+      <td style="padding: 8px; color: #ddd; text-align: center;">${item.quantity}</td>
+      <td style="padding: 8px; color: #ddd;">${item.make || '—'}</td>
+      <td style="padding: 8px; color: #ddd;">${item.urgency === 'emergency' ? '<span style="color:#ef4444;font-weight:bold;">EMERGENCY</span>' : item.urgency === 'urgent' ? '<span style="color:#f97316;font-weight:bold;">URGENT</span>' : 'Standard'}</td>
+    </tr>`
+  ).join("");
+
+  const html = `
+  <div style="font-family: Arial, sans-serif; max-width: 700px; margin: 0 auto; background: #111; border: 1px solid #333; border-radius: 8px; overflow: hidden;">
+    <div style="background: #FFCD11; padding: 20px; text-align: center;">
+      <h1 style="margin: 0; color: #111; font-size: 24px; letter-spacing: 4px;">AMERICAN IRON</h1>
+      <p style="margin: 5px 0 0; color: #333; font-size: 14px; font-weight: bold;">New Parts Quote Request</p>
+    </div>
+    <div style="padding: 30px; color: #ddd;">
+      <div style="background: #1a1a1a; border: 1px solid #333; border-radius: 6px; padding: 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 4px; color: #FFCD11; font-weight: bold; font-size: 18px;">Reference: ${refNumber}</p>
+        <p style="margin: 0; color: #888; font-size: 12px;">Submitted ${new Date().toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "full", timeStyle: "short" })}</p>
+      </div>
+
+      <h3 style="color: #FFCD11; margin: 0 0 10px; font-size: 14px; text-transform: uppercase; letter-spacing: 2px;">Customer Information</h3>
+      <div style="background: #1a1a1a; border: 1px solid #333; border-radius: 6px; padding: 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 4px;"><strong>Name:</strong> ${customerName}</p>
+        <p style="margin: 0 0 4px;"><strong>Email:</strong> <a href="mailto:${customerEmail}" style="color: #FFCD11;">${customerEmail}</a></p>
+        ${customerPhone ? `<p style="margin: 0 0 4px;"><strong>Phone:</strong> ${customerPhone}</p>` : ''}
+        ${company ? `<p style="margin: 0;"><strong>Company:</strong> ${company}</p>` : ''}
+      </div>
+
+      ${equipmentInfo ? `
+      <h3 style="color: #FFCD11; margin: 0 0 10px; font-size: 14px; text-transform: uppercase; letter-spacing: 2px;">Equipment</h3>
+      <div style="background: #1a1a1a; border: 1px solid #333; border-radius: 6px; padding: 16px; margin-bottom: 20px;">
+        <p style="margin: 0;">${equipmentInfo}</p>
+      </div>` : ''}
+
+      <h3 style="color: #FFCD11; margin: 0 0 10px; font-size: 14px; text-transform: uppercase; letter-spacing: 2px;">Parts Requested (${totalItems} item${totalItems > 1 ? 's' : ''})</h3>
+      <div style="overflow-x: auto; margin-bottom: 20px;">
+        <table style="width: 100%; border-collapse: collapse; background: #1a1a1a; border: 1px solid #333; border-radius: 6px;">
+          <thead>
+            <tr style="background: #222; border-bottom: 2px solid #FFCD11;">
+              <th style="padding: 10px 8px; color: #FFCD11; text-align: left; font-size: 12px;">#</th>
+              <th style="padding: 10px 8px; color: #FFCD11; text-align: left; font-size: 12px;">Part Number</th>
+              <th style="padding: 10px 8px; color: #FFCD11; text-align: left; font-size: 12px;">Description</th>
+              <th style="padding: 10px 8px; color: #FFCD11; text-align: center; font-size: 12px;">Qty</th>
+              <th style="padding: 10px 8px; color: #FFCD11; text-align: left; font-size: 12px;">Make</th>
+              <th style="padding: 10px 8px; color: #FFCD11; text-align: left; font-size: 12px;">Urgency</th>
+            </tr>
+          </thead>
+          <tbody>${itemRows}</tbody>
+        </table>
+      </div>
+
+      ${notes ? `
+      <h3 style="color: #FFCD11; margin: 0 0 10px; font-size: 14px; text-transform: uppercase; letter-spacing: 2px;">Customer Notes</h3>
+      <div style="background: #1a1a1a; border: 1px solid #333; border-radius: 6px; padding: 16px; margin-bottom: 20px;">
+        <p style="margin: 0;">${notes}</p>
+      </div>` : ''}
+
+      <div style="background: #222; border: 1px solid #FFCD11; border-radius: 6px; padding: 16px; text-align: center;">
+        <p style="margin: 0; color: #FFCD11; font-weight: bold;">Action Required: Prepare and send a formal quote to this customer.</p>
+      </div>
+    </div>
+  </div>`;
+
+  const subject = `New Quote Request ${refNumber} — ${customerName}${company ? ` (${company})` : ''} — ${totalItems} part${totalItems > 1 ? 's' : ''}`;
+
+  if (process.env.RESEND_API_KEY) {
+    try {
+      const { Resend } = await import("resend");
+      const resend = new Resend(process.env.RESEND_API_KEY);
+      await resend.emails.send({
+        from: process.env.RESEND_FROM_EMAIL || "AMERICAN IRON <noreply@americanironus.com>",
+        to: [adminEmail],
+        subject,
+        html,
+      });
+      console.log(`[QUOTE] Admin notification sent via Resend to ${adminEmail}`);
+      return;
+    } catch (err: any) {
+      console.error(`[QUOTE] Resend admin notification failed:`, err.message);
+    }
+  }
+
+  if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+    try {
+      const nodemailer = await import("nodemailer");
+      const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST || "smtp.gmail.com",
+        port: parseInt(process.env.SMTP_PORT || "587"),
+        secure: parseInt(process.env.SMTP_PORT || "587") === 465,
+        auth: { user: process.env.SMTP_USER, pass: (process.env.SMTP_PASS || "").replace(/\s/g, "") },
+        tls: { rejectUnauthorized: false },
+      });
+      await transporter.sendMail({
+        from: `"AMERICAN IRON" <${process.env.SMTP_USER}>`,
+        to: adminEmail,
+        subject,
+        html,
+      });
+      console.log(`[QUOTE] Admin notification sent via SMTP to ${adminEmail}`);
+      return;
+    } catch (err: any) {
+      console.error(`[QUOTE] SMTP admin notification failed:`, err.message);
+    }
+  }
+
+  console.warn(`[QUOTE] No email service configured — admin notification NOT sent for ${refNumber}`);
+}
+
 function generateSessionToken(sessionId: number): string {
   const token = crypto.randomBytes(32).toString("hex");
   sessionTokens.set(sessionId, token);
@@ -592,7 +716,27 @@ export async function registerRoutes(
       const customer = await storage.getCustomerById(cid);
       if (customer?.email) {
         sendQuoteConfirmationEmail(customer.email, customer.firstName, refNumber, validCount, items.length).catch(err => {
-          console.error("[QUOTE] Email send failed:", err.message);
+          console.error("[QUOTE] Customer email send failed:", err.message);
+        });
+
+        sendQuoteNotificationToAdmin(
+          `${customer.firstName} ${customer.lastName}`,
+          customer.email,
+          customer.phone || null,
+          customer.company || null,
+          refNumber,
+          items.length,
+          validationResults.filter((r: any) => r.valid).map((r: any) => ({
+            partNumber: r.partNumber,
+            description: r.description,
+            quantity: r.quantity,
+            make: r.make,
+            urgency: r.urgency,
+          })),
+          equipmentInfo || null,
+          notes || null
+        ).catch(err => {
+          console.error("[QUOTE] Admin notification send failed:", err.message);
         });
       }
 
