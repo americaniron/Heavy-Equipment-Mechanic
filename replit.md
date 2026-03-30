@@ -39,7 +39,7 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
 
 ## Customer Portal & AI Mechanic Portal
 - **Auth**: Token-based (x-auth-token header), bcryptjs password hashing, shared registration
-- **Customer Portal Sections**: Dashboard, My Equipment, Parts, Service, Maintenance, Orders & Shipping, Documents, Billing & Account, Support Center, Admin
+- **Customer Portal Sections**: Dashboard, My Equipment, Parts, Purchase Parts (quote requests), Service, Maintenance, Orders & Shipping, Documents, Billing & Account, Support Center, Admin
 - **AI Virtual Mechanic Sections**: AI Intake/Triage, Diagnosis Engine, Guided Troubleshooting, Fault Code Center, Recommended Parts, Repair Planning, Predictive Maintenance, Case History, Live AI Mechanic, Escalation to Human Expert
 - **Sidebar Navigation**: Collapsible dark sidebar with two section groups, mobile-responsive with hamburger toggle
 - **Ownership checks**: All CRUD operations verify customer ownership before update/delete
@@ -57,6 +57,9 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
 - `GET/POST /api/portal/support-tickets` - Support tickets
 - `GET /api/portal/documents` - Documents
 - `GET /api/portal/invoices` - Invoices
+- `POST /api/portal/quote-requests` - Submit parts quote request (validates items, creates records, sends confirmation email)
+- `GET /api/portal/quote-requests` - List customer's quote requests
+- `GET /api/portal/quote-requests/:id` - Get quote request detail with items (ownership check)
 - `PATCH /api/portal/profile` - Update customer profile
 - `POST /api/portal/escalation` - Escalation to human expert (creates support ticket)
 - `GET /api/portal/cases` - AI session history

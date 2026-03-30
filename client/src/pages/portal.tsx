@@ -23,7 +23,7 @@ import {
 import logoImg from "@assets/american-iron-logo_1772935008934.png";
 
 type SectionId =
-  | "dashboard" | "equipment" | "parts" | "service" | "maintenance"
+  | "dashboard" | "equipment" | "parts" | "purchase-parts" | "service" | "maintenance"
   | "orders" | "documents" | "billing" | "support" | "admin"
   | "ai-intake" | "ai-diagnosis" | "ai-troubleshooting" | "ai-faultcodes"
   | "ai-parts" | "ai-planning" | "ai-predictive" | "ai-history"
@@ -39,6 +39,7 @@ const portalNav: NavItem[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "equipment", label: "My Equipment", icon: Truck },
   { id: "parts", label: "Parts", icon: Search },
+  { id: "purchase-parts", label: "Purchase Parts", icon: ShoppingCart },
   { id: "service", label: "Service", icon: Wrench },
   { id: "maintenance", label: "Maintenance", icon: CalendarClock },
   { id: "orders", label: "Orders & Shipping", icon: Package },
@@ -65,6 +66,7 @@ const sectionTitles: Record<SectionId, string> = {
   dashboard: "Dashboard",
   equipment: "My Equipment",
   parts: "Parts Lookup",
+  "purchase-parts": "Purchase Parts",
   service: "Service Requests",
   maintenance: "Maintenance Schedules",
   orders: "Orders & Shipping",
@@ -435,6 +437,472 @@ function PartsSection({ authToken }: { authToken: string | null }) {
           <CardContent className="p-8 text-center">
             <Search className="h-12 w-12 text-gray-600 mx-auto mb-3" />
             <p className="text-gray-400" data-testid="text-parts-prompt">Enter a serial number above to search for compatible parts.</p>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function PurchasePartsSection({ authToken }: { authToken: string | null }) {
+  const { data: quoteRequests, isLoading: quotesLoading } = useAuthFetch("/api/portal/quote-requests", authToken);
+  const { data: equipmentList } = useAuthFetch("/api/portal/equipment", authToken);
+  const [showForm, setShowForm] = useState(false);
+  const [viewingQuote, setViewingQuote] = useState<number | null>(null);
+  const [items, setItems] = useState<Array<{ partNumber: string; description: string; quantity: number; make: string; model: string; serialNumber: string; urgency: string }>>([
+    { partNumber: "", description: "", quantity: 1, make: "", model: "", serialNumber: "", urgency: "standard" },
+  ]);
+  const [notes, setNotes] = useState("");
+  const [equipmentId, setEquipmentId] = useState("");
+  const [equipmentInfo, setEquipmentInfo] = useState("");
+  const [csvParsing, setCsvParsing] = useState(false);
+  const { toast } = useToast();
+
+  const { data: quoteDetail, isLoading: detailLoading } = useAuthFetch(
+    viewingQuote ? `/api/portal/quote-requests/${viewingQuote}` : "",
+    authToken,
+    !!viewingQuote
+  );
+
+  const submitMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const res = await fetch("/api/portal/quote-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-auth-token": authToken || "" },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || res.statusText);
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/portal/quote-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/portal/dashboard"] });
+      toast({ title: "Quote Request Submitted", description: `Reference: ${data.quoteRequest.referenceNumber}. You'll receive an email confirmation shortly.` });
+      setShowForm(false);
+      resetForm();
+    },
+    onError: (err: any) => {
+      let msg = err.message;
+      try { msg = JSON.parse(err.message)?.error || msg; } catch {}
+      toast({ title: "Submission Failed", description: msg, variant: "destructive" });
+    },
+  });
+
+  const resetForm = () => {
+    setItems([{ partNumber: "", description: "", quantity: 1, make: "", model: "", serialNumber: "", urgency: "standard" }]);
+    setNotes("");
+    setEquipmentId("");
+    setEquipmentInfo("");
+  };
+
+  const addItem = () => {
+    setItems([...items, { partNumber: "", description: "", quantity: 1, make: "", model: "", serialNumber: "", urgency: "standard" }]);
+  };
+
+  const removeItem = (index: number) => {
+    if (items.length <= 1) return;
+    setItems(items.filter((_, i) => i !== index));
+  };
+
+  const updateItem = (index: number, field: string, value: any) => {
+    const updated = [...items];
+    (updated[index] as any)[field] = value;
+    setItems(updated);
+  };
+
+  const handleCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.endsWith(".csv") && !file.name.endsWith(".txt")) {
+      toast({ title: "Invalid file type", description: "Please upload a CSV or TXT file", variant: "destructive" });
+      return;
+    }
+
+    setCsvParsing(true);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        const lines = text.split("\n").map(l => l.trim()).filter(l => l.length > 0);
+
+        if (lines.length < 2) {
+          toast({ title: "Invalid CSV", description: "File must have a header row and at least one data row", variant: "destructive" });
+          setCsvParsing(false);
+          return;
+        }
+
+        const header = lines[0].toLowerCase().split(",").map(h => h.trim().replace(/"/g, ""));
+        const partIdx = header.findIndex(h => h.includes("part") && (h.includes("number") || h.includes("num") || h.includes("#") || h === "part"));
+        const descIdx = header.findIndex(h => h.includes("desc"));
+        const qtyIdx = header.findIndex(h => h.includes("qty") || h.includes("quantity") || h.includes("count"));
+        const makeIdx = header.findIndex(h => h.includes("make") || h.includes("brand") || h.includes("manufacturer"));
+        const modelIdx = header.findIndex(h => h.includes("model"));
+        const serialIdx = header.findIndex(h => h.includes("serial"));
+        const urgencyIdx = header.findIndex(h => h.includes("urgency") || h.includes("priority"));
+
+        if (partIdx === -1) {
+          toast({ title: "Missing column", description: "CSV must have a 'Part Number' column", variant: "destructive" });
+          setCsvParsing(false);
+          return;
+        }
+
+        const parsed = lines.slice(1).map(line => {
+          const cols = line.split(",").map(c => c.trim().replace(/^"|"$/g, ""));
+          return {
+            partNumber: cols[partIdx] || "",
+            description: descIdx >= 0 ? cols[descIdx] || "" : "",
+            quantity: qtyIdx >= 0 ? Math.max(1, parseInt(cols[qtyIdx]) || 1) : 1,
+            make: makeIdx >= 0 ? cols[makeIdx] || "" : "",
+            model: modelIdx >= 0 ? cols[modelIdx] || "" : "",
+            serialNumber: serialIdx >= 0 ? cols[serialIdx] || "" : "",
+            urgency: urgencyIdx >= 0 ? (cols[urgencyIdx] || "standard").toLowerCase() : "standard",
+          };
+        }).filter(item => item.partNumber.length > 0);
+
+        if (parsed.length === 0) {
+          toast({ title: "No valid rows", description: "No rows with valid part numbers found", variant: "destructive" });
+          setCsvParsing(false);
+          return;
+        }
+
+        setItems(parsed);
+        toast({ title: `${parsed.length} parts imported`, description: "Review the items below before submitting" });
+      } catch {
+        toast({ title: "Parse Error", description: "Could not parse the CSV file", variant: "destructive" });
+      }
+      setCsvParsing(false);
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const handleSubmit = () => {
+    const validItems = items.filter(i => i.partNumber.trim().length >= 2);
+    if (validItems.length === 0) {
+      toast({ title: "No valid parts", description: "Add at least one part with a valid part number", variant: "destructive" });
+      return;
+    }
+    submitMutation.mutate({
+      items: validItems.map(i => ({ ...i, quantity: Math.max(1, i.quantity) })),
+      notes: notes || undefined,
+      equipmentId: equipmentId || undefined,
+      equipmentInfo: equipmentInfo || undefined,
+    });
+  };
+
+  const getStatusBadge = (status: string) => {
+    const map: Record<string, { label: string; className: string }> = {
+      pending_review: { label: "Pending Review", className: "bg-yellow-600 text-white" },
+      reviewing: { label: "Under Review", className: "bg-blue-600 text-white" },
+      quoted: { label: "Quoted", className: "bg-green-600 text-white" },
+      rejected: { label: "Rejected", className: "bg-red-600 text-white" },
+      completed: { label: "Completed", className: "bg-gray-600 text-white" },
+    };
+    const s = map[status] || { label: status, className: "bg-gray-600 text-white" };
+    return <Badge className={s.className}>{s.label}</Badge>;
+  };
+
+  if (viewingQuote && quoteDetail) {
+    return (
+      <div className="space-y-4">
+        <Button variant="outline" className="border-[#444] text-gray-300" onClick={() => { setViewingQuote(null); queryClient.removeQueries({ queryKey: [`/api/portal/quote-requests/${viewingQuote}`] }); }} data-testid="button-back-quotes">
+          <ArrowRight className="h-4 w-4 mr-1 rotate-180" /> Back to Quote Requests
+        </Button>
+
+        <Card className="bg-[#1a1a1a] border-[#333]">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div>
+                <CardTitle className="text-white" data-testid="text-quote-ref">{quoteDetail.referenceNumber}</CardTitle>
+                <CardDescription className="text-gray-400">
+                  Submitted {new Date(quoteDetail.createdAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}
+                </CardDescription>
+              </div>
+              {getStatusBadge(quoteDetail.status)}
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+              <div className="bg-[#222] p-3 rounded">
+                <p className="text-gray-400 text-xs">Total Items</p>
+                <p className="text-white font-bold text-lg" data-testid="text-total-items">{quoteDetail.totalItems}</p>
+              </div>
+              <div className="bg-[#222] p-3 rounded">
+                <p className="text-gray-400 text-xs">Validated</p>
+                <p className="text-green-400 font-bold text-lg">{quoteDetail.validatedItems}</p>
+              </div>
+              <div className="bg-[#222] p-3 rounded">
+                <p className="text-gray-400 text-xs">Invalid</p>
+                <p className={`font-bold text-lg ${quoteDetail.invalidItems > 0 ? 'text-red-400' : 'text-gray-500'}`}>{quoteDetail.invalidItems}</p>
+              </div>
+            </div>
+            {quoteDetail.notes && (
+              <div className="bg-[#222] p-3 rounded mb-4">
+                <p className="text-gray-400 text-xs mb-1">Notes</p>
+                <p className="text-white text-sm">{quoteDetail.notes}</p>
+              </div>
+            )}
+            {quoteDetail.equipmentInfo && (
+              <div className="bg-[#222] p-3 rounded mb-4">
+                <p className="text-gray-400 text-xs mb-1">Equipment</p>
+                <p className="text-white text-sm">{quoteDetail.equipmentInfo}</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="bg-[#1a1a1a] border-[#333]">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-white text-base">Parts List</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {detailLoading ? (
+              <div className="flex justify-center py-4"><Loader2 className="h-6 w-6 animate-spin text-[#FFCD11]" /></div>
+            ) : (
+              <div className="space-y-2">
+                {(quoteDetail.items || []).map((item: any, i: number) => (
+                  <div key={i} className="flex items-start gap-3 p-3 rounded bg-[#222]" data-testid={`quote-item-${i}`}>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-white font-semibold">{item.partNumber}</span>
+                        <Badge className={item.validationStatus === "validated" ? "bg-green-800 text-green-200" : "bg-red-800 text-red-200"}>
+                          {item.validationStatus === "validated" ? "Valid" : "Invalid"}
+                        </Badge>
+                        {item.urgency !== "standard" && (
+                          <Badge className="bg-orange-700 text-orange-200">{item.urgency}</Badge>
+                        )}
+                      </div>
+                      {item.description && <p className="text-gray-400 text-sm mt-1">{item.description}</p>}
+                      <div className="flex gap-4 mt-1 text-xs text-gray-500 flex-wrap">
+                        <span>Qty: {item.quantity}</span>
+                        {item.make && <span>Make: {item.make}</span>}
+                        {item.model && <span>Model: {item.model}</span>}
+                        {item.serialNumber && <span>S/N: {item.serialNumber}</span>}
+                      </div>
+                      {item.validationNotes && (
+                        <p className="text-red-400 text-xs mt-1">{item.validationNotes}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <p className="text-gray-400 text-sm">Submit your parts list for a formal quote from AMERICAN IRON sales team.</p>
+        <Button className="bg-[#FFCD11] text-black" onClick={() => setShowForm(!showForm)} data-testid="button-new-quote">
+          <Plus className="h-4 w-4 mr-1" /> New Quote Request
+        </Button>
+      </div>
+
+      {showForm && (
+        <Card className="bg-[#1a1a1a] border-[#FFCD11]/30">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-white">New Parts Quote Request</CardTitle>
+            <CardDescription className="text-gray-400">Add parts manually or upload a CSV file</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex gap-2 flex-wrap items-end">
+              <div className="flex-1 min-w-[200px]">
+                <Label className="text-gray-300 text-sm">Upload Parts List (CSV)</Label>
+                <Input
+                  type="file"
+                  accept=".csv,.txt"
+                  onChange={handleCsvUpload}
+                  className="bg-[#222] border-[#444] text-white mt-1"
+                  disabled={csvParsing}
+                  data-testid="input-csv-upload"
+                />
+                <p className="text-gray-500 text-xs mt-1">CSV columns: Part Number (required), Description, Quantity, Make, Model, Serial Number, Urgency</p>
+              </div>
+              {equipmentList && (equipmentList as any[]).length > 0 && (
+                <div className="min-w-[180px]">
+                  <Label className="text-gray-300 text-sm">Link to Equipment</Label>
+                  <Select value={equipmentId} onValueChange={setEquipmentId}>
+                    <SelectTrigger className="bg-[#222] border-[#444] text-white mt-1" data-testid="select-equipment">
+                      <SelectValue placeholder="Select equipment" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      {(equipmentList as any[]).map((eq: any) => (
+                        <SelectItem key={eq.id} value={String(eq.id)}>{eq.name} — {eq.make} {eq.model}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <Label className="text-gray-300 text-sm">Equipment Info (optional)</Label>
+              <Input
+                value={equipmentInfo}
+                onChange={e => setEquipmentInfo(e.target.value)}
+                className="bg-[#222] border-[#444] text-white mt-1"
+                placeholder="e.g., CAT 320F 2019, S/N: CAT0320FXXXXX"
+                data-testid="input-equipment-info"
+              />
+            </div>
+
+            <div className="border border-[#333] rounded-md p-3">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-white font-semibold text-sm">Parts List ({items.length} item{items.length > 1 ? 's' : ''})</p>
+                <Button size="sm" variant="outline" className="border-[#444] text-gray-300" onClick={addItem} data-testid="button-add-part">
+                  <Plus className="h-3 w-3 mr-1" /> Add Part
+                </Button>
+              </div>
+              <div className="space-y-3">
+                {items.map((item, idx) => (
+                  <div key={idx} className="bg-[#222] p-3 rounded-md" data-testid={`part-row-${idx}`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-gray-400 text-xs font-semibold">Part #{idx + 1}</span>
+                      {items.length > 1 && (
+                        <Button size="icon" variant="ghost" className="h-6 w-6 text-gray-500 hover:text-red-400" onClick={() => removeItem(idx)} data-testid={`button-remove-part-${idx}`}>
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <div>
+                        <Input
+                          value={item.partNumber}
+                          onChange={e => updateItem(idx, "partNumber", e.target.value)}
+                          className="bg-[#1a1a1a] border-[#444] text-white text-sm"
+                          placeholder="Part Number *"
+                          data-testid={`input-part-number-${idx}`}
+                        />
+                      </div>
+                      <div>
+                        <Input
+                          value={item.description}
+                          onChange={e => updateItem(idx, "description", e.target.value)}
+                          className="bg-[#1a1a1a] border-[#444] text-white text-sm"
+                          placeholder="Description"
+                          data-testid={`input-part-desc-${idx}`}
+                        />
+                      </div>
+                      <div>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={9999}
+                          value={item.quantity}
+                          onChange={e => updateItem(idx, "quantity", parseInt(e.target.value) || 1)}
+                          className="bg-[#1a1a1a] border-[#444] text-white text-sm"
+                          placeholder="Qty"
+                          data-testid={`input-part-qty-${idx}`}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 mt-2">
+                      <Input
+                        value={item.make}
+                        onChange={e => updateItem(idx, "make", e.target.value)}
+                        className="bg-[#1a1a1a] border-[#444] text-white text-sm"
+                        placeholder="Make"
+                        data-testid={`input-part-make-${idx}`}
+                      />
+                      <Input
+                        value={item.model}
+                        onChange={e => updateItem(idx, "model", e.target.value)}
+                        className="bg-[#1a1a1a] border-[#444] text-white text-sm"
+                        placeholder="Model"
+                        data-testid={`input-part-model-${idx}`}
+                      />
+                      <Input
+                        value={item.serialNumber}
+                        onChange={e => updateItem(idx, "serialNumber", e.target.value)}
+                        className="bg-[#1a1a1a] border-[#444] text-white text-sm"
+                        placeholder="Serial Number"
+                        data-testid={`input-part-serial-${idx}`}
+                      />
+                      <Select value={item.urgency} onValueChange={v => updateItem(idx, "urgency", v)}>
+                        <SelectTrigger className="bg-[#1a1a1a] border-[#444] text-white text-sm" data-testid={`select-urgency-${idx}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="standard">Standard</SelectItem>
+                          <SelectItem value="urgent">Urgent</SelectItem>
+                          <SelectItem value="emergency">Emergency</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-gray-300 text-sm">Additional Notes</Label>
+              <Textarea
+                value={notes}
+                onChange={e => setNotes(e.target.value)}
+                className="bg-[#222] border-[#444] text-white mt-1"
+                placeholder="Any special requirements, preferred brands, or additional context..."
+                rows={3}
+                data-testid="input-quote-notes"
+              />
+            </div>
+
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" className="border-[#444] text-gray-300" onClick={() => { setShowForm(false); resetForm(); }} data-testid="button-cancel-quote">
+                Cancel
+              </Button>
+              <Button className="bg-[#FFCD11] text-black" onClick={handleSubmit} disabled={submitMutation.isPending} data-testid="button-submit-quote">
+                {submitMutation.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+                <ShoppingCart className="h-4 w-4 mr-1" /> Submit Quote Request
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {quotesLoading ? (
+        <div className="flex justify-center py-8"><Loader2 className="h-8 w-8 animate-spin text-[#FFCD11]" /></div>
+      ) : (quoteRequests && (quoteRequests as any[]).length > 0) ? (
+        <div className="space-y-2">
+          {(quoteRequests as any[]).map((qr: any) => (
+            <Card
+              key={qr.id}
+              className="bg-[#1a1a1a] border-[#333] cursor-pointer hover:border-[#FFCD11]/40 transition-colors"
+              onClick={() => setViewingQuote(qr.id)}
+              data-testid={`quote-card-${qr.id}`}
+            >
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-white font-semibold">{qr.referenceNumber}</span>
+                      {getStatusBadge(qr.status)}
+                    </div>
+                    <div className="flex gap-4 text-gray-400 text-xs mt-1 flex-wrap">
+                      <span>{qr.totalItems} part{qr.totalItems > 1 ? 's' : ''}</span>
+                      {qr.equipmentInfo && <span>{qr.equipmentInfo}</span>}
+                      <span>{new Date(qr.createdAt).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                  <ChevronRight className="h-5 w-5 text-gray-500 shrink-0" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <Card className="bg-[#1a1a1a] border-[#333]">
+          <CardContent className="p-8 text-center">
+            <ShoppingCart className="h-12 w-12 text-gray-600 mx-auto mb-3" />
+            <p className="text-gray-400" data-testid="text-no-quotes">No quote requests yet. Click "New Quote Request" to submit your parts list.</p>
           </CardContent>
         </Card>
       )}
@@ -1319,6 +1787,7 @@ export default function PortalPage() {
       case "dashboard": return <DashboardSection authToken={authToken} />;
       case "equipment": return <EquipmentSection authToken={authToken} />;
       case "parts": return <PartsSection authToken={authToken} />;
+      case "purchase-parts": return <PurchasePartsSection authToken={authToken} />;
       case "service": return <ServiceSection authToken={authToken} />;
       case "maintenance": return <MaintenanceSection authToken={authToken} />;
       case "orders": return <OrdersSection />;

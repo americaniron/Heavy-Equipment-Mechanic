@@ -4,7 +4,7 @@ import {
   customers, equipment, serviceRequests, workOrders,
   maintenanceSchedules, supportTickets, documents, invoices,
   sessions, sessionMessages, sessionFiles, sessionReports,
-  verificationCodes, visitLogs,
+  verificationCodes, visitLogs, quoteRequests, quoteRequestItems,
   type Customer, type InsertCustomer,
   type Equipment, type InsertEquipment,
   type ServiceRequest, type InsertServiceRequest,
@@ -19,6 +19,8 @@ import {
   type SessionReport, type InsertSessionReport,
   type VerificationCode, type InsertVerificationCode,
   type VisitLog, type InsertVisitLog,
+  type QuoteRequest, type InsertQuoteRequest,
+  type QuoteRequestItem, type InsertQuoteRequestItem,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -80,6 +82,16 @@ export interface IStorage {
   createVisitLog(data: InsertVisitLog): Promise<VisitLog>;
   getAllVisitLogs(): Promise<VisitLog[]>;
   getVisitLogBySession(sessionId: number): Promise<VisitLog | undefined>;
+
+  createQuoteRequest(data: InsertQuoteRequest): Promise<QuoteRequest>;
+  getQuoteRequests(customerId: number): Promise<QuoteRequest[]>;
+  getQuoteRequestById(id: number): Promise<QuoteRequest | undefined>;
+  updateQuoteRequest(id: number, data: Partial<InsertQuoteRequest>): Promise<QuoteRequest | undefined>;
+  getAllQuoteRequests(): Promise<QuoteRequest[]>;
+
+  createQuoteRequestItem(data: InsertQuoteRequestItem): Promise<QuoteRequestItem>;
+  getQuoteRequestItems(quoteRequestId: number): Promise<QuoteRequestItem[]>;
+  updateQuoteRequestItem(id: number, data: Partial<InsertQuoteRequestItem>): Promise<QuoteRequestItem | undefined>;
 
   getAllSessions(): Promise<Session[]>;
   getAllCustomers(): Promise<Customer[]>;
@@ -280,6 +292,37 @@ export class DatabaseStorage implements IStorage {
   async getVisitLogBySession(sessionId: number): Promise<VisitLog | undefined> {
     const [log] = await db.select().from(visitLogs).where(eq(visitLogs.sessionId, sessionId));
     return log;
+  }
+
+  async createQuoteRequest(data: InsertQuoteRequest): Promise<QuoteRequest> {
+    const [qr] = await db.insert(quoteRequests).values(data).returning();
+    return qr;
+  }
+  async getQuoteRequests(customerId: number): Promise<QuoteRequest[]> {
+    return db.select().from(quoteRequests).where(eq(quoteRequests.customerId, customerId)).orderBy(desc(quoteRequests.createdAt));
+  }
+  async getQuoteRequestById(id: number): Promise<QuoteRequest | undefined> {
+    const [qr] = await db.select().from(quoteRequests).where(eq(quoteRequests.id, id));
+    return qr;
+  }
+  async updateQuoteRequest(id: number, data: Partial<InsertQuoteRequest>): Promise<QuoteRequest | undefined> {
+    const [qr] = await db.update(quoteRequests).set({ ...data, updatedAt: new Date() }).where(eq(quoteRequests.id, id)).returning();
+    return qr;
+  }
+  async getAllQuoteRequests(): Promise<QuoteRequest[]> {
+    return db.select().from(quoteRequests).orderBy(desc(quoteRequests.createdAt));
+  }
+
+  async createQuoteRequestItem(data: InsertQuoteRequestItem): Promise<QuoteRequestItem> {
+    const [item] = await db.insert(quoteRequestItems).values(data).returning();
+    return item;
+  }
+  async getQuoteRequestItems(quoteRequestId: number): Promise<QuoteRequestItem[]> {
+    return db.select().from(quoteRequestItems).where(eq(quoteRequestItems.quoteRequestId, quoteRequestId)).orderBy(quoteRequestItems.id);
+  }
+  async updateQuoteRequestItem(id: number, data: Partial<InsertQuoteRequestItem>): Promise<QuoteRequestItem | undefined> {
+    const [item] = await db.update(quoteRequestItems).set(data).where(eq(quoteRequestItems.id, id)).returning();
+    return item;
   }
 
   async getAllSessions(): Promise<Session[]> {

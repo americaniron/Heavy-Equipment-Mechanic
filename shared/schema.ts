@@ -204,6 +204,45 @@ export const visitLogs = pgTable("visit_logs", {
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
+export const quoteRequests = pgTable("quote_requests", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").notNull().references(() => customers.id, { onDelete: "cascade" }),
+  equipmentId: integer("equipment_id").references(() => equipment.id),
+  referenceNumber: text("reference_number").notNull().unique(),
+  status: text("status").default("pending_review").notNull(),
+  notes: text("notes"),
+  equipmentInfo: text("equipment_info"),
+  totalItems: integer("total_items").default(0).notNull(),
+  validatedItems: integer("validated_items").default(0).notNull(),
+  invalidItems: integer("invalid_items").default(0).notNull(),
+  adminNotes: text("admin_notes"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const quoteRequestItems = pgTable("quote_request_items", {
+  id: serial("id").primaryKey(),
+  quoteRequestId: integer("quote_request_id").notNull().references(() => quoteRequests.id, { onDelete: "cascade" }),
+  partNumber: text("part_number").notNull(),
+  description: text("description"),
+  quantity: integer("quantity").default(1).notNull(),
+  make: text("make"),
+  model: text("model"),
+  serialNumber: text("serial_number"),
+  urgency: text("urgency").default("standard"),
+  validationStatus: text("validation_status").default("pending").notNull(),
+  validationNotes: text("validation_notes"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertQuoteRequestSchema = createInsertSchema(quoteRequests).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertQuoteRequestItemSchema = createInsertSchema(quoteRequestItems).omit({ id: true, createdAt: true });
+
+export type QuoteRequest = typeof quoteRequests.$inferSelect;
+export type InsertQuoteRequest = z.infer<typeof insertQuoteRequestSchema>;
+export type QuoteRequestItem = typeof quoteRequestItems.$inferSelect;
+export type InsertQuoteRequestItem = z.infer<typeof insertQuoteRequestItemSchema>;
+
 export const insertVerificationCodeSchema = createInsertSchema(verificationCodes).omit({ id: true, createdAt: true });
 export const insertVisitLogSchema = createInsertSchema(visitLogs).omit({ id: true, createdAt: true });
 
