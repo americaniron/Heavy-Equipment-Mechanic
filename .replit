@@ -1,0 +1,39 @@
+# Replit configuration file
+# This file enables syncing with Replit
+
+# Set the run command - can be customized based on project needs
+run = "echo 'Heavy Equipment Mechanic - Live AI Engineer Desk'"
+
+# Entrypoint file
+entrypoint = "README.md"
+
+# Configure language support
+[languages]
+
+[languages.bash]
+pattern = "**/*.sh"
+
+[languages.python]
+pattern = "**/*.py"
+
+[languages.javascript]
+pattern = "**/*.js"
+[languages.javascript.languageServer]
+start = "typescript-language-server --stdio"
+
+[languages.typescript]
+pattern = "**/*.ts"
+
+[languages.html]
+pattern = "**/*.html"
+
+[languages.css]
+pattern = "**/*.css"
+
+# Nix configuration
+[nix]
+channel = "stable-24_05"
+
+# Deployment configuration (if needed)
+[deployment]
+run = ["sh", "-c", "echo 'Heavy Equipment Mechanic - Live AI Engineer Desk'"]
