@@ -511,15 +511,70 @@ export interface ConversationMessage {
   content: string;
 }
 
+export interface SessionContext {
+  customerName?: string | null;
+  company?: string | null;
+  equipmentType?: string | null;
+  make?: string | null;
+  model?: string | null;
+  year?: string | null;
+  serialNumber?: string | null;
+  smuHours?: string | null;
+  problemSummary?: string | null;
+  faultCodes?: string | null;
+  location?: string | null;
+}
+
+function buildCustomerContextPrompt(ctx: SessionContext, language: string): string {
+  const parts: string[] = [];
+  if (language === "ar") {
+    parts.push("=== معلومات العميل المسجلة مسبقاً ===");
+    if (ctx.customerName) parts.push(`الاسم: ${ctx.customerName}`);
+    if (ctx.company) parts.push(`الشركة: ${ctx.company}`);
+    if (ctx.equipmentType) parts.push(`نوع المعدة: ${ctx.equipmentType}`);
+    const equipDetails = [ctx.make, ctx.model, ctx.year].filter(Boolean).join(" ");
+    if (equipDetails) parts.push(`المعدة: ${equipDetails}`);
+    if (ctx.serialNumber) parts.push(`الرقم التسلسلي: ${ctx.serialNumber}`);
+    if (ctx.smuHours) parts.push(`ساعات العمل: ${ctx.smuHours}`);
+    if (ctx.location) parts.push(`الموقع: ${ctx.location}`);
+    if (ctx.problemSummary) parts.push(`وصف المشكلة: ${ctx.problemSummary}`);
+    if (ctx.faultCodes) parts.push(`أكواد الأعطال: ${ctx.faultCodes}`);
+    parts.push("=== تم تقديم هذه المعلومات عند التسجيل. لا تسأل عنها مرة أخرى. ابدأ بتأكيد موجز ثم انتقل للتشخيص. ===");
+  } else {
+    parts.push("=== PRE-REGISTERED CUSTOMER INFORMATION ===");
+    if (ctx.customerName) parts.push(`Name: ${ctx.customerName}`);
+    if (ctx.company) parts.push(`Company: ${ctx.company}`);
+    if (ctx.equipmentType) parts.push(`Equipment Type: ${ctx.equipmentType}`);
+    const equipDetails = [ctx.make, ctx.model, ctx.year].filter(Boolean).join(" ");
+    if (equipDetails) parts.push(`Equipment: ${equipDetails}`);
+    if (ctx.serialNumber) parts.push(`Serial Number: ${ctx.serialNumber}`);
+    if (ctx.smuHours) parts.push(`SMU/Hours: ${ctx.smuHours}`);
+    if (ctx.location) parts.push(`Location: ${ctx.location}`);
+    if (ctx.problemSummary) parts.push(`Problem Description: ${ctx.problemSummary}`);
+    if (ctx.faultCodes) parts.push(`Fault Codes: ${ctx.faultCodes}`);
+    parts.push("=== This info was provided at registration. Do NOT re-ask these questions. Briefly confirm the details and move quickly to diagnosis/specialist assignment. ===");
+  }
+  return parts.join("\n");
+}
+
 export async function* streamAdminResponse(
   messages: ConversationMessage[],
-  language: string = "en"
+  language: string = "en",
+  sessionContext?: SessionContext | null
 ): AsyncGenerator<string> {
   const systemPrompt = language === "ar" ? ADMIN_SYSTEM_PROMPT_AR : ADMIN_SYSTEM_PROMPT;
   const fullMessages: ConversationMessage[] = [
     { role: "system", content: systemPrompt },
-    ...messages,
   ];
+
+  if (sessionContext && (sessionContext.customerName || sessionContext.equipmentType || sessionContext.problemSummary)) {
+    fullMessages.push({
+      role: "system",
+      content: buildCustomerContextPrompt(sessionContext, language),
+    });
+  }
+
+  fullMessages.push(...messages);
 
   const stream = await openai.chat.completions.create({
     model: "gpt-4o",

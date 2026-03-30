@@ -30,6 +30,13 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
 - `client/src/lib/auth.tsx` - AuthProvider context with login/register/logout
 - `client/src/App.tsx` - Router with routes for /, /live-desk, /login, /register, /portal, /admin
 
+## Registration with Equipment Intake
+- **Two-step registration**: Step 1 collects contact info (name, email, password, company, phone), Step 2 collects equipment details (type, make, model, year, serial, SMU hours, location) and problem description with fault codes
+- **Auto-creation**: Registration creates customer account + equipment record + open service request with problem description
+- **Live desk auth gate**: Unauthenticated users see "REGISTER / SIGN IN TO START" instead of session start button; after login, shows personalized "Welcome {name} — START SESSION"
+- **Session context injection**: When authenticated user starts a session, customer/equipment/problem data is auto-loaded into the session and injected into admin AI as a system message, so admin skips lengthy intake and jumps to clarifying questions
+- **Server-side auth validation**: Session creation validates customerId against auth token to prevent IDOR; customer-context endpoint requires auth
+
 ## Customer Portal & AI Mechanic Portal
 - **Auth**: Token-based (x-auth-token header), bcryptjs password hashing, shared registration
 - **Customer Portal Sections**: Dashboard, My Equipment, Parts, Service, Maintenance, Orders & Shipping, Documents, Billing & Account, Support Center, Admin

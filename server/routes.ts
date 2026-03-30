@@ -10,7 +10,7 @@ import {
   streamAdminResponse, streamMechanicResponse,
   parseIntakeJson, stripIntakeJson, getMechanicName,
   generateQuickAdviceReport, generateProReport,
-  type ConversationMessage,
+  type ConversationMessage, type SessionContext,
 } from "./services/ai-engine";
 import { createAvatarSession, stopAvatarSession, sendAvatarSpeak, getAvatarInfo } from "./services/avatar";
 import { createDIDStream, sendDIDSdpAnswer, sendDIDIceCandidate, sendDIDSpeak, closeDIDStream, clearDIDAgentCache, checkDIDCredits } from "./services/did-avatar";
@@ -181,7 +181,9 @@ export async function registerRoutes(
 
   app.post("/api/auth/register", async (req, res) => {
     try {
-      const { email, password, firstName, lastName, company, phone } = req.body;
+      const { email, password, firstName, lastName, company, phone,
+              equipmentType, equipmentMake, equipmentModel, equipmentYear,
+              equipmentSerial, equipmentSmuHours, problemSummary, faultCodes, equipmentLocation } = req.body;
       if (!email || !password || !firstName || !lastName) {
         return res.status(400).json({ error: "Email, password, first name, and last name are required" });
       }
@@ -200,6 +202,41 @@ export async function registerRoutes(
         role: "user",
         status: "active",
       });
+
+      if (equipmentType) {
+        try {
+          const equipName = [equipmentMake, equipmentModel, equipmentYear].filter(Boolean).join(" ") || equipmentType;
+          const equip = await storage.createEquipment({
+            customerId: customer.id,
+            name: equipName,
+            type: equipmentType,
+            make: equipmentMake || null,
+            model: equipmentModel || null,
+            year: equipmentYear || null,
+            serialNumber: equipmentSerial || null,
+            smuHours: equipmentSmuHours || null,
+            notes: equipmentLocation ? `Location: ${equipmentLocation}` : null,
+            status: "active",
+          });
+
+          if (problemSummary) {
+            await storage.createServiceRequest({
+              customerId: customer.id,
+              equipmentId: equip.id,
+              type: "diagnostic",
+              status: "open",
+              priority: "normal",
+              description: problemSummary,
+              faultCodes: faultCodes || null,
+              assignedMechanic: null,
+              estimatedCost: null,
+            });
+          }
+        } catch (equipErr) {
+          console.error("Equipment/SR creation during registration:", equipErr);
+        }
+      }
+
       const authToken = crypto.randomBytes(32).toString("hex");
       customerSessions.set(authToken, customer.id);
       const { passwordHash: _, ...safe } = customer;
@@ -407,15 +444,77 @@ export async function registerRoutes(
     } catch (error: any) { res.status(500).json({ error: error.message }); }
   });
 
+  app.get("/api/customer-context/:customerId", requireAuth, async (req, res) => {
+    try {
+      const cid = (req as any).customerId;
+      if (cid !== parseInt(req.params.customerId)) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      const customer = await storage.getCustomerById(cid);
+      if (!customer) return res.status(404).json({ error: "Customer not found" });
+      const equipment = await storage.getEquipment(cid);
+      const serviceRequests = await storage.getServiceRequests(cid);
+      const { passwordHash: _, ...safe } = customer;
+      res.json({ customer: safe, equipment, serviceRequests });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.post("/api/sessions", async (req, res) => {
     try {
-      const session = await storage.createSession({
+      const { language, consentGiven, provider, customerId } = req.body;
+
+      const sessionData: any = {
         status: "intake",
         tier: "free",
-        language: req.body.language || "en",
-        consentGiven: req.body.consentGiven || false,
-        agentProvider: req.body.provider || "heygen",
-      });
+        language: language || "en",
+        consentGiven: consentGiven || false,
+        agentProvider: provider || "heygen",
+      };
+
+      let resolvedCustomerId = customerId;
+      if (resolvedCustomerId) {
+        const authToken = req.headers["x-auth-token"] as string;
+        const authenticatedCustomerId = authToken ? customerSessions.get(authToken) : null;
+        if (!authenticatedCustomerId || authenticatedCustomerId !== resolvedCustomerId) {
+          resolvedCustomerId = authenticatedCustomerId || null;
+        }
+      }
+
+      if (resolvedCustomerId) {
+        sessionData.customerId = resolvedCustomerId;
+        try {
+          const customer = await storage.getCustomerById(resolvedCustomerId);
+          if (customer) {
+            sessionData.customerName = `${customer.firstName} ${customer.lastName}`;
+            sessionData.customerEmail = customer.email;
+            sessionData.customerPhone = customer.phone || null;
+            sessionData.company = customer.company || null;
+          }
+          const equipment = await storage.getEquipment(resolvedCustomerId);
+          if (equipment.length > 0) {
+            const eq = equipment[0];
+            sessionData.equipmentType = eq.type || null;
+            sessionData.make = eq.make || null;
+            sessionData.model = eq.model || null;
+            sessionData.year = eq.year || null;
+            sessionData.serialNumber = eq.serialNumber || null;
+            sessionData.smuHours = eq.smuHours || null;
+            sessionData.location = eq.notes?.replace("Location: ", "") || null;
+          }
+          const srs = await storage.getServiceRequests(resolvedCustomerId);
+          const openSR = srs.find(sr => sr.status === "open");
+          if (openSR) {
+            sessionData.problemSummary = openSR.description || null;
+            sessionData.faultCodes = openSR.faultCodes || null;
+          }
+        } catch (ctxErr) {
+          console.error("Error loading customer context for session:", ctxErr);
+        }
+      }
+
+      const session = await storage.createSession(sessionData);
       const accessToken = generateSessionToken(session.id);
       res.json({ ...session, accessToken });
     } catch (error: any) {
@@ -486,7 +585,20 @@ export async function registerRoutes(
       const sessionLanguage = session.language || "en";
 
       if (agentType === "admin") {
-        for await (const chunk of streamAdminResponse(chatHistory, sessionLanguage)) {
+        const sessionCtx: SessionContext = {
+          customerName: session.customerName,
+          company: session.company,
+          equipmentType: session.equipmentType,
+          make: session.make,
+          model: session.model,
+          year: session.year,
+          serialNumber: session.serialNumber,
+          smuHours: session.smuHours,
+          problemSummary: session.problemSummary,
+          faultCodes: session.faultCodes,
+          location: session.location,
+        };
+        for await (const chunk of streamAdminResponse(chatHistory, sessionLanguage, sessionCtx)) {
           fullResponse += chunk;
           res.write(`data: ${JSON.stringify({ type: "text", content: chunk })}\n\n`);
         }

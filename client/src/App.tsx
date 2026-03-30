@@ -15,6 +15,7 @@ function Router() {
     <Switch>
       <Route path="/" component={LiveDesk} />
       <Route path="/live-desk" component={LiveDesk} />
+      <Route path="/auth" component={AuthPage} />
       <Route path="/login" component={AuthPage} />
       <Route path="/register" component={AuthPage} />
       <Route path="/portal" component={Portal} />

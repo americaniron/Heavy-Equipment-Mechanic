@@ -29,6 +29,15 @@ interface RegisterData {
   lastName: string;
   company?: string;
   phone?: string;
+  equipmentType?: string;
+  equipmentMake?: string;
+  equipmentModel?: string;
+  equipmentYear?: string;
+  equipmentSerial?: string;
+  equipmentSmuHours?: string;
+  problemSummary?: string;
+  faultCodes?: string;
+  equipmentLocation?: string;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
