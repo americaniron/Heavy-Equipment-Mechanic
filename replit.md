@@ -8,8 +8,9 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
 - **Backend**: Express.js with TypeScript
 - **Database**: PostgreSQL with Drizzle ORM
 - **AI Engine**: OpenAI (GPT-4o) via Replit AI Integrations
-- **Video Avatars**: D-ID Agents Streams API with clip-type presenters (primary, WebRTC, Full-HD body gestures) → HeyGen LiveAvatar (auto-fallback on 402, LiveKit) → browser TTS (last resort)
-- **Voice**: D-ID Microsoft Multilingual Neural voices (120+ languages) / HeyGen LiveKit audio tracks + browser SpeechSynthesis fallback
+- **Video Avatars**: HeyGen LiveAvatar (primary, LiveKit) → D-ID Agents Streams API (fallback, WebRTC, Full-HD body gestures, auto-fallback on 402) → browser TTS (last resort)
+- **Voice**: HeyGen LiveKit audio tracks / D-ID Microsoft Multilingual Neural voices + browser SpeechSynthesis fallback
+- **Voice Capture**: Always-hot mic system with VAD (Voice Activity Detection), auto-restart after avatar speech, mute/unmute toggle, 1200ms silence detection, pre-acquired audio stream for zero-latency restart
 - **Avatar Expressions**: Context-aware expression system analyzes text for greeting/positive/concern/question/explain/empathy patterns (Unicode-safe Arabic regex) and applies D-ID driver_expressions + dynamic motion_factor
 - **D-ID Plan**: Build plan (64 credits/month), clip-type presenters with Full-HD 1080p, auto credit check before session creation
 - **Auth**: Token-based auth with bcryptjs password hashing
