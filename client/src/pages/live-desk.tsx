@@ -218,8 +218,13 @@ export default function LiveDesk() {
   useEffect(() => {
     if (!isTalking && !isProcessing && !introPlaying && avatarReady && sessionData && !micMuted && !manualStopRef.current) {
       if (!isRecordingRef.current && voiceCaptureActiveRef.current) {
-        console.log("[Voice] Avatar stopped talking — auto-restarting mic");
-        startVoiceCaptureImmediate();
+        const timer = setTimeout(() => {
+          if (!isTalkingRef.current && !isProcessingRef.current && !micMutedRef.current && voiceCaptureActiveRef.current) {
+            console.log("[Voice] Avatar stopped talking — auto-restarting mic");
+            startVoiceCaptureImmediate();
+          }
+        }, 300);
+        return () => clearTimeout(timer);
       }
     }
   }, [isTalking, isProcessing, introPlaying, avatarReady, sessionData, micMuted]);
@@ -284,7 +289,8 @@ export default function LiveDesk() {
         const blob = new Blob(recordingChunksRef.current, { type: mimeType });
         recordingChunksRef.current = [];
 
-        if (blob.size < 1000) {
+        if (blob.size < 3000) {
+          console.log("[Voice] Blob too small, restarting capture:", blob.size);
           if (voiceCaptureActiveRef.current && !micMutedRef.current) {
             startVoiceCaptureImmediate();
           }
@@ -304,13 +310,16 @@ export default function LiveDesk() {
             console.log("[Voice] Transcribed:", text);
             await handleUserMessageRef.current(text.trim());
           } else {
+            console.log("[Voice] Empty transcription, restarting capture");
             if (voiceCaptureActiveRef.current && !micMutedRef.current) {
+              await new Promise(r => setTimeout(r, 500));
               startVoiceCaptureImmediate();
             }
           }
         } catch (err) {
           console.error("[Voice] Transcription error:", err);
           if (voiceCaptureActiveRef.current && !micMutedRef.current) {
+            await new Promise(r => setTimeout(r, 500));
             startVoiceCaptureImmediate();
           }
         }
@@ -323,8 +332,10 @@ export default function LiveDesk() {
 
       let speechDetected = false;
       let silenceStart = 0;
-      const SILENCE_THRESHOLD = 18;
-      const SPEECH_THRESHOLD = 28;
+      let speechFrameCount = 0;
+      const SILENCE_THRESHOLD = 20;
+      const SPEECH_THRESHOLD = 35;
+      const MIN_SPEECH_FRAMES = 3;
       const SILENCE_DURATION = 1200;
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
@@ -332,6 +343,10 @@ export default function LiveDesk() {
         if (!isRecordingRef.current || manualStopRef.current) return;
 
         if (isTalkingRef.current || micMutedRef.current) {
+          speechDetected = false;
+          speechFrameCount = 0;
+          silenceStart = 0;
+          recordingChunksRef.current = [];
           vadFrameRef.current = requestAnimationFrame(checkAudio);
           return;
         }
@@ -342,7 +357,10 @@ export default function LiveDesk() {
         const avg = sum / dataArray.length;
 
         if (avg > SPEECH_THRESHOLD) {
-          speechDetected = true;
+          speechFrameCount++;
+          if (speechFrameCount >= MIN_SPEECH_FRAMES) {
+            speechDetected = true;
+          }
           silenceStart = 0;
         } else if (speechDetected && avg < SILENCE_THRESHOLD) {
           if (!silenceStart) silenceStart = Date.now();
