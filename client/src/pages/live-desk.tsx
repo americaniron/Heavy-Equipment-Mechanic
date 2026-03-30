@@ -98,6 +98,9 @@ export default function LiveDesk() {
   const [handoffInProgress, setHandoffInProgress] = useState(false);
   const [introPlaying, setIntroPlaying] = useState(false);
   const [subtitleText, setSubtitleText] = useState("");
+  const [transcriptEntries, setTranscriptEntries] = useState<Array<{ role: "user" | "assistant"; text: string; timestamp: Date; agent?: string }>>([]);
+  const [showTranscript, setShowTranscript] = useState(true);
+  const transcriptEndRef = useRef<HTMLDivElement>(null);
   const [showReport, setShowReport] = useState(false);
   const [report, setReport] = useState<ReportData | null>(null);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
@@ -115,6 +118,12 @@ export default function LiveDesk() {
   const [verificationStatus, setVerificationStatus] = useState<"pending" | "verified" | "failed" | null>(null);
   const aboutVideoRef = useRef<HTMLVideoElement>(null);
   const aboutAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    if (transcriptEndRef.current) {
+      transcriptEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [transcriptEntries]);
 
   const startAboutNarration = useCallback(() => {
     if (aboutAudioRef.current) {
@@ -984,6 +993,7 @@ export default function LiveDesk() {
             setShowTextInput(true);
           }
           conversationRef.current.push({ role: "assistant", content: introText });
+          setTranscriptEntries(prev => [...prev, { role: "assistant", text: introText, timestamp: new Date(), agent: selectedLanguage === "ar" ? "فاطمة" : "Sarah" }]);
 
           startVoiceCapture();
           resetIdleTimer();
@@ -1011,6 +1021,7 @@ export default function LiveDesk() {
           setShowTextInput(true);
         }
         conversationRef.current.push({ role: "assistant", content: introText });
+        setTranscriptEntries(prev => [...prev, { role: "assistant", text: introText, timestamp: new Date(), agent: selectedLanguage === "ar" ? "فاطمة" : "Sarah" }]);
         startVoiceCapture();
         resetIdleTimer();
 
@@ -1089,6 +1100,7 @@ export default function LiveDesk() {
     setIsProcessing(true);
     isProcessingRef.current = true;
     conversationRef.current.push({ role: "user", content: userMsg });
+    setTranscriptEntries(prev => [...prev, { role: "user", text: userMsg, timestamp: new Date(), agent: currentAgent === "admin" ? "You" : "You" }]);
 
     try {
       const response = await fetch(`/api/sessions/${currentSession.id}/message`, {
@@ -1155,6 +1167,12 @@ export default function LiveDesk() {
           .trim();
         setSubtitleText(cleanedText);
         conversationRef.current.push({ role: "assistant", content: cleanedText });
+        if (cleanedText) {
+          const agentLabel = currentAgent === "admin"
+            ? (selectedLanguage === "ar" ? "فاطمة" : "Sarah")
+            : (MECHANIC_INFO[selectedLanguage]?.[mechanicType || "heavy_equipment"]?.name || "Specialist");
+          setTranscriptEntries(prev => [...prev, { role: "assistant", text: cleanedText, timestamp: new Date(), agent: agentLabel }]);
+        }
         if (cleanedText) await sendAvatarSpeakCommand(cleanedText);
 
         const estimatedMs = Math.max(2000, cleanedText.length * 60);
@@ -1194,6 +1212,7 @@ export default function LiveDesk() {
       ? `سأقوم الآن بتحويلك إلى ${mechanic?.name || "المتخصص لدينا"}، ${mechanic?.title || "أخصائي التشخيص"}. سيعتنون بك جيداً. لحظة من فضلك.`
       : `I'm now transferring you to ${mechanic?.name || "our specialist"}, our ${mechanic?.title || "diagnostic specialist"}. They'll take great care of you. One moment please.`;
     setSubtitleText(transferMsg);
+    setTranscriptEntries(prev => [...prev, { role: "assistant", text: transferMsg, timestamp: new Date(), agent: selectedLanguage === "ar" ? "فاطمة" : "Sarah" }]);
     await sendAvatarSpeakCommand(transferMsg);
 
     await waitForSpeakEnd(15000);
@@ -1214,6 +1233,7 @@ export default function LiveDesk() {
           : `Hello! I'm ${mechanic?.name || "your specialist"}. I've reviewed your intake information and I'm ready to help diagnose the issue. Let's get started — can you tell me more about what you're experiencing?`;
         setSubtitleText(mechGreeting);
         conversationRef.current.push({ role: "assistant", content: mechGreeting });
+        setTranscriptEntries(prev => [...prev, { role: "assistant", text: mechGreeting, timestamp: new Date(), agent: mechanic?.name || "Specialist" }]);
         await sendAvatarSpeakCommand(mechGreeting);
         setHandoffInProgress(false);
 
@@ -2468,6 +2488,7 @@ export default function LiveDesk() {
                   setCurrentAgent("admin");
                   setMechanicType(null);
                   conversationRef.current = [];
+                  setTranscriptEntries([]);
                 }}
                 data-testid="button-end-session"
               >
@@ -2491,6 +2512,191 @@ export default function LiveDesk() {
           </div>
         </div>
       </div>
+
+      {transcriptEntries.length > 0 && (
+        <>
+          <button
+            onClick={() => setShowTranscript(!showTranscript)}
+            className="absolute z-30 flex items-center gap-1.5 px-3 py-2 rounded-l-lg border border-r-0 transition-all duration-300"
+            style={{
+              top: "70px",
+              right: showTranscript ? "min(420px, 85vw)" : "0px",
+              background: "linear-gradient(135deg, rgba(17,17,17,0.95) 0%, rgba(26,26,26,0.95) 100%)",
+              borderColor: "rgba(255,205,17,0.3)",
+              backdropFilter: "blur(12px)",
+            }}
+            data-testid="button-toggle-transcript"
+          >
+            <MessageCircle className="w-4 h-4 text-[#FFCD11]" />
+            <span className="text-white/80 text-xs font-medium hidden sm:inline">
+              {showTranscript
+                ? (selectedLanguage === "ar" ? "إخفاء" : "Hide")
+                : (selectedLanguage === "ar" ? "النص" : "Transcript")}
+            </span>
+            {!showTranscript && transcriptEntries.length > 0 && (
+              <span className="w-5 h-5 rounded-full bg-[#FFCD11] text-black text-[10px] font-bold flex items-center justify-center">
+                {transcriptEntries.length}
+              </span>
+            )}
+          </button>
+
+          <div
+            className="absolute top-0 right-0 z-25 h-full transition-transform duration-300 ease-in-out"
+            style={{
+              width: "min(420px, 85vw)",
+              transform: showTranscript ? "translateX(0)" : "translateX(100%)",
+            }}
+            data-testid="transcript-panel"
+          >
+            <div
+              className="h-full flex flex-col"
+              style={{
+                background: "linear-gradient(180deg, rgba(10,10,10,0.97) 0%, rgba(17,17,17,0.97) 100%)",
+                backdropFilter: "blur(16px)",
+                borderLeft: "2px solid rgba(255,205,17,0.2)",
+              }}
+            >
+              <div
+                className="flex items-center justify-between px-4 py-3 shrink-0"
+                style={{ borderBottom: "1px solid rgba(255,205,17,0.15)" }}
+              >
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-md bg-[#FFCD11]/15 flex items-center justify-center">
+                    <MessageCircle className="w-3.5 h-3.5 text-[#FFCD11]" />
+                  </div>
+                  <div>
+                    <p className="text-white text-sm font-semibold tracking-wide">
+                      {selectedLanguage === "ar" ? "سجل المحادثة" : "ANALYSIS LOG"}
+                    </p>
+                    <p className="text-white/40 text-[10px]">
+                      {transcriptEntries.length} {selectedLanguage === "ar" ? "رسائل" : "messages"}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowTranscript(false)}
+                  className="w-7 h-7 rounded-md bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors"
+                >
+                  <X className="w-3.5 h-3.5 text-white/60" />
+                </button>
+              </div>
+
+              <div
+                className="flex-1 overflow-y-auto px-3 py-3 space-y-3"
+                dir={selectedLanguage === "ar" ? "rtl" : "ltr"}
+                style={{
+                  scrollbarWidth: "thin",
+                  scrollbarColor: "rgba(255,205,17,0.3) transparent",
+                }}
+              >
+                {transcriptEntries.map((entry, i) => (
+                  <div
+                    key={i}
+                    className="group animate-in fade-in slide-in-from-bottom-2 duration-300"
+                    data-testid={`transcript-entry-${i}`}
+                  >
+                    {entry.role === "user" ? (
+                      <div className="flex gap-2 items-start">
+                        <div
+                          className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center mt-0.5"
+                          style={{ background: "rgba(59,130,246,0.15)", border: "1px solid rgba(59,130,246,0.3)" }}
+                        >
+                          <User className="w-3.5 h-3.5 text-blue-400" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-blue-400 text-xs font-semibold">{selectedLanguage === "ar" ? "أنت" : "You"}</span>
+                            <span className="text-white/20 text-[10px]">
+                              {entry.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                          </div>
+                          <div
+                            className="rounded-lg px-3 py-2.5 text-sm leading-relaxed"
+                            style={{
+                              background: "rgba(59,130,246,0.08)",
+                              border: "1px solid rgba(59,130,246,0.15)",
+                              color: "rgba(191,219,254,0.9)",
+                            }}
+                          >
+                            {entry.text}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2 items-start">
+                        <div
+                          className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center mt-0.5"
+                          style={{ background: "rgba(255,205,17,0.12)", border: "1px solid rgba(255,205,17,0.3)" }}
+                        >
+                          <Wrench className="w-3.5 h-3.5 text-[#FFCD11]" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-[#FFCD11] text-xs font-semibold">{entry.agent || "AI"}</span>
+                            <span className="text-white/20 text-[10px]">
+                              {entry.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                          </div>
+                          <div
+                            className="rounded-lg px-3 py-2.5 text-sm leading-relaxed"
+                            style={{
+                              background: "linear-gradient(135deg, rgba(255,205,17,0.06) 0%, rgba(255,205,17,0.02) 100%)",
+                              border: "1px solid rgba(255,205,17,0.12)",
+                              color: "rgba(255,255,255,0.88)",
+                            }}
+                          >
+                            {entry.text}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {isProcessing && (
+                  <div className="flex gap-2 items-start" data-testid="transcript-thinking">
+                    <div
+                      className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center mt-0.5"
+                      style={{ background: "rgba(255,205,17,0.12)", border: "1px solid rgba(255,205,17,0.3)" }}
+                    >
+                      <Loader2 className="w-3.5 h-3.5 text-[#FFCD11] animate-spin" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[#FFCD11]/60 text-xs font-semibold">
+                          {selectedLanguage === "ar" ? "يحلل..." : "Analyzing..."}
+                        </span>
+                      </div>
+                      <div className="flex gap-1 px-3 py-3">
+                        <span className="w-2 h-2 rounded-full bg-[#FFCD11]/40 animate-bounce" style={{ animationDelay: "0ms" }} />
+                        <span className="w-2 h-2 rounded-full bg-[#FFCD11]/40 animate-bounce" style={{ animationDelay: "150ms" }} />
+                        <span className="w-2 h-2 rounded-full bg-[#FFCD11]/40 animate-bounce" style={{ animationDelay: "300ms" }} />
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <div ref={transcriptEndRef} />
+              </div>
+
+              <div
+                className="shrink-0 px-4 py-2 flex items-center justify-between"
+                style={{ borderTop: "1px solid rgba(255,205,17,0.1)", background: "rgba(0,0,0,0.3)" }}
+              >
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                  <span className="text-white/40 text-[10px] uppercase tracking-wider">
+                    {selectedLanguage === "ar" ? "مباشر" : "Live Session"}
+                  </span>
+                </div>
+                <span className="text-white/30 text-[10px]">
+                  {currentAgent === "mechanic" && currentMechanic
+                    ? currentMechanic.name
+                    : (selectedLanguage === "ar" ? "فاطمة" : "Sarah")}
+                </span>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {showActions && (
         <div className="absolute bottom-36 right-4 z-30 bg-card/95 backdrop-blur-sm rounded-xl border border-card-border shadow-xl p-3 w-56 space-y-2">
