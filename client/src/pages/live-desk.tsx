@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -6,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { useAuth } from "@/lib/auth";
 import {
   Room,
   RoomEvent,
@@ -79,6 +81,8 @@ const MECHANIC_INFO: Record<string, Record<string, { name: string; title: string
 
 export default function LiveDesk() {
   const { toast } = useToast();
+  const { customer, isAuthenticated, isLoading: authLoading, authToken } = useAuth();
+  const [, setLocation] = useLocation();
   const [sessionData, setSessionData] = useState<SessionData | null>(null);
   const [consentGiven, setConsentGiven] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState<"en" | "ar">("en");
@@ -932,11 +936,19 @@ export default function LiveDesk() {
     voiceCaptureActiveRef.current = false;
     voiceCaptureStartingRef.current = false;
     try {
-      const res = await apiRequest("POST", "/api/sessions", {
-        consentGiven: true,
-        provider: "heygen",
-        language: selectedLanguage,
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (authToken) headers["x-auth-token"] = authToken;
+      const res = await fetch("/api/sessions", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          consentGiven: true,
+          provider: "heygen",
+          language: selectedLanguage,
+          customerId: customer?.id || null,
+        }),
       });
+      if (!res.ok) throw new Error("Failed to create session");
       const session = await res.json();
       setAccessToken(session.accessToken);
       sessionStorage.setItem(`session_token_${session.id}`, session.accessToken);
@@ -1351,6 +1363,14 @@ export default function LiveDesk() {
           <Shield className="w-3 h-3" />
           AI guidance is informational only. Not a substitute for certified inspection.
         </footer>
+      </div>
+    );
+  }
+
+  if (authLoading) {
+    return (
+      <div className="h-screen w-screen bg-[#111111] flex items-center justify-center" data-testid="auth-loading">
+        <Loader2 className="h-8 w-8 animate-spin text-[#FFCD11]" />
       </div>
     );
   }
@@ -1997,7 +2017,9 @@ export default function LiveDesk() {
                 START YOUR<br /><span className="text-[#FFCD11]">FREE SESSION</span>
               </h2>
               <p className="text-gray-400 text-sm leading-relaxed max-w-md mx-auto mt-4">
-                Our AI front desk admin connects you to the right specialist in seconds. No sign-up required. Just click and talk.
+                {isAuthenticated
+                  ? `${customer?.firstName}, your equipment info is ready. Our AI admin will connect you to the right specialist in seconds.`
+                  : "Register with your equipment details so our AI admin can skip the intake and connect you to the right specialist fast."}
               </p>
             </div>
 
@@ -2037,24 +2059,35 @@ export default function LiveDesk() {
                 </label>
               </div>
 
-              <Button
-                className="w-full h-14 text-lg font-black bg-[#FFCD11] text-black hover:bg-[#e6b800] rounded-lg shadow-lg shadow-[#FFCD11]/20"
-                onClick={startSession}
-                disabled={!consentGiven || isConnecting}
-                data-testid="button-start-session"
-              >
-                {isConnecting ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin mr-2" />
-                    {selectedLanguage === "ar" ? "جاري الاتصال بالاستقبال..." : "CONNECTING TO ADMIN..."}
-                  </>
-                ) : (
-                  <>
-                    <MessageCircle className="w-5 h-5 mr-2" />
-                    {selectedLanguage === "ar" ? "تحدث مع الإدارة" : "SPEAK WITH ADMIN"}
-                  </>
-                )}
-              </Button>
+              {!isAuthenticated ? (
+                <Button
+                  className="w-full h-14 text-lg font-black bg-[#FFCD11] text-black hover:bg-[#e6b800] rounded-lg shadow-lg shadow-[#FFCD11]/20"
+                  onClick={() => setLocation("/auth?redirect=/live-desk")}
+                  data-testid="button-register-to-start"
+                >
+                  <User className="w-5 h-5 mr-2" />
+                  {selectedLanguage === "ar" ? "سجل الدخول للبدء" : "REGISTER / SIGN IN TO START"}
+                </Button>
+              ) : (
+                <Button
+                  className="w-full h-14 text-lg font-black bg-[#FFCD11] text-black hover:bg-[#e6b800] rounded-lg shadow-lg shadow-[#FFCD11]/20"
+                  onClick={startSession}
+                  disabled={!consentGiven || isConnecting}
+                  data-testid="button-start-session"
+                >
+                  {isConnecting ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                      {selectedLanguage === "ar" ? "جاري الاتصال بالاستقبال..." : "CONNECTING TO ADMIN..."}
+                    </>
+                  ) : (
+                    <>
+                      <MessageCircle className="w-5 h-5 mr-2" />
+                      {selectedLanguage === "ar" ? `مرحباً ${customer?.firstName} — ابدأ الجلسة` : `Welcome ${customer?.firstName} — START SESSION`}
+                    </>
+                  )}
+                </Button>
+              )}
             </div>
 
             <div className="flex items-center justify-center gap-4 text-xs text-gray-500">
@@ -2090,6 +2123,10 @@ export default function LiveDesk() {
                 size="lg"
                 className="h-14 px-10 font-black bg-[#FFCD11] text-black hover:bg-[#e6b800] rounded-full shadow-[0_0_30px_rgba(255,205,17,0.15)]"
                 onClick={() => {
+                  if (!isAuthenticated) {
+                    setLocation("/auth?redirect=/live-desk");
+                    return;
+                  }
                   if (!consentGiven) {
                     document.getElementById("speak-admin-section")?.scrollIntoView({ behavior: "smooth" });
                     toast({ title: "Please check the consent box first", variant: "destructive" });
