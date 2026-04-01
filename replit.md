@@ -62,7 +62,9 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
 - `GET /api/portal/quote-requests/:id` - Get quote request detail with items (ownership check)
 - `PATCH /api/portal/profile` - Update customer profile
 - `POST /api/portal/escalation` - Escalation to human expert (creates support ticket)
-- `GET /api/portal/cases` - AI session history
+- `GET /api/portal/parts?serial=XXX` - Serial-based parts lookup (maps serial prefixes to CAT/Komatsu/Deere catalogs)
+- `GET /api/portal/parts/validate?partNumber=XXX` - Part number validation with catalog name/description lookup
+- `GET /api/portal/cases` - AI session history with embedded reports (each session includes report data if available)
 
 ## Avatar Integration (Dual Provider: D-ID Primary + HeyGen Fallback)
 - **Primary**: D-ID Agents Streams API (`https://api.d-id.com`) using DID_API_KEY

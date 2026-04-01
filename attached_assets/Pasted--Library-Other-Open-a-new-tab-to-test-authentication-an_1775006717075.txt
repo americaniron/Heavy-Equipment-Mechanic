@@ -1,0 +1,35 @@
+
+Library
+
+Other
+
+Open a new tab to test authentication and file uploads.
+Published your App
+can you implemet an email to notifcation to american iron about the new quote request. you send the email to adam@americanironus.com
+what does this mean? see attached
+?
+what does this screenshot mean ?
+That screenshot is from Replit's Deployment Secrets panel. It's telling you that the ANTHROPIC_API_KEY secret exists in your development environment (where you're building), but it's not yet added to your deployment (production) environment.
+
+This matters because when you publish the app, the deployed version won't have access to that API key — meaning Claude-powered features (the AI admin Sarah/Fatima and all specialist engineers) won't work in production.
+
+To fix it, just click the "+ Add deployment secret" button at the bottom of that panel. It should let you sync the missing secret so it's available in both environments. You'll want to make sure all your other secrets (like HEYGEN_API_KEY, DID_API_KEY, RESEND_API_KEY, etc.) are also added to the deployment environment before publishing.
+why cant i create remote git on git hub on this app? all the other apps are fine
+That's not something I can troubleshoot from here — it's a Replit platform feature for connecting to GitHub. If it's working on your other apps but not this one, it could be a permissions issue or a temporary glitch on Replit's side.
+
+I'd suggest contacting Replit Support for help with the GitHub remote connection. They can look into your specific account/project settings and resolve it.
+why does the app not show the parts information (part description) in the customer portal when serching for a part or when requesting a quote or when validated ?
+can you implement a good size "scrolling text" with colors and outline format for the mechanic analysis as the mechanic speaks
+also can you implement a function on the screen to down load complete analysis by the user wehn done speaking with mechanic. or get the report email to the customer if the customer requests the same
+can you help me push the app to git hub?
+Setting up a GitHub remote is a platform-level feature managed by Replit. I can't run git push or configure GitHub remotes from here — that needs to be done through Replit's Git integration panel.
+
+Here's how to do it:
+
+Click the Git icon (branch icon) in the left sidebar of your Replit workspace
+Click Connect to GitHub
+Choose your GitHub account and either select an existing repo or create a new one
+Once connected, you can push your code directly from that panel
+If the Git panel isn't connecting (like you mentioned earlier with this specific app), I'd recommend reaching out to Replit Support since they can look into why this particular project isn't linking properly while your other apps work fine.
+The Start application artifact failed to run, please debug and fix it.
+Here are the issues with the customer portal: 1. No part number validation happns on the published app (see attached screenshot). 2. when the the customer searchs for parts on the portal, or add a part on the portal for quote request, the part name and description should appear (this is also part of the part number validation). 3. The " Serial-Based Parts Lookup" does not work on the published site. i tried multiple serial numbers and nothing happens at all when i click search. ensure this working. 4. under "service Requests", the customer should be able to click and open each request to see the details, update fomr the sservice department, date and time schedueled, etc. 5.how does the "orders & Shipping" section work exactly ? 6. what does "billing & Account section do exactly? 7. under the diagnosis Engine" section, i should be able to see my diagnosis event information and the detailed technical diagnosis report. Nothing there
