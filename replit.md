@@ -66,6 +66,23 @@ A full-screen, video-first live front desk experience for heavy equipment diagno
 - `GET /api/portal/parts/validate?partNumber=XXX` - Part number validation with catalog name/description lookup
 - `GET /api/portal/cases` - AI session history with embedded reports (each session includes report data if available)
 
+## CRM Sync API (Iron Hub Suite Integration)
+All CRM endpoints require `x-crm-api-key` header with the value from `CRM_SYNC_API_KEY` env var.
+Quote request notification emails go to both `adam@americanironus.com` and `parts@americanironus.com`.
+
+**Quote Requests:**
+- `GET /api/crm/quote-requests` - List all quote requests with customer info and items
+- `GET /api/crm/quote-requests/:refOrId` - Get single quote request by reference number (e.g., QR-xxx) or ID
+- `PATCH /api/crm/quote-requests/:refOrId` - Update status/notes. Valid statuses: pending_review, quoted, approved, rejected, completed, shipped, cancelled
+
+**Invoices:**
+- `POST /api/crm/invoices` - Create invoice for a customer (by `customerId` or `customerEmail`). Fields: amount, description, dueDate, status, serviceRequestId
+- `PATCH /api/crm/invoices/:id` - Update invoice (amount, description, dueDate, status). Setting status to "paid" auto-sets paidAt timestamp
+
+**Customers:**
+- `GET /api/crm/customers` - List all customers (no passwords)
+- `GET /api/crm/customers/:emailOrId` - Get customer detail with equipment, service requests, and quote requests
+
 ## Avatar Integration (Dual Provider: D-ID Primary + HeyGen Fallback)
 - **Primary**: D-ID Agents Streams API (`https://api.d-id.com`) using DID_API_KEY
   - WebRTC-based: Server creates D-ID agent → creates stream → returns SDP offer + ICE servers → client does WebRTC handshake (RTCPeerConnection) → receives video/audio tracks
