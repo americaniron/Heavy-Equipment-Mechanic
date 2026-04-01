@@ -636,10 +636,145 @@ export async function registerRoutes(
     } catch (error: any) { res.status(500).json({ error: error.message }); }
   });
 
+  const PARTS_CATALOG: Record<string, { partNumber: string; name: string; description: string; category: string; makes: string[]; price?: string }> = {
+    "1R-0750": { partNumber: "1R-0750", name: "Fuel Filter", description: "Advanced efficiency fuel filter — CAT proprietary media", category: "Filters", makes: ["CAT", "Caterpillar"], price: "42.50" },
+    "1R-0751": { partNumber: "1R-0751", name: "Fuel Filter (Secondary)", description: "Secondary fuel/water separator filter element", category: "Filters", makes: ["CAT", "Caterpillar"], price: "38.00" },
+    "1R-0749": { partNumber: "1R-0749", name: "Fuel Filter (Primary)", description: "Primary fuel filter — spin-on type for C-series engines", category: "Filters", makes: ["CAT", "Caterpillar"], price: "35.00" },
+    "6I-2501": { partNumber: "6I-2501", name: "Air Filter (Primary)", description: "Primary radial seal air filter element", category: "Filters", makes: ["CAT", "Caterpillar"], price: "65.00" },
+    "6I-2502": { partNumber: "6I-2502", name: "Air Filter (Secondary)", description: "Secondary/safety air filter element", category: "Filters", makes: ["CAT", "Caterpillar"], price: "45.00" },
+    "1R-0739": { partNumber: "1R-0739", name: "Engine Oil Filter", description: "High-efficiency engine oil filter — spin-on cartridge", category: "Filters", makes: ["CAT", "Caterpillar"], price: "28.00" },
+    "5I-8670": { partNumber: "5I-8670", name: "Hydraulic Oil Filter", description: "Hydraulic return oil filter element", category: "Filters", makes: ["CAT", "Caterpillar"], price: "52.00" },
+    "093-7521": { partNumber: "093-7521", name: "Hydraulic Seal Kit", description: "Bucket cylinder hydraulic seal kit — includes all o-rings and seals", category: "Hydraulics", makes: ["CAT", "Caterpillar"], price: "185.00" },
+    "7X-2550": { partNumber: "7X-2550", name: "Fan Belt", description: "V-belt for engine cooling fan drive", category: "Belts & Hoses", makes: ["CAT", "Caterpillar"], price: "22.00" },
+    "4I-7575": { partNumber: "4I-7575", name: "Water Pump", description: "Engine coolant water pump assembly", category: "Cooling", makes: ["CAT", "Caterpillar"], price: "320.00" },
+    "2P-4301": { partNumber: "2P-4301", name: "Starter Motor", description: "24V electric starter motor assembly", category: "Electrical", makes: ["CAT", "Caterpillar"], price: "850.00" },
+    "8T-9573": { partNumber: "8T-9573", name: "Alternator", description: "24V alternator — 95 amp output", category: "Electrical", makes: ["CAT", "Caterpillar"], price: "650.00" },
+    "110-6326": { partNumber: "110-6326", name: "Turbocharger", description: "Turbocharger assembly for 3116/3126 engines", category: "Engine", makes: ["CAT", "Caterpillar"], price: "2400.00" },
+    "584-2156": { partNumber: "584-2156", name: "ECM Module", description: "Electronic control module — engine management computer", category: "Electrical", makes: ["CAT", "Caterpillar"], price: "3200.00" },
+    "600-311-3310": { partNumber: "600-311-3310", name: "Fuel Filter", description: "Engine fuel filter element — spin-on type", category: "Filters", makes: ["Komatsu"], price: "38.00" },
+    "600-185-3100": { partNumber: "600-185-3100", name: "Air Filter (Primary)", description: "Primary air cleaner element — outer", category: "Filters", makes: ["Komatsu"], price: "72.00" },
+    "6742-01-4540": { partNumber: "6742-01-4540", name: "Oil Filter", description: "Full-flow lube oil filter — SAA6D114E engine", category: "Filters", makes: ["Komatsu"], price: "32.00" },
+    "07000-12012": { partNumber: "07000-12012", name: "O-Ring Seal", description: "Hydraulic cylinder o-ring — standard size", category: "Seals", makes: ["Komatsu"], price: "4.50" },
+    "20Y-60-31621": { partNumber: "20Y-60-31621", name: "Hydraulic Pump", description: "Main hydraulic pump assembly — PC200-8", category: "Hydraulics", makes: ["Komatsu"], price: "4500.00" },
+    "AT314583": { partNumber: "AT314583", name: "Fuel Filter", description: "Fuel filter/water separator — Tier 4 engines", category: "Filters", makes: ["John Deere", "Deere"], price: "45.00" },
+    "AT365870": { partNumber: "AT365870", name: "Engine Oil Filter", description: "Premium engine oil filter element", category: "Filters", makes: ["John Deere", "Deere"], price: "35.00" },
+    "AT171853": { partNumber: "AT171853", name: "Air Filter (Primary)", description: "Primary outer air filter element", category: "Filters", makes: ["John Deere", "Deere"], price: "68.00" },
+    "RE507878": { partNumber: "RE507878", name: "DEF Filter", description: "Diesel exhaust fluid filter — after-treatment system", category: "Filters", makes: ["John Deere", "Deere"], price: "55.00" },
+    "RE546336": { partNumber: "RE546336", name: "Hydraulic Filter", description: "Return hydraulic oil filter element", category: "Filters", makes: ["John Deere", "Deere"], price: "58.00" },
+    "RE523236": { partNumber: "RE523236", name: "Coolant Filter", description: "Engine coolant conditioner filter", category: "Filters", makes: ["John Deere", "Deere"], price: "18.00" },
+  };
+
+  const SERIAL_PREFIX_MAP: Record<string, { make: string; type: string; models: string[] }> = {
+    "CAT": { make: "CAT", type: "Excavator", models: ["320F", "330F", "336F", "349F"] },
+    "7WJ": { make: "CAT", type: "Loader", models: ["966F", "966G", "966H"] },
+    "5YW": { make: "CAT", type: "Excavator", models: ["320C", "320D", "320E"] },
+    "BFM": { make: "CAT", type: "Excavator", models: ["336E", "336F"] },
+    "JJG": { make: "CAT", type: "Excavator", models: ["349E", "349F"] },
+    "MBH": { make: "CAT", type: "Dozer", models: ["D6T", "D6R"] },
+    "TMC": { make: "CAT", type: "Dozer", models: ["D8T", "D8R"] },
+    "HEX": { make: "CAT", type: "Excavator", models: ["320", "325", "330"] },
+    "KOM": { make: "Komatsu", type: "Excavator", models: ["PC200-8", "PC210-10", "PC360"] },
+    "PC2": { make: "Komatsu", type: "Excavator", models: ["PC200-8", "PC200-10"] },
+    "PC3": { make: "Komatsu", type: "Excavator", models: ["PC300-8", "PC350-10"] },
+    "WA3": { make: "Komatsu", type: "Loader", models: ["WA320", "WA380"] },
+    "D37": { make: "Komatsu", type: "Dozer", models: ["D37EX", "D37PX"] },
+    "JD": { make: "John Deere", type: "Excavator", models: ["210G", "350G", "470G"] },
+    "DER": { make: "John Deere", type: "Loader", models: ["544K", "644K", "744K"] },
+    "1DW": { make: "John Deere", type: "Excavator", models: ["200D", "210G"] },
+    "1FF": { make: "John Deere", type: "Excavator", models: ["350G", "380G"] },
+  };
+
+  app.get("/api/portal/parts", requireAuth, async (req, res) => {
+    try {
+      const serial = (req.query.serial as string || "").trim().toUpperCase();
+      if (!serial || serial.length < 2) {
+        return res.json([]);
+      }
+
+      let matchedMake: string | null = null;
+      let matchedInfo: any = null;
+      for (const [prefix, info] of Object.entries(SERIAL_PREFIX_MAP)) {
+        if (serial.startsWith(prefix.toUpperCase())) {
+          matchedMake = info.make;
+          matchedInfo = info;
+          break;
+        }
+      }
+
+      let results: any[] = [];
+      if (matchedMake) {
+        results = Object.values(PARTS_CATALOG)
+          .filter(p => p.makes.some(m => m.toUpperCase() === matchedMake!.toUpperCase()))
+          .map(p => ({
+            ...p,
+            compatibility: `Compatible with ${matchedInfo.make} ${matchedInfo.type} — ${matchedInfo.models.join(", ")}`,
+          }));
+      } else {
+        const allParts = Object.values(PARTS_CATALOG);
+        results = allParts.filter(p =>
+          p.partNumber.toUpperCase().includes(serial) ||
+          p.name.toUpperCase().includes(serial) ||
+          p.category.toUpperCase().includes(serial)
+        );
+      }
+
+      res.json(results);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/portal/parts/validate", requireAuth, async (req, res) => {
+    try {
+      const partNumber = (req.query.partNumber as string || "").trim();
+      if (!partNumber) {
+        return res.json({ valid: false, error: "Part number is required" });
+      }
+
+      const normalizedPN = partNumber.toUpperCase().replace(/\s+/g, "");
+      const catalog = PARTS_CATALOG[partNumber] || PARTS_CATALOG[normalizedPN] ||
+        Object.values(PARTS_CATALOG).find(p => p.partNumber.toUpperCase().replace(/\s+/g, "") === normalizedPN);
+
+      if (catalog) {
+        return res.json({
+          valid: true,
+          partNumber: catalog.partNumber,
+          name: catalog.name,
+          description: catalog.description,
+          category: catalog.category,
+          price: catalog.price,
+        });
+      }
+
+      const partNumberPattern = /^[A-Za-z0-9\-\.\/\s]{2,50}$/;
+      if (partNumberPattern.test(partNumber)) {
+        return res.json({
+          valid: true,
+          partNumber,
+          name: null,
+          description: null,
+          category: null,
+          price: null,
+          note: "Part number format is valid but not found in our catalog. Our team will verify availability.",
+        });
+      }
+
+      return res.json({ valid: false, error: "Invalid part number format" });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.get("/api/portal/cases", requireAuth, async (req, res) => {
     try {
       const sessions_list = await storage.getSessionsByCustomer((req as any).customerId);
-      res.json(sessions_list);
+      const sessionsWithReports = await Promise.all(
+        sessions_list.map(async (session) => {
+          const report = await storage.getReport(session.id);
+          return { ...session, report: report || null };
+        })
+      );
+      res.json(sessionsWithReports);
     } catch (error: any) { res.status(500).json({ error: error.message }); }
   });
 
@@ -771,7 +906,18 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Quote request not found" });
       }
       const items = await storage.getQuoteRequestItems(qr.id);
-      res.json({ ...qr, items });
+      const enrichedItems = items.map((item: any) => {
+        const pn = (item.partNumber || "").toUpperCase().replace(/\s+/g, "");
+        const catalog = PARTS_CATALOG[item.partNumber] || PARTS_CATALOG[pn] ||
+          Object.values(PARTS_CATALOG).find(p => p.partNumber.toUpperCase().replace(/\s+/g, "") === pn);
+        return {
+          ...item,
+          catalogName: catalog?.name || null,
+          catalogDescription: catalog?.description || null,
+          catalogCategory: catalog?.category || null,
+        };
+      });
+      res.json({ ...qr, items: enrichedItems });
     } catch (error: any) { res.status(500).json({ error: error.message }); }
   });
 

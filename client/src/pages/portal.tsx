@@ -413,11 +413,16 @@ function PartsSection({ authToken }: { authToken: string | null }) {
               <Card key={i} className="bg-[#1a1a1a] border-[#333]" data-testid={`card-part-${i}`}>
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <div>
-                      <p className="text-white font-semibold">{part.partNumber || part.name}</p>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-white font-semibold font-mono">{part.partNumber}</p>
+                        {part.category && <Badge variant="outline" className="border-[#555] text-gray-300 text-xs">{part.category}</Badge>}
+                      </div>
+                      <p className="text-[#FFCD11] text-sm font-medium mt-1">{part.name}</p>
                       <p className="text-gray-400 text-sm">{part.description || "No description"}</p>
+                      {part.compatibility && <p className="text-green-400 text-xs mt-1">{part.compatibility}</p>}
                     </div>
-                    {part.price && <Badge className="bg-[#FFCD11] text-black">${part.price}</Badge>}
+                    {part.price && <Badge className="bg-[#FFCD11] text-black text-sm px-3">${part.price}</Badge>}
                   </div>
                 </CardContent>
               </Card>
@@ -668,7 +673,7 @@ function PurchasePartsSection({ authToken }: { authToken: string | null }) {
                   <div key={i} className="flex items-start gap-3 p-3 rounded bg-[#222]" data-testid={`quote-item-${i}`}>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-white font-semibold">{item.partNumber}</span>
+                        <span className="text-white font-semibold font-mono">{item.partNumber}</span>
                         <Badge className={item.validationStatus === "validated" ? "bg-green-800 text-green-200" : "bg-red-800 text-red-200"}>
                           {item.validationStatus === "validated" ? "Valid" : "Invalid"}
                         </Badge>
@@ -676,7 +681,9 @@ function PurchasePartsSection({ authToken }: { authToken: string | null }) {
                           <Badge className="bg-orange-700 text-orange-200">{item.urgency}</Badge>
                         )}
                       </div>
+                      {item.catalogName && <p className="text-[#FFCD11] text-sm mt-1">{item.catalogName}</p>}
                       {item.description && <p className="text-gray-400 text-sm mt-1">{item.description}</p>}
+                      {item.catalogDescription && !item.description && <p className="text-gray-400 text-sm mt-1">{item.catalogDescription}</p>}
                       <div className="flex gap-4 mt-1 text-xs text-gray-500 flex-wrap">
                         <span>Qty: {item.quantity}</span>
                         {item.make && <span>Make: {item.make}</span>}
@@ -778,6 +785,22 @@ function PurchasePartsSection({ authToken }: { authToken: string | null }) {
                         <Input
                           value={item.partNumber}
                           onChange={e => updateItem(idx, "partNumber", e.target.value)}
+                          onBlur={async () => {
+                            const pn = item.partNumber.trim();
+                            if (pn.length >= 2 && !item.description) {
+                              try {
+                                const headers: Record<string, string> = {};
+                                if (authToken) headers["x-auth-token"] = authToken;
+                                const resp = await fetch(`/api/portal/parts/validate?partNumber=${encodeURIComponent(pn)}`, { headers });
+                                if (resp.ok) {
+                                  const data = await resp.json();
+                                  if (data.valid && data.name) {
+                                    updateItem(idx, "description", `${data.name} — ${data.description || ""}`);
+                                  }
+                                }
+                              } catch {}
+                            }
+                          }}
                           className="bg-[#1a1a1a] border-[#444] text-white text-sm"
                           placeholder="Part Number *"
                           data-testid={`input-part-number-${idx}`}
@@ -788,7 +811,7 @@ function PurchasePartsSection({ authToken }: { authToken: string | null }) {
                           value={item.description}
                           onChange={e => updateItem(idx, "description", e.target.value)}
                           className="bg-[#1a1a1a] border-[#444] text-white text-sm"
-                          placeholder="Description"
+                          placeholder="Description (auto-fills if found)"
                           data-testid={`input-part-desc-${idx}`}
                         />
                       </div>
@@ -915,6 +938,7 @@ function ServiceSection({ authToken }: { authToken: string | null }) {
   const { data: workOrders } = useAuthFetch("/api/portal/work-orders", authToken);
   const { data: equipmentList } = useAuthFetch("/api/portal/equipment", authToken);
   const [showForm, setShowForm] = useState(false);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
   const [form, setForm] = useState({ type: "diagnostic", priority: "normal", description: "", faultCodes: "", equipmentId: "" });
   const { toast } = useToast();
 
@@ -1018,23 +1042,110 @@ function ServiceSection({ authToken }: { authToken: string | null }) {
         </CardContent></Card>
       ) : (
         <div className="space-y-2">
-          {items.map((sr: any) => (
-            <Card key={sr.id} className="bg-[#1a1a1a] border-[#333]" data-testid={`card-service-${sr.id}`}>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white font-semibold">#{sr.id} — {sr.type}</p>
-                    <p className="text-gray-400 text-sm truncate">{sr.description || "No description"}</p>
-                    {sr.faultCodes && <p className="text-gray-500 text-xs mt-1">Fault codes: {sr.faultCodes}</p>}
+          {items.map((sr: any) => {
+            const isExpanded = expandedId === sr.id;
+            const relatedOrders = orders.filter((wo: any) => wo.serviceRequestId === sr.id);
+            return (
+              <Card key={sr.id} className={`bg-[#1a1a1a] border-[#333] cursor-pointer transition-all ${isExpanded ? "border-[#FFCD11]" : "hover:border-[#555]"}`}
+                onClick={() => setExpandedId(isExpanded ? null : sr.id)} data-testid={`card-service-${sr.id}`}>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white font-semibold">#{sr.id} — {sr.type}</p>
+                      <p className="text-gray-400 text-sm truncate">{sr.description || "No description"}</p>
+                      {sr.faultCodes && <p className="text-gray-500 text-xs mt-1">Fault codes: {sr.faultCodes}</p>}
+                    </div>
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <Badge className={`text-xs text-white ${priorityColor[sr.priority] || "bg-gray-500"}`}>{sr.priority}</Badge>
+                      <Badge className={`text-xs text-white ${statusColor[sr.status] || "bg-gray-500"}`}>{sr.status}</Badge>
+                      <ChevronRight className={`h-4 w-4 text-gray-400 transition-transform ${isExpanded ? "rotate-90" : ""}`} />
+                    </div>
                   </div>
-                  <div className="flex gap-1 flex-wrap">
-                    <Badge className={`text-xs text-white ${priorityColor[sr.priority] || "bg-gray-500"}`}>{sr.priority}</Badge>
-                    <Badge className={`text-xs text-white ${statusColor[sr.status] || "bg-gray-500"}`}>{sr.status}</Badge>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+
+                  {isExpanded && (
+                    <div className="mt-4 pt-4 border-t border-[#333] space-y-3" onClick={e => e.stopPropagation()}>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                        <div>
+                          <p className="text-gray-500">Type</p>
+                          <p className="text-white capitalize">{sr.type}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-500">Priority</p>
+                          <p className="text-white capitalize">{sr.priority}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-500">Status</p>
+                          <p className="text-white capitalize">{sr.status}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-500">Created</p>
+                          <p className="text-white">{sr.createdAt ? new Date(sr.createdAt).toLocaleDateString() : "—"}</p>
+                        </div>
+                      </div>
+
+                      {sr.description && (
+                        <div>
+                          <p className="text-gray-500 text-sm">Full Description</p>
+                          <p className="text-gray-300 text-sm mt-1">{sr.description}</p>
+                        </div>
+                      )}
+
+                      {sr.faultCodes && (
+                        <div>
+                          <p className="text-gray-500 text-sm">Fault Codes</p>
+                          <div className="flex gap-1 flex-wrap mt-1">
+                            {sr.faultCodes.split(",").map((code: string, i: number) => (
+                              <Badge key={i} variant="outline" className="border-red-600 text-red-400 text-xs">{code.trim()}</Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {sr.assignedMechanic && (
+                        <div>
+                          <p className="text-gray-500 text-sm">Assigned Mechanic</p>
+                          <p className="text-white text-sm mt-1">{sr.assignedMechanic}</p>
+                        </div>
+                      )}
+
+                      {sr.estimatedCost && (
+                        <div>
+                          <p className="text-gray-500 text-sm">Estimated Cost</p>
+                          <p className="text-[#FFCD11] font-bold text-sm mt-1">${sr.estimatedCost}</p>
+                        </div>
+                      )}
+
+                      {sr.diagnosisResult && (
+                        <div>
+                          <p className="text-gray-500 text-sm">Diagnosis</p>
+                          <div className="bg-[#222] rounded p-3 mt-1">
+                            <p className="text-gray-300 text-sm">{typeof sr.diagnosisResult === "string" ? sr.diagnosisResult : JSON.stringify(sr.diagnosisResult, null, 2)}</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {relatedOrders.length > 0 && (
+                        <div>
+                          <p className="text-gray-500 text-sm mb-1">Work Orders</p>
+                          {relatedOrders.map((wo: any) => (
+                            <div key={wo.id} className="bg-[#222] rounded p-3 mb-2">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-white text-sm">Work Order #{wo.id}</p>
+                                <Badge className={`text-xs text-white ${statusColor[wo.status] || "bg-gray-500"}`}>{wo.status}</Badge>
+                              </div>
+                              {wo.technicianNotes && <p className="text-gray-400 text-xs mt-1">{wo.technicianNotes}</p>}
+                              {wo.laborHours && <p className="text-gray-500 text-xs mt-1">Labor: {wo.laborHours} hrs</p>}
+                              {wo.completedAt && <p className="text-gray-500 text-xs mt-1">Completed: {new Date(wo.completedAt).toLocaleDateString()}</p>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
 
@@ -1165,16 +1276,49 @@ function MaintenanceSection({ authToken }: { authToken: string | null }) {
   );
 }
 
-function OrdersSection() {
+function OrdersSection({ authToken }: { authToken: string | null }) {
+  const { data: quoteRequests, isLoading } = useAuthFetch("/api/portal/quote-requests", authToken);
+
+  if (isLoading) return <div className="space-y-3">{[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full" />)}</div>;
+
+  const items = (quoteRequests || []).filter((q: any) => q.status === "quoted" || q.status === "approved" || q.status === "completed" || q.status === "shipped");
+  const statusStyle: Record<string, string> = { quoted: "bg-blue-600", approved: "bg-yellow-600", shipped: "bg-purple-600", completed: "bg-green-600" };
+  const statusLabel: Record<string, string> = { quoted: "Quote Received", approved: "Order Confirmed", shipped: "Shipped", completed: "Delivered" };
+
   return (
     <div className="space-y-4">
-      <Card className="bg-[#1a1a1a] border-[#333]">
-        <CardContent className="p-8 text-center">
-          <Package className="h-12 w-12 text-gray-600 mx-auto mb-3" />
-          <p className="text-white font-semibold mb-2">Order Tracking</p>
-          <p className="text-gray-400" data-testid="text-no-orders">No active orders. Orders will appear here when parts or services are purchased.</p>
-        </CardContent>
-      </Card>
+      <p className="text-gray-400">{items.length} order{items.length !== 1 ? "s" : ""}</p>
+
+      {items.length === 0 ? (
+        <Card className="bg-[#1a1a1a] border-[#333]">
+          <CardContent className="p-8 text-center">
+            <Package className="h-12 w-12 text-gray-600 mx-auto mb-3" />
+            <p className="text-white font-semibold mb-2">Order Tracking</p>
+            <p className="text-gray-400" data-testid="text-no-orders">No active orders. When you submit a parts quote request and it gets approved, your orders will appear here.</p>
+            <p className="text-gray-500 text-sm mt-2">Go to "Purchase Parts" to submit a quote request for the parts you need.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-2">
+          {items.map((q: any) => (
+            <Card key={q.id} className="bg-[#1a1a1a] border-[#333]" data-testid={`card-order-${q.id}`}>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white font-semibold">Order {q.referenceNumber || `#${q.id}`}</p>
+                    <p className="text-gray-400 text-sm">
+                      {q.totalItems || "—"} item{(q.totalItems || 0) !== 1 ? "s" : ""}
+                      {q.equipmentInfo && ` · ${q.equipmentInfo}`}
+                    </p>
+                    <p className="text-gray-500 text-xs mt-1">{q.createdAt ? new Date(q.createdAt).toLocaleDateString() : ""}</p>
+                  </div>
+                  <Badge className={`text-xs text-white ${statusStyle[q.status] || "bg-gray-500"}`}>{statusLabel[q.status] || q.status}</Badge>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1633,10 +1777,48 @@ function AIPredictiveSection() {
 
 function AICaseHistorySection({ authToken }: { authToken: string | null }) {
   const { data: cases, isLoading } = useAuthFetch("/api/portal/cases", authToken);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
 
   if (isLoading) return <div className="space-y-3">{[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full" />)}</div>;
 
   const items = cases || [];
+
+  const renderReportContent = (report: any) => {
+    if (!report) return null;
+    const content = report.content;
+    if (!content) return <p className="text-gray-400 text-sm">Report generated — no detailed content available.</p>;
+
+    if (typeof content === "string") {
+      return <p className="text-gray-300 text-sm whitespace-pre-wrap">{content}</p>;
+    }
+
+    return (
+      <div className="space-y-2 text-sm">
+        {content.summary && <div><p className="text-gray-500">Summary</p><p className="text-gray-300">{content.summary}</p></div>}
+        {content.diagnosis && <div><p className="text-gray-500">Diagnosis</p><p className="text-gray-300">{content.diagnosis}</p></div>}
+        {content.recommendations && (
+          <div>
+            <p className="text-gray-500">Recommendations</p>
+            {Array.isArray(content.recommendations)
+              ? <ul className="list-disc list-inside text-gray-300">{content.recommendations.map((r: string, i: number) => <li key={i}>{r}</li>)}</ul>
+              : <p className="text-gray-300">{content.recommendations}</p>}
+          </div>
+        )}
+        {content.faultCodes && (
+          <div>
+            <p className="text-gray-500">Fault Codes Analyzed</p>
+            <div className="flex gap-1 flex-wrap mt-1">
+              {(Array.isArray(content.faultCodes) ? content.faultCodes : [content.faultCodes]).map((fc: string, i: number) => (
+                <Badge key={i} variant="outline" className="border-red-600 text-red-400 text-xs">{fc}</Badge>
+              ))}
+            </div>
+          </div>
+        )}
+        {content.severity && <div><p className="text-gray-500">Severity</p><Badge className={`text-xs text-white ${content.severity === "critical" ? "bg-red-600" : content.severity === "high" ? "bg-orange-500" : "bg-blue-500"}`}>{content.severity}</Badge></div>}
+        {content.estimatedRepairTime && <div><p className="text-gray-500">Estimated Repair Time</p><p className="text-gray-300">{content.estimatedRepairTime}</p></div>}
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -1648,22 +1830,63 @@ function AICaseHistorySection({ authToken }: { authToken: string | null }) {
         </CardContent></Card>
       ) : (
         <div className="space-y-2">
-          {items.map((c: any) => (
-            <Card key={c.id} className="bg-[#1a1a1a] border-[#333]" data-testid={`card-case-${c.id}`}>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white font-semibold">
-                      Session #{c.id} — {c.equipmentType || "General"} {c.make || ""} {c.model || ""}
-                    </p>
-                    <p className="text-gray-400 text-sm truncate">{c.problemSummary || "No summary"}</p>
-                    <p className="text-gray-500 text-xs mt-1">{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ""}</p>
+          {items.map((c: any) => {
+            const isExpanded = expandedId === c.id;
+            return (
+              <Card key={c.id} className={`bg-[#1a1a1a] border-[#333] cursor-pointer transition-all ${isExpanded ? "border-[#FFCD11]" : "hover:border-[#555]"}`}
+                onClick={() => setExpandedId(isExpanded ? null : c.id)} data-testid={`card-case-${c.id}`}>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white font-semibold">
+                        Session #{c.id} — {c.equipmentType || "General"} {c.make || ""} {c.model || ""}
+                      </p>
+                      <p className="text-gray-400 text-sm truncate">{c.problemSummary || "No summary"}</p>
+                      <p className="text-gray-500 text-xs mt-1">{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ""}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {c.report && <Stethoscope className="h-4 w-4 text-[#FFCD11]" title="Has AI report" />}
+                      <Badge variant="secondary" className="text-xs">{c.status}</Badge>
+                      <ChevronRight className={`h-4 w-4 text-gray-400 transition-transform ${isExpanded ? "rotate-90" : ""}`} />
+                    </div>
                   </div>
-                  <Badge variant="secondary" className="text-xs">{c.status}</Badge>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+
+                  {isExpanded && (
+                    <div className="mt-4 pt-4 border-t border-[#333] space-y-3" onClick={e => e.stopPropagation()}>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                        {c.equipmentType && <div><p className="text-gray-500">Equipment Type</p><p className="text-white">{c.equipmentType}</p></div>}
+                        {c.make && <div><p className="text-gray-500">Make / Model</p><p className="text-white">{c.make} {c.model || ""}</p></div>}
+                        {c.serialNumber && <div><p className="text-gray-500">Serial Number</p><p className="text-white font-mono">{c.serialNumber}</p></div>}
+                        {c.yearOfManufacture && <div><p className="text-gray-500">Year</p><p className="text-white">{c.yearOfManufacture}</p></div>}
+                        <div><p className="text-gray-500">Status</p><p className="text-white capitalize">{c.status}</p></div>
+                        <div><p className="text-gray-500">Date</p><p className="text-white">{c.createdAt ? new Date(c.createdAt).toLocaleString() : "—"}</p></div>
+                      </div>
+
+                      {c.problemSummary && (
+                        <div>
+                          <p className="text-gray-500 text-sm">Problem Summary</p>
+                          <p className="text-gray-300 text-sm mt-1">{c.problemSummary}</p>
+                        </div>
+                      )}
+
+                      {c.report ? (
+                        <div className="bg-[#222] rounded p-4">
+                          <div className="flex items-center gap-2 mb-3">
+                            <Stethoscope className="h-5 w-5 text-[#FFCD11]" />
+                            <p className="text-[#FFCD11] font-semibold">AI Diagnosis Report</p>
+                            <Badge variant="outline" className="border-[#FFCD11] text-[#FFCD11] text-xs ml-auto">{c.report.reportType || "diagnostic"}</Badge>
+                          </div>
+                          {renderReportContent(c.report)}
+                        </div>
+                      ) : (
+                        <p className="text-gray-500 text-sm italic">No diagnosis report generated for this session.</p>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>
@@ -1790,7 +2013,7 @@ export default function PortalPage() {
       case "purchase-parts": return <PurchasePartsSection authToken={authToken} />;
       case "service": return <ServiceSection authToken={authToken} />;
       case "maintenance": return <MaintenanceSection authToken={authToken} />;
-      case "orders": return <OrdersSection />;
+      case "orders": return <OrdersSection authToken={authToken} />;
       case "documents": return <DocumentsSection authToken={authToken} />;
       case "billing": return <BillingSection authToken={authToken} />;
       case "support": return <SupportSection authToken={authToken} />;
