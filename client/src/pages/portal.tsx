@@ -518,70 +518,117 @@ function PurchasePartsSection({ authToken }: { authToken: string | null }) {
     setItems(updated);
   };
 
-  const handleCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const parseRows = (header: string[], rows: string[][]): Array<{ partNumber: string; description: string; quantity: number; make: string; model: string; serialNumber: string; urgency: string }> => {
+    const lowerHeader = header.map(h => h.toLowerCase().trim().replace(/"/g, ""));
+    const partIdx = lowerHeader.findIndex(h => h.includes("part") && (h.includes("number") || h.includes("num") || h.includes("#") || h === "part"));
+    const descIdx = lowerHeader.findIndex(h => h.includes("desc"));
+    const qtyIdx = lowerHeader.findIndex(h => h.includes("qty") || h.includes("quantity") || h.includes("count"));
+    const makeIdx = lowerHeader.findIndex(h => h.includes("make") || h.includes("brand") || h.includes("manufacturer"));
+    const modelIdx = lowerHeader.findIndex(h => h.includes("model"));
+    const serialIdx = lowerHeader.findIndex(h => h.includes("serial"));
+    const urgencyIdx = lowerHeader.findIndex(h => h.includes("urgency") || h.includes("priority"));
+
+    if (partIdx === -1) {
+      toast({ title: "Missing column", description: "File must have a 'Part Number' column", variant: "destructive" });
+      return [];
+    }
+
+    return rows.map(cols => ({
+      partNumber: (cols[partIdx] || "").trim(),
+      description: descIdx >= 0 ? (cols[descIdx] || "").trim() : "",
+      quantity: qtyIdx >= 0 ? Math.max(1, parseInt(cols[qtyIdx]) || 1) : 1,
+      make: makeIdx >= 0 ? (cols[makeIdx] || "").trim() : "",
+      model: modelIdx >= 0 ? (cols[modelIdx] || "").trim() : "",
+      serialNumber: serialIdx >= 0 ? (cols[serialIdx] || "").trim() : "",
+      urgency: urgencyIdx >= 0 ? ((cols[urgencyIdx] || "standard").trim().toLowerCase()) : "standard",
+    })).filter(item => item.partNumber.length > 0);
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.name.endsWith(".csv") && !file.name.endsWith(".txt")) {
-      toast({ title: "Invalid file type", description: "Please upload a CSV or TXT file", variant: "destructive" });
+    const ext = file.name.toLowerCase().split(".").pop();
+    const validExts = ["csv", "txt", "xlsx", "xls"];
+    if (!ext || !validExts.includes(ext)) {
+      toast({ title: "Invalid file type", description: "Please upload a CSV, TXT, XLS, or XLSX file", variant: "destructive" });
       return;
     }
 
     setCsvParsing(true);
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const text = event.target?.result as string;
-        const lines = text.split("\n").map(l => l.trim()).filter(l => l.length > 0);
 
-        if (lines.length < 2) {
-          toast({ title: "Invalid CSV", description: "File must have a header row and at least one data row", variant: "destructive" });
+    try {
+      if (ext === "xlsx" || ext === "xls") {
+        const XLSX = await import("xlsx");
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          try {
+            const data = new Uint8Array(event.target?.result as ArrayBuffer);
+            const workbook = XLSX.read(data, { type: "array" });
+            const sheetName = workbook.SheetNames[0];
+            const sheet = workbook.Sheets[sheetName];
+            const jsonData: string[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+
+            if (jsonData.length < 2) {
+              toast({ title: "Empty spreadsheet", description: "File must have a header row and at least one data row", variant: "destructive" });
+              setCsvParsing(false);
+              return;
+            }
+
+            const header = jsonData[0].map(String);
+            const rows = jsonData.slice(1).map(row => row.map(String));
+            const parsed = parseRows(header, rows);
+
+            if (parsed.length === 0) {
+              toast({ title: "No valid rows", description: "No rows with valid part numbers found", variant: "destructive" });
+              setCsvParsing(false);
+              return;
+            }
+
+            setItems(parsed);
+            toast({ title: `${parsed.length} parts imported from ${file.name}`, description: "Review the items below before submitting" });
+          } catch {
+            toast({ title: "Parse Error", description: "Could not parse the Excel file", variant: "destructive" });
+          }
           setCsvParsing(false);
-          return;
-        }
+        };
+        reader.readAsArrayBuffer(file);
+      } else {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          try {
+            const text = event.target?.result as string;
+            const lines = text.split("\n").map(l => l.trim()).filter(l => l.length > 0);
 
-        const header = lines[0].toLowerCase().split(",").map(h => h.trim().replace(/"/g, ""));
-        const partIdx = header.findIndex(h => h.includes("part") && (h.includes("number") || h.includes("num") || h.includes("#") || h === "part"));
-        const descIdx = header.findIndex(h => h.includes("desc"));
-        const qtyIdx = header.findIndex(h => h.includes("qty") || h.includes("quantity") || h.includes("count"));
-        const makeIdx = header.findIndex(h => h.includes("make") || h.includes("brand") || h.includes("manufacturer"));
-        const modelIdx = header.findIndex(h => h.includes("model"));
-        const serialIdx = header.findIndex(h => h.includes("serial"));
-        const urgencyIdx = header.findIndex(h => h.includes("urgency") || h.includes("priority"));
+            if (lines.length < 2) {
+              toast({ title: "Invalid CSV", description: "File must have a header row and at least one data row", variant: "destructive" });
+              setCsvParsing(false);
+              return;
+            }
 
-        if (partIdx === -1) {
-          toast({ title: "Missing column", description: "CSV must have a 'Part Number' column", variant: "destructive" });
+            const header = lines[0].split(",").map(h => h.trim().replace(/^"|"$/g, ""));
+            const rows = lines.slice(1).map(line => line.split(",").map(c => c.trim().replace(/^"|"$/g, "")));
+            const parsed = parseRows(header, rows);
+
+            if (parsed.length === 0) {
+              toast({ title: "No valid rows", description: "No rows with valid part numbers found", variant: "destructive" });
+              setCsvParsing(false);
+              return;
+            }
+
+            setItems(parsed);
+            toast({ title: `${parsed.length} parts imported`, description: "Review the items below before submitting" });
+          } catch {
+            toast({ title: "Parse Error", description: "Could not parse the CSV file", variant: "destructive" });
+          }
           setCsvParsing(false);
-          return;
-        }
-
-        const parsed = lines.slice(1).map(line => {
-          const cols = line.split(",").map(c => c.trim().replace(/^"|"$/g, ""));
-          return {
-            partNumber: cols[partIdx] || "",
-            description: descIdx >= 0 ? cols[descIdx] || "" : "",
-            quantity: qtyIdx >= 0 ? Math.max(1, parseInt(cols[qtyIdx]) || 1) : 1,
-            make: makeIdx >= 0 ? cols[makeIdx] || "" : "",
-            model: modelIdx >= 0 ? cols[modelIdx] || "" : "",
-            serialNumber: serialIdx >= 0 ? cols[serialIdx] || "" : "",
-            urgency: urgencyIdx >= 0 ? (cols[urgencyIdx] || "standard").toLowerCase() : "standard",
-          };
-        }).filter(item => item.partNumber.length > 0);
-
-        if (parsed.length === 0) {
-          toast({ title: "No valid rows", description: "No rows with valid part numbers found", variant: "destructive" });
-          setCsvParsing(false);
-          return;
-        }
-
-        setItems(parsed);
-        toast({ title: `${parsed.length} parts imported`, description: "Review the items below before submitting" });
-      } catch {
-        toast({ title: "Parse Error", description: "Could not parse the CSV file", variant: "destructive" });
+        };
+        reader.readAsText(file);
       }
+    } catch {
+      toast({ title: "File Error", description: "Could not read the file", variant: "destructive" });
       setCsvParsing(false);
-    };
-    reader.readAsText(file);
+    }
     e.target.value = "";
   };
 
@@ -722,16 +769,16 @@ function PurchasePartsSection({ authToken }: { authToken: string | null }) {
           <CardContent className="space-y-4">
             <div className="flex gap-2 flex-wrap items-end">
               <div className="flex-1 min-w-[200px]">
-                <Label className="text-gray-300 text-sm">Upload Parts List (CSV)</Label>
+                <Label className="text-gray-300 text-sm">Upload Parts List (Excel or CSV)</Label>
                 <Input
                   type="file"
-                  accept=".csv,.txt"
-                  onChange={handleCsvUpload}
+                  accept=".csv,.txt,.xlsx,.xls"
+                  onChange={handleFileUpload}
                   className="bg-[#222] border-[#444] text-white mt-1"
                   disabled={csvParsing}
                   data-testid="input-csv-upload"
                 />
-                <p className="text-gray-500 text-xs mt-1">CSV columns: Part Number (required), Description, Quantity, Make, Model, Serial Number, Urgency</p>
+                <p className="text-gray-500 text-xs mt-1">Supports Excel (.xlsx, .xls) and CSV (.csv, .txt). Columns: Part Number (required), Description, Quantity, Make, Model, Serial Number, Urgency</p>
               </div>
               {equipmentList && (equipmentList as any[]).length > 0 && (
                 <div className="min-w-[180px]">
