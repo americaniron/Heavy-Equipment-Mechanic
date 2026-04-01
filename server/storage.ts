@@ -86,6 +86,7 @@ export interface IStorage {
   createQuoteRequest(data: InsertQuoteRequest): Promise<QuoteRequest>;
   getQuoteRequests(customerId: number): Promise<QuoteRequest[]>;
   getQuoteRequestById(id: number): Promise<QuoteRequest | undefined>;
+  getQuoteRequestByRef(referenceNumber: string): Promise<QuoteRequest | undefined>;
   updateQuoteRequest(id: number, data: Partial<InsertQuoteRequest>): Promise<QuoteRequest | undefined>;
   getAllQuoteRequests(): Promise<QuoteRequest[]>;
 
@@ -303,6 +304,10 @@ export class DatabaseStorage implements IStorage {
   }
   async getQuoteRequestById(id: number): Promise<QuoteRequest | undefined> {
     const [qr] = await db.select().from(quoteRequests).where(eq(quoteRequests.id, id));
+    return qr;
+  }
+  async getQuoteRequestByRef(referenceNumber: string): Promise<QuoteRequest | undefined> {
+    const [qr] = await db.select().from(quoteRequests).where(eq(quoteRequests.referenceNumber, referenceNumber));
     return qr;
   }
   async updateQuoteRequest(id: number, data: Partial<InsertQuoteRequest>): Promise<QuoteRequest | undefined> {

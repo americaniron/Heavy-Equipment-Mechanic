@@ -225,6 +225,7 @@ async function sendQuoteNotificationToAdmin(
   notes: string | null
 ): Promise<void> {
   const adminEmail = "adam@americanironus.com";
+  const partsEmail = "parts@americanironus.com";
 
   const itemRows = items.map((item, i) =>
     `<tr style="border-bottom: 1px solid #333;">
@@ -300,11 +301,11 @@ async function sendQuoteNotificationToAdmin(
       const resend = new Resend(process.env.RESEND_API_KEY);
       await resend.emails.send({
         from: process.env.RESEND_FROM_EMAIL || "AMERICAN IRON <noreply@americanironus.com>",
-        to: [adminEmail],
+        to: [adminEmail, partsEmail],
         subject,
         html,
       });
-      console.log(`[QUOTE] Admin notification sent via Resend to ${adminEmail}`);
+      console.log(`[QUOTE] Admin notification sent via Resend to ${adminEmail} and ${partsEmail}`);
       return;
     } catch (err: any) {
       console.error(`[QUOTE] Resend admin notification failed:`, err.message);
@@ -323,11 +324,11 @@ async function sendQuoteNotificationToAdmin(
       });
       await transporter.sendMail({
         from: `"AMERICAN IRON" <${process.env.SMTP_USER}>`,
-        to: adminEmail,
+        to: `${adminEmail}, ${partsEmail}`,
         subject,
         html,
       });
-      console.log(`[QUOTE] Admin notification sent via SMTP to ${adminEmail}`);
+      console.log(`[QUOTE] Admin notification sent via SMTP to ${adminEmail} and ${partsEmail}`);
       return;
     } catch (err: any) {
       console.error(`[QUOTE] SMTP admin notification failed:`, err.message);
@@ -933,6 +934,149 @@ export async function registerRoutes(
       const serviceRequests = await storage.getServiceRequests(cid);
       const { passwordHash: _, ...safe } = customer;
       res.json({ customer: safe, equipment, serviceRequests });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  const requireCrmApiKey = (req: any, res: any, next: any) => {
+    const apiKey = req.headers["x-crm-api-key"];
+    const validKey = process.env.CRM_SYNC_API_KEY;
+    if (!validKey || apiKey !== validKey) {
+      return res.status(401).json({ error: "Invalid or missing CRM API key" });
+    }
+    next();
+  };
+
+  app.get("/api/crm/quote-requests", requireCrmApiKey, async (_req, res) => {
+    try {
+      const all = await storage.getAllQuoteRequests();
+      const enriched = await Promise.all(all.map(async (qr) => {
+        const customer = await storage.getCustomerById(qr.customerId);
+        const items = await storage.getQuoteRequestItems(qr.id);
+        const { passwordHash: _, ...safeCustomer } = customer || { passwordHash: "" } as any;
+        return { ...qr, customer: customer ? safeCustomer : null, items };
+      }));
+      res.json(enriched);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/crm/quote-requests/:refOrId", requireCrmApiKey, async (req, res) => {
+    try {
+      const param = req.params.refOrId;
+      let qr = await storage.getQuoteRequestByRef(param);
+      if (!qr && /^\d+$/.test(param)) {
+        qr = await storage.getQuoteRequestById(parseInt(param));
+      }
+      if (!qr) return res.status(404).json({ error: "Quote request not found" });
+      const customer = await storage.getCustomerById(qr.customerId);
+      const items = await storage.getQuoteRequestItems(qr.id);
+      const { passwordHash: _, ...safeCustomer } = customer || { passwordHash: "" } as any;
+      res.json({ ...qr, customer: customer ? safeCustomer : null, items });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.patch("/api/crm/quote-requests/:refOrId", requireCrmApiKey, async (req, res) => {
+    try {
+      const param = req.params.refOrId;
+      let qr = await storage.getQuoteRequestByRef(param);
+      if (!qr && /^\d+$/.test(param)) {
+        qr = await storage.getQuoteRequestById(parseInt(param));
+      }
+      if (!qr) return res.status(404).json({ error: "Quote request not found" });
+
+      const { status, adminNotes } = req.body;
+      const validStatuses = ["pending_review", "quoted", "approved", "rejected", "completed", "shipped", "cancelled"];
+      if (status && !validStatuses.includes(status)) {
+        return res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(", ")}` });
+      }
+
+      const updateData: any = {};
+      if (status) updateData.status = status;
+      if (adminNotes !== undefined) updateData.adminNotes = adminNotes;
+
+      const updated = await storage.updateQuoteRequest(qr.id, updateData);
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/crm/invoices", requireCrmApiKey, async (req, res) => {
+    try {
+      const { customerEmail, customerId, amount, description, dueDate, status, serviceRequestId } = req.body;
+
+      let cid = customerId;
+      if (!cid && customerEmail) {
+        const customer = await storage.getCustomerByEmail(customerEmail);
+        if (!customer) return res.status(404).json({ error: `Customer not found with email: ${customerEmail}` });
+        cid = customer.id;
+      }
+      if (!cid) return res.status(400).json({ error: "customerId or customerEmail is required" });
+
+      const invoice = await storage.createInvoice({
+        customerId: cid,
+        amount: amount || "0",
+        description: description || null,
+        dueDate: dueDate || null,
+        status: status || "pending",
+        serviceRequestId: serviceRequestId || null,
+      });
+
+      res.json(invoice);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.patch("/api/crm/invoices/:id", requireCrmApiKey, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { amount, description, dueDate, status } = req.body;
+      const updateData: any = {};
+      if (amount !== undefined) updateData.amount = amount;
+      if (description !== undefined) updateData.description = description;
+      if (dueDate !== undefined) updateData.dueDate = dueDate;
+      if (status !== undefined) updateData.status = status;
+      if (status === "paid") updateData.paidAt = new Date();
+
+      const updated = await storage.updateInvoice(id, updateData);
+      if (!updated) return res.status(404).json({ error: "Invoice not found" });
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/crm/customers", requireCrmApiKey, async (_req, res) => {
+    try {
+      const all = await storage.getAllCustomers();
+      const safe = all.map(({ passwordHash: _, ...rest }) => rest);
+      res.json(safe);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/crm/customers/:emailOrId", requireCrmApiKey, async (req, res) => {
+    try {
+      const param = req.params.emailOrId;
+      let customer;
+      if (/^\d+$/.test(param)) {
+        customer = await storage.getCustomerById(parseInt(param));
+      } else {
+        customer = await storage.getCustomerByEmail(param);
+      }
+      if (!customer) return res.status(404).json({ error: "Customer not found" });
+      const { passwordHash: _, ...safe } = customer;
+      const equipment = await storage.getEquipment(customer.id);
+      const serviceRequests = await storage.getServiceRequests(customer.id);
+      const quotes = await storage.getQuoteRequests(customer.id);
+      res.json({ ...safe, equipment, serviceRequests, quoteRequests: quotes });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }

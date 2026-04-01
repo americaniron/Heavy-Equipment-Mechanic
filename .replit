@@ -40,3 +40,8 @@ waitForPort = 5000
 
 [agent]
 integrations = ["stripe:1.0.0", "javascript_openai_ai_integrations:2.0.0"]
+
+[userenv]
+
+[userenv.shared]
+CRM_SYNC_API_KEY = "68f9c488523a8f223696c0f7ed900b092fb2f559ff7da547b50e3e2c654de529"
