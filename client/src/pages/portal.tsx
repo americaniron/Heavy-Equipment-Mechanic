@@ -549,50 +549,64 @@ function PurchasePartsSection({ authToken }: { authToken: string | null }) {
     if (!file) return;
 
     const ext = file.name.toLowerCase().split(".").pop();
-    const validExts = ["csv", "txt", "xlsx", "xls"];
+    const validExts = ["csv", "txt", "xlsx"];
     if (!ext || !validExts.includes(ext)) {
-      toast({ title: "Invalid file type", description: "Please upload a CSV, TXT, XLS, or XLSX file", variant: "destructive" });
+      toast({ title: "Invalid file type", description: "Please upload a CSV, TXT, or XLSX file", variant: "destructive" });
       return;
     }
 
     setCsvParsing(true);
 
     try {
-      if (ext === "xlsx" || ext === "xls") {
-        const XLSX = await import("xlsx");
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          try {
-            const data = new Uint8Array(event.target?.result as ArrayBuffer);
-            const workbook = XLSX.read(data, { type: "array" });
-            const sheetName = workbook.SheetNames[0];
-            const sheet = workbook.Sheets[sheetName];
-            const jsonData: string[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
-
-            if (jsonData.length < 2) {
-              toast({ title: "Empty spreadsheet", description: "File must have a header row and at least one data row", variant: "destructive" });
-              setCsvParsing(false);
-              return;
+      if (ext === "xlsx") {
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          const ExcelJS = await import("exceljs");
+          const workbook = new ExcelJS.Workbook();
+          await workbook.xlsx.load(arrayBuffer);
+          const sheet = workbook.worksheets[0];
+          const numCols = sheet.columnCount;
+          const jsonData: string[][] = [];
+          sheet.eachRow({ includeEmpty: false }, (row) => {
+            const rowData: string[] = [];
+            for (let c = 1; c <= numCols; c++) {
+              const cell = row.getCell(c);
+              const val = cell.value;
+              if (val === null || val === undefined) {
+                rowData.push("");
+              } else if (typeof val === "object") {
+                if ("text" in (val as any)) rowData.push(String((val as any).text));
+                else if ("result" in (val as any)) rowData.push(String((val as any).result ?? ""));
+                else rowData.push(String(val));
+              } else {
+                rowData.push(String(val));
+              }
             }
+            jsonData.push(rowData);
+          });
 
-            const header = jsonData[0].map(String);
-            const rows = jsonData.slice(1).map(row => row.map(String));
-            const parsed = parseRows(header, rows);
-
-            if (parsed.length === 0) {
-              toast({ title: "No valid rows", description: "No rows with valid part numbers found", variant: "destructive" });
-              setCsvParsing(false);
-              return;
-            }
-
-            setItems(parsed);
-            toast({ title: `${parsed.length} parts imported from ${file.name}`, description: "Review the items below before submitting" });
-          } catch {
-            toast({ title: "Parse Error", description: "Could not parse the Excel file", variant: "destructive" });
+          if (jsonData.length < 2) {
+            toast({ title: "Empty spreadsheet", description: "File must have a header row and at least one data row", variant: "destructive" });
+            setCsvParsing(false);
+            return;
           }
-          setCsvParsing(false);
-        };
-        reader.readAsArrayBuffer(file);
+
+          const header = jsonData[0].map(String);
+          const rows = jsonData.slice(1).map(row => row.map(String));
+          const parsed = parseRows(header, rows);
+
+          if (parsed.length === 0) {
+            toast({ title: "No valid rows", description: "No rows with valid part numbers found", variant: "destructive" });
+            setCsvParsing(false);
+            return;
+          }
+
+          setItems(parsed);
+          toast({ title: `${parsed.length} parts imported from ${file.name}`, description: "Review the items below before submitting" });
+        } catch {
+          toast({ title: "Parse Error", description: "Could not parse the Excel file", variant: "destructive" });
+        }
+        setCsvParsing(false);
       } else {
         const reader = new FileReader();
         reader.onload = (event) => {
@@ -772,13 +786,13 @@ function PurchasePartsSection({ authToken }: { authToken: string | null }) {
                 <Label className="text-gray-300 text-sm">Upload Parts List (Excel or CSV)</Label>
                 <Input
                   type="file"
-                  accept=".csv,.txt,.xlsx,.xls"
+                  accept=".csv,.txt,.xlsx"
                   onChange={handleFileUpload}
                   className="bg-[#222] border-[#444] text-white mt-1"
                   disabled={csvParsing}
                   data-testid="input-csv-upload"
                 />
-                <p className="text-gray-500 text-xs mt-1">Supports Excel (.xlsx, .xls) and CSV (.csv, .txt). Columns: Part Number (required), Description, Quantity, Make, Model, Serial Number, Urgency</p>
+                <p className="text-gray-500 text-xs mt-1">Supports Excel (.xlsx) and CSV (.csv, .txt). Columns: Part Number (required), Description, Quantity, Make, Model, Serial Number, Urgency</p>
               </div>
               {equipmentList && (equipmentList as any[]).length > 0 && (
                 <div className="min-w-[180px]">
