@@ -12,7 +12,7 @@ import {
   generateQuickAdviceReport, generateProReport,
   type ConversationMessage, type SessionContext,
 } from "./services/ai-engine";
-import { createAvatarSession, stopAvatarSession, sendAvatarSpeak, getAvatarInfo } from "./services/avatar";
+import { createAvatarSession, stopAvatarSession, sendAvatarSpeak, getAvatarInfo, listAvailableAvatars } from "./services/avatar";
 import { createDIDStream, sendDIDSdpAnswer, sendDIDIceCandidate, sendDIDSpeak, closeDIDStream, clearDIDAgentCache, checkDIDCredits } from "./services/did-avatar";
 
 
@@ -1785,6 +1785,16 @@ export async function registerRoutes(
       res.json({ success: true });
     } catch (error: any) {
       console.error("Avatar session stop error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/avatar/available", async (req, res) => {
+    try {
+      const avatars = await listAvailableAvatars();
+      res.json({ avatars });
+    } catch (error: any) {
+      console.error("List avatars error:", error);
       res.status(500).json({ error: error.message });
     }
   });
