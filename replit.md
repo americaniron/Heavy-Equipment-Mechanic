@@ -99,8 +99,9 @@ Quote request notification emails go to both `adam@americanironus.com` and `part
 - **Provider Detection**: Server tries HeyGen first; on failure, falls back to D-ID. Response includes `provider: "heygen"` or `provider: "did"`. Client reads provider to determine connection method.
 - **Speak Routing**: `sendAvatarSpeakCommand` checks `avatarProviderRef` → D-ID uses `/api/avatar/speak` REST call, HeyGen uses LiveKit data channel, fallback uses browser TTS
 - **Voice Input**: Client-side MediaRecorder captures user mic audio with VAD (silence detection) → sends to `/api/transcribe` endpoint → OpenAI Whisper STT → transcribed text fed to `handleUserMessage` → GPT-4o response → avatar speak command
-- **English Avatars**: Sarah (admin), Bryan (heavy equip), Elenora (power gen), Pedro (marine), Thaddeus (hydraulics), Anastasia (electrical), Marcus (parts)
-- **Arabic Avatars**: فاطمة (admin), خالد (heavy equip), ليلى (power gen), عمر (marine), حسن (hydraulics), نور (electrical), طارق (parts)
+- **English Avatars (Seedance 2.0)**: Sarah/admin (Katya/Marianne/Alessandra pool), Mike/heavy_equipment (Anthony Black Suit), Sarah C./power_gen (Rika Blue Suit), James/marine (Pedro Black Suit), David/hydraulics (Thaddeus Black Suit), Elena/electrical (Anastasia Black Suit), Marcus/parts (Graham Black Suit)
+- **Arabic Avatars (Seedance 2.0)**: فاطمة/admin (Amina pool + Marianne), خالد/heavy_equipment (Dexter Lawyer), ليلى/power_gen (Judy Doctor Standing), عمر/marine (Shawn Therapist), حسن/hydraulics (Anthony White Suit), نور/electrical (Alessandra Black Suit), طارق/parts (Silas Customer Support)
+- **Voice IDs**: Each avatar has a matched voice_id for consistent voice quality (Katya-IA, Anthony-IA, Rika-IA, Pedro-IA, Thaddeus-IA, Anastasia-IA, Graham-IA, Amina-IA, etc.)
 - **Body Gestures**: All avatar personas include natural body language instructions
 - **Speaking Style**: Strict no-filler instructions — no verbal fillers; direct substantive responses only
 - **Idle Timeout**: 2-minute warning, 3-minute auto-disconnect with avatar goodbye message (English/Arabic)
@@ -147,3 +148,4 @@ Quote request notification emails go to both `adam@americanironus.com` and `part
 - `POST /api/avatar/session/sdp` - Send SDP answer (D-ID WebRTC)
 - `POST /api/avatar/session/ice` - Send ICE candidate (D-ID WebRTC)
 - `POST /api/avatar/session/stop` - Stop avatar session (handles both D-ID and HeyGen)
+- `GET /api/avatar/available` - List all available public LiveAvatar avatars (for admin reference)
