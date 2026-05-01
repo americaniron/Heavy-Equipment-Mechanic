@@ -1,0 +1,17 @@
+node_modules
+npm-debug.log*
+.env
+.env.local
+.env.*.local
+.git
+.gitignore
+dist
+build
+attached_assets
+.DS_Store
+*.log
+.cache
+.vscode
+.idea
+README.md
+MIGRATION-STATUS.md
