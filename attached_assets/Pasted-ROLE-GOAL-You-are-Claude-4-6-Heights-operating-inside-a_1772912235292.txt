@@ -1,0 +1,190 @@
+ROLE & GOAL
+You are Claude 4.6 (Heights) operating inside a website-build / product-engineering workflow. Your job is to ADD a NEW, PRODUCTION-READY service to americanironus.com called:
+
+“Live AI Engineer Desk (Admin Intake → Mechanic Assignment)”
+
+This enhancement must be implemented using ONLY HeyGen and/or D-ID avatar/video agent models for ALL on-screen people (both the Registration Admin and the Mechanics). Do NOT use any other avatar providers or generic avatars.
+
+ABSOLUTE CONSTRAINTS (MUST FOLLOW)
+1) No traditional “app structure”:
+   - Do NOT build a multi-page dashboard app, complex routing, or a full SPA.
+   - Do NOT create a heavy UI with many components, tabs, or internal admin pages.
+   - The experience must feel like a live front-desk video desk embedded into the website.
+
+2) Real-time, human-like interaction:
+   - The Admin and Mechanics must interact in real-time via live video conversation.
+   - They must behave like real people: greeting, clarifying, confirming, and responding naturally.
+   - If full photorealistic “live video human” is limited by provider APIs, implement the closest achievable real-time avatar experience and label it honestly while still shipping a working solution.
+
+3) All on-screen humans are HeyGen / D-ID:
+   - Registration Admin = HeyGen/D-ID avatar agent
+   - Mechanic(s) = HeyGen/D-ID avatar agents
+
+PRIMARY OUTCOME (WHAT YOU MUST SHIP)
+Add ONE new website section/page that launches a live video “front desk”:
+- Visitor starts a session
+- Registration Admin appears on video immediately
+- Admin gathers customer information + intake details
+- Admin classifies visit type + urgency/safety
+- Admin assigns the customer to a specific Mechanic avatar
+- Mechanic conducts the diagnostic conversation and provides outputs (free or paid)
+
+USER EXPERIENCE REQUIREMENTS (ONE-PAGE EMBED STYLE)
+Create ONE new navigation item:
+- Label: “Live AI Engineer Desk”
+On that page, keep UI minimal and premium:
+- A large live video area (Admin/Mechanic)
+- A small right-side panel (or bottom on mobile) for:
+  - Session notes (auto-captured)
+  - Upload buttons (photos, PDFs, fault code screenshots)
+  - “Download Report” button (locked behind paywall when applicable)
+  - “Share Link” button for finalized reports
+- A small status bar:
+  - “You’re speaking with: Registration Admin / Mechanic Name”
+  - “Free” vs “Pro” session state
+
+No multi-page flow. Everything happens inside this one page.
+
+AGENTS (MANDATORY)
+A) REGISTRATION ADMIN AGENT (VIDEO)
+Purpose: greet, collect info, triage, and route.
+Behavior:
+- Warm, professional, fast, precise.
+- Must collect:
+  - Name, email, phone (optional), company
+  - Equipment type (excavator/loader/dozer/gen-set/marine engine/power unit/etc.)
+  - Make/model/year
+  - Serial number + serial prefix if applicable
+  - SMU/Hours
+  - Problem summary + fault codes + when it started
+  - Location + safety question: “Can you safely shut down?”
+- Must ask permission to proceed with troubleshooting
+- Must determine “visit type”:
+  1) Quick Advice (Free)
+  2) Pro Diagnostics & Deliverables (Paid)
+  3) Emergency Safety Stop (refuse dangerous guidance; advise safe steps; recommend certified tech)
+- Must assign customer to one of several mechanics:
+  - Heavy Equipment Mechanic
+  - Power Generation / Genset Engineer
+  - Marine Engine Mechanic
+  - Hydraulics Specialist
+  - Electrical / Controls Specialist
+
+B) MECHANIC AGENTS (VIDEO)
+Each Mechanic is a HeyGen/D-ID agent with a specialized system prompt + SOP.
+Mechanic capabilities:
+- Diagnose issues, guide safe checks, recommend repairs/upgrades
+- Produce structured outputs:
+  - Quick Advice summary (Free)
+  - Pro Diagnostic Report with diagrams + parts list + procedure checklist (Paid)
+Mechanic rules:
+- Ask for missing critical details
+- Label confidence level (confirmed vs needs verification)
+- Include safety warnings for high voltage, fuel pressure, lifting loads, rotating assemblies, hot work, etc.
+- Refuse unsafe/dangerous instructions and pivot to safe alternatives
+
+REAL-TIME IMPLEMENTATION REQUIREMENTS (MINIMAL WEB + PROVIDER INTEGRATION)
+Implement the service as:
+- A lightweight embedded page that connects to HeyGen/D-ID real-time video agent session(s)
+- Use WebRTC (or the provider’s real-time streaming method) for live video conversation
+- Capture streaming transcripts behind the scenes to:
+  - Save intake details
+  - Generate reports
+  - Trigger paywalls
+- The page itself should be simple HTML + minimal JS (fast and non-app-like)
+
+TECHNICAL ARCHITECTURE (ALLOWED, BUT KEEP IT MINIMAL)
+Even with “no app structure,” you MUST implement minimal backend endpoints for:
+- Session creation with provider (Admin or Mechanic)
+- Handoff from Admin → Mechanic (transfer context)
+- File uploads (photos/PDFs)
+- Report generation (PDF)
+- Share-link creation
+- Billing/checkout session creation (Stripe test mode)
+
+Keep backend serverless/minimal (a few endpoints). No giant admin dashboard.
+
+HANDOFF / ROUTING (MANDATORY)
+Implement a seamless “handoff” mechanism:
+- Admin collects structured intake JSON
+- Admin chooses mechanic type
+- System creates Mechanic video session
+- Customer view transitions smoothly (same page) from Admin avatar to Mechanic avatar
+- Mechanic receives full context:
+  - Intake JSON
+  - Uploaded file references
+  - Conversation summary so far
+
+BILLING / MONETIZATION (MANDATORY)
+Free tier:
+- Basic explanations
+- A few recommended checks
+- General parts categories
+Paid tier (Pro):
+- Downloadable Pro Diagnostic Report (PDF)
+- SVG diagram bundle
+- Step-by-step diagnostic tree
+- Parameter/config tables and calibration steps
+- Full parts list with alternates + quantities
+Billing must support:
+- Hourly billable rate AND/OR per-report pricing
+- Show estimate BEFORE generating paid deliverables
+- Require explicit confirmation + checkout BEFORE producing paid outputs
+- Implement Stripe “test mode” integration points
+
+PAYWALL TRIGGERS (CLEAR RULES)
+- Admin classifies: Quick Advice (free) vs Pro (paid)
+- Mechanic can talk in Pro mode, but any deliverable generation + downloads remain locked until payment success
+- Paywall modal must show:
+  - What’s included
+  - Price estimate
+  - Checkout button
+
+OUTPUTS (MANDATORY)
+1) Quick Advice (free) shown in notes panel:
+- Ranked likely causes
+- Safe immediate checks
+- When to stop and call a tech
+
+2) Pro Diagnostic Report (paid):
+- Root-cause matrix
+- Diagnostic tree
+- Tools list
+- Safety checklist
+- Labor estimate ranges (clearly labeled estimates)
+- Parts list (exact when confident; otherwise “verify required”)
+- At least one generated SVG diagram
+- Export to PDF
+- Download + Share link
+
+SAFETY, DISCLAIMER, AND LIABILITY (MANDATORY)
+On-page visible disclaimer:
+- AI guidance is informational and not a substitute for certified inspection
+- Stop-work guidance for safety-critical scenarios
+Agents must refuse dangerous instructions and pivot to safe alternatives.
+
+DATA & PRIVACY (MANDATORY)
+- Collect only necessary intake data
+- Provide a consent checkbox for:
+  - Recording transcript for report generation
+  - Storing case details for follow-up
+- Store cases securely; share link access by token
+
+DELIVERABLES YOU MUST OUTPUT
+1) One new “Live AI Engineer Desk” page/section (minimal embed style)
+2) Real-time Registration Admin video agent (HeyGen/D-ID)
+3) Real-time Mechanic video agent(s) (HeyGen/D-ID)
+4) Seamless Admin → Mechanic handoff with full context
+5) Uploads (photos/PDFs) on the same page
+6) Pro report generator with SVG diagram + PDF export
+7) Download + share link for reports
+8) Stripe test-mode billing hooks
+9) README: environment variables + provider setup steps (HeyGen/D-ID keys, webhook URLs if needed, Stripe keys)
+
+QUALITY BAR
+- Must feel like a real front desk + technician handoff
+- Minimal UI, premium look, fast load
+- No broken flows; if video fails, fallback to audio/text while keeping the session alive
+- Honest labeling of provider constraints
+
+NOW EXECUTE: design the solution, then output (1) an implementation plan and (2) the complete code/files needed.
