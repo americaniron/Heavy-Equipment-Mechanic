@@ -1,20 +1,27 @@
 /**
- * Public env exposed to the browser. Throws at startup if required values are
- * missing so misconfiguration fails loud, not silent.
+ * Public env exposed to the browser.
+ *
+ * Required keys (publishable Clerk key, API URL) emit a console.warn when
+ * missing — they are enforced at runtime by the consuming code (Clerk's
+ * provider will refuse to mount; API calls will fail). We deliberately
+ * don't throw at import time so a misconfigured deploy can still serve
+ * static pages and surface a clean error rather than a 500 on every route.
  */
-function required(name: string, value: string | undefined): string {
-  if (!value) throw new Error(`Missing required env var: ${name}`);
-  return value;
+function expected(name: string, value: string | undefined): string {
+  if (!value && typeof process !== "undefined" && process.env.NODE_ENV !== "test") {
+    // eslint-disable-next-line no-console
+    console.warn(`[env] missing ${name}`);
+  }
+  return value ?? "";
 }
 
 export const publicEnv = {
-  clerkPublishableKey: required(
+  clerkPublishableKey: expected(
     "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
     process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
   ),
-  apiUrl: required("NEXT_PUBLIC_API_URL", process.env.NEXT_PUBLIC_API_URL),
-  paddleClientToken:
-    process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN ?? "",
+  apiUrl: expected("NEXT_PUBLIC_API_URL", process.env.NEXT_PUBLIC_API_URL),
+  paddleClientToken: process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN ?? "",
   paddleEnvironment: (process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT ?? "sandbox") as
     | "sandbox"
     | "production",
