@@ -81,7 +81,9 @@ export function PredictiveClient() {
 function PreEmptyState() {
   return (
     <div className="rounded-md border border-equipment-700 bg-equipment-900/60 p-8 text-center">
-      <p className="text-zinc-300">Click "Generate predictions" to evaluate your fleet.</p>
+      <p className="text-zinc-300">
+        Click <span className="font-medium text-zinc-100">Generate predictions</span> to evaluate your fleet.
+      </p>
     </div>
   );
 }
