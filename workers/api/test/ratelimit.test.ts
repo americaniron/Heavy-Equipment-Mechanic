@@ -120,4 +120,74 @@ describe("checkAndIncrement", () => {
     await checkAndIncrement({ env, userId: "u_d", max: 3, now: nearEnd });
     expect(puts[0]?.ttl).toBeGreaterThanOrEqual(60);
   });
+
+  it("uses independent buckets for different scopes", async () => {
+    const { kv } = makeKv();
+    const env = makeEnv(kv);
+    const fixedNow = (): number => 1_700_000_000_000;
+    for (let i = 0; i < 3; i++) {
+      await checkAndIncrement({
+        env,
+        userId: "u_x",
+        scope: "anthropic",
+        max: 3,
+        now: fixedNow,
+      });
+    }
+    // Anthropic bucket exhausted.
+    const ant = await checkAndIncrement({
+      env,
+      userId: "u_x",
+      scope: "anthropic",
+      max: 3,
+      now: fixedNow,
+    });
+    expect(ant.ok).toBe(false);
+    // parts-search bucket has its own counter.
+    const parts = await checkAndIncrement({
+      env,
+      userId: "u_x",
+      scope: "parts-search",
+      max: 3,
+      now: fixedNow,
+    });
+    expect(parts.ok).toBe(true);
+  });
+
+  it("supports per-minute windows independently of per-hour", async () => {
+    const { kv } = makeKv();
+    const env = makeEnv(kv);
+    const MINUTE = 60_000;
+    const t1 = (): number => 1_700_000_000_000;
+    const t2 = (): number => 1_700_000_000_000 + MINUTE; // next minute
+    for (let i = 0; i < 60; i++) {
+      const r = await checkAndIncrement({
+        env,
+        userId: "u_y",
+        scope: "parts-search",
+        max: 60,
+        windowMs: MINUTE,
+        now: t1,
+      });
+      expect(r.ok).toBe(true);
+    }
+    const denied = await checkAndIncrement({
+      env,
+      userId: "u_y",
+      scope: "parts-search",
+      max: 60,
+      windowMs: MINUTE,
+      now: t1,
+    });
+    expect(denied.ok).toBe(false);
+    const fresh = await checkAndIncrement({
+      env,
+      userId: "u_y",
+      scope: "parts-search",
+      max: 60,
+      windowMs: MINUTE,
+      now: t2,
+    });
+    expect(fresh.ok).toBe(true);
+  });
 });

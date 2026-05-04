@@ -8,7 +8,7 @@ workers_dev = true
 [vars]
 PADDLE_ENVIRONMENT = "sandbox"
 CLERK_ACCOUNT_PORTAL_URL = "https://accounts.fixmyiron.com"
-WEB_ORIGIN = ""
+WEB_ORIGIN = "https://fixmyiron-web-staging.americanironadmin.workers.dev"
 
 # D1 — relational database
 [[d1_databases]]

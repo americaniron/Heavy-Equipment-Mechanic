@@ -1,24 +1,17 @@
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { clerkMiddleware } from "@clerk/nextjs/server";
 
 /**
- * Clerk middleware. Protects everything under /portal/*; everything else
- * (landing, /pricing, /sign-in catch-all) is public. Unauthenticated requests
- * to a protected route are bounced to NEXT_PUBLIC_CLERK_SIGN_IN_URL
- * (accounts.fixmyiron.com/sign-in).
+ * Clerk middleware — runs ONLY on /portal/* and below. Public marketing
+ * pages (/, /pricing, /sign-in) deliberately bypass this so they can
+ * serve without the Clerk publishable key being set in the environment.
+ *
+ * Any request to /portal/* without a valid Clerk session gets bounced to
+ * NEXT_PUBLIC_CLERK_SIGN_IN_URL (accounts.fixmyiron.com/sign-in).
  */
-const isProtected = createRouteMatcher(["/portal(.*)"]);
-
-export default clerkMiddleware(async (auth, req) => {
-  if (isProtected(req)) {
-    await auth.protect();
-  }
+export default clerkMiddleware(async (auth) => {
+  await auth.protect();
 });
 
 export const config = {
-  // Match everything except Next internals + static files.
-  // Lifted from the Clerk Next.js docs example.
-  matcher: [
-    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
-    "/(api|trpc)(.*)",
-  ],
+  matcher: ["/portal/:path*"],
 };

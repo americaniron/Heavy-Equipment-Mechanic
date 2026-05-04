@@ -3,6 +3,7 @@ import type { Env, Variables } from "./env";
 import { healthRoutes } from "./routes/health";
 import { clerkWebhook } from "./routes/webhooks/clerk";
 import { paddleWebhook } from "./routes/webhooks/paddle";
+import { partsRoutes } from "./routes/parts";
 import { clerkAuth } from "./lib/auth-middleware";
 import { jsonError, ErrorCode } from "./lib/errors";
 import { log, newRequestId } from "./lib/log";
@@ -48,6 +49,8 @@ app.route("/api/webhooks/paddle", paddleWebhook);
 // Webhook routes above this line do their own signature-based auth and
 // must not run through the Bearer-JWT middleware.
 app.use("/api/*", clerkAuth);
+
+app.route("/api/parts", partsRoutes);
 
 app.notFound((c) =>
   jsonError(c, 404, ErrorCode.NotFound, "Route not found"),

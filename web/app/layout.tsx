@@ -12,6 +12,12 @@ export const viewport: Viewport = {
   colorScheme: "dark",
 };
 
+/**
+ * Root layout is intentionally Clerk-free so public marketing pages
+ * (/, /pricing, /sign-in) can be prerendered without the publishable
+ * key. ClerkProvider lives in /portal/layout.tsx — the only branch
+ * that needs the auth context.
+ */
 export default function RootLayout({
   children,
 }: {
