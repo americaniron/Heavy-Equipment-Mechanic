@@ -81,3 +81,44 @@ export interface ChatResponse {
   model_used: string;
   monthly_remaining: number | null;
 }
+
+// ----- Troubleshooting wizard types ---------------------------------------
+
+export type Confidence = "high" | "medium" | "low";
+
+export interface WizardConclusion {
+  summary: string;
+  confidence: Confidence;
+  next_steps: string[];
+  safety_warnings: string[];
+}
+
+export type WizardTurn =
+  | {
+      question: string;
+      reasoning: string;
+      suggested_answers: string[];
+      terminate: false;
+    }
+  | {
+      question: string;
+      reasoning: string;
+      suggested_answers: string[];
+      terminate: true;
+      conclusion: WizardConclusion;
+    };
+
+export interface WizardStartInput {
+  machine_make: string;
+  machine_model: string;
+  initial_complaint: string;
+}
+
+export interface WizardResponse {
+  session_id: string;
+  turn: WizardTurn;
+  turn_number: number;
+  max_turns: number;
+  model_used: string;
+  monthly_remaining?: number | null;
+}
