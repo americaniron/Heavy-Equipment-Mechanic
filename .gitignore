@@ -32,6 +32,7 @@ out/
 
 # Cloudflare
 .mf/
+.open-next/
 wrangler.toml.local
 worker-configuration.d.ts
 

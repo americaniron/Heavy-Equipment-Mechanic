@@ -14,28 +14,32 @@ WEB_ORIGIN = ""
 [[d1_databases]]
 binding = "DB"
 database_name = "fixmyiron-staging"
-database_id = "REPLACE_WITH_D1_ID_AFTER_CREATE"
+database_id = "74ce90d6-d3f7-4431-8743-804dd3b6d371"
 migrations_dir = "../../migrations"
 
 # KV — Paddle webhook idempotency (7d TTL writes)
 [[kv_namespaces]]
 binding = "PADDLE_EVENTS_SEEN"
-id = "REPLACE_WITH_KV_ID_AFTER_CREATE"
+id = "1cf3e33f79e74cb0a0b2bb082be2ba21"
 
 # KV — per-user Anthropic rate limit
 [[kv_namespaces]]
 binding = "RATE_LIMITS"
-id = "REPLACE_WITH_KV_ID_AFTER_CREATE"
+id = "4129b00bc060470aa21ad460e5058aa2"
 
 # KV — sessions / lightweight cache
 [[kv_namespaces]]
 binding = "SESSIONS"
-id = "REPLACE_WITH_KV_ID_AFTER_CREATE"
+id = "388a24b3ecc14909b7e63d73bc4fbbf7"
 
-# R2 — PDFs, audio, uploaded photos
-[[r2_buckets]]
-binding = "ASSETS"
-bucket_name = "fixmyiron-assets-staging"
+# R2 — PDFs, audio, uploaded photos.
+# DISABLED for staging: the current OAuth token lacks the r2 scope.
+# Re-enable after `wrangler login` with R2 included, or use an API token
+# with `Workers R2 Storage Edit` permission. Foundation slice does not
+# touch R2; the binding will be wired when product surfaces need it.
+# [[r2_buckets]]
+# binding = "ASSETS"
+# bucket_name = "fixmyiron-assets-staging"
 
 # Queue — async jobs (enrichment, email, fault-code refresh)
 [[queues.producers]]

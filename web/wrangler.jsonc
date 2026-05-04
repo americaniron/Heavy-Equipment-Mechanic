@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "fixmyiron-web-staging",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2025-01-15",
+  "compatibility_flags": [
+    "nodejs_compat",
+    "global_fetch_strictly_public"
+  ],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "NEXT_PUBLIC_API_URL": "https://fixmyiron-api-staging.americanironadmin.workers.dev",
+    "NEXT_PUBLIC_PADDLE_ENVIRONMENT": "sandbox",
+    "NEXT_PUBLIC_CLERK_SIGN_IN_URL": "https://accounts.fixmyiron.com/sign-in",
+    "NEXT_PUBLIC_CLERK_SIGN_UP_URL": "https://accounts.fixmyiron.com/sign-up",
+    "NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL": "/portal",
+    "NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL": "/portal"
+  }
+}
