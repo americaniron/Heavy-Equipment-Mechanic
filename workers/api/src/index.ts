@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Env, Variables } from "./env";
 import { healthRoutes } from "./routes/health";
 import { clerkWebhook } from "./routes/webhooks/clerk";
+import { paddleWebhook } from "./routes/webhooks/paddle";
 import { clerkAuth } from "./lib/auth-middleware";
 import { jsonError, ErrorCode } from "./lib/errors";
 import { log, newRequestId } from "./lib/log";
@@ -41,6 +42,7 @@ app.use("*", async (c, next) => {
 
 app.route("/", healthRoutes);
 app.route("/api/webhooks/clerk", clerkWebhook);
+app.route("/api/webhooks/paddle", paddleWebhook);
 
 // Attach Clerk session userId to context for any subsequent /api/* routes.
 // Webhook routes above this line do their own signature-based auth and
