@@ -1,0 +1,27 @@
+{
+  "name": "fixmyiron",
+  "version": "0.1.0",
+  "private": true,
+  "description": "fixmyiron.com — AI Mechanic for heavy equipment",
+  "workspaces": [
+    "web",
+    "workers/api"
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "dev:web": "npm run dev --workspace=web",
+    "dev:api": "npm run dev --workspace=workers/api",
+    "migrate:local": "wrangler d1 migrations apply fixmyiron-staging --local --config workers/api/wrangler.toml",
+    "migrate:remote": "wrangler d1 migrations apply fixmyiron-staging --remote --config workers/api/wrangler.toml"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "wrangler": "4.87.0"
+  }
+}
