@@ -35,7 +35,9 @@ export function errorBody(
   return body;
 }
 
-export type StatusCode = 400 | 401 | 403 | 404 | 409 | 429 | 500 | 502;
+export type StatusCode =
+  | 400 | 401 | 402 | 403 | 404 | 409 | 429
+  | 500 | 502 | 503;
 
 export function jsonError(
   c: Context,
