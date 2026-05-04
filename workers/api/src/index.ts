@@ -6,6 +6,7 @@ import { paddleWebhook } from "./routes/webhooks/paddle";
 import { partsRoutes } from "./routes/parts";
 import { diagnosisRoutes } from "./routes/diagnosis";
 import { troubleshootingRoutes } from "./routes/troubleshooting";
+import { recommendedPartsRoutes } from "./routes/recommended-parts";
 import { clerkAuth } from "./lib/auth-middleware";
 import { jsonError, ErrorCode } from "./lib/errors";
 import { log, newRequestId } from "./lib/log";
@@ -55,6 +56,7 @@ app.use("/api/*", clerkAuth);
 app.route("/api/parts", partsRoutes);
 app.route("/api/diagnosis", diagnosisRoutes);
 app.route("/api/troubleshooting", troubleshootingRoutes);
+app.route("/api/recommended-parts", recommendedPartsRoutes);
 
 app.notFound((c) =>
   jsonError(c, 404, ErrorCode.NotFound, "Route not found"),

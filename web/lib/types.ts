@@ -122,3 +122,33 @@ export interface WizardResponse {
   model_used: string;
   monthly_remaining?: number | null;
 }
+
+// ----- Recommended-parts types -------------------------------------------
+
+export interface RecommendationCard {
+  part_number: string;
+  name: string;
+  image_placeholder_url: string;
+  why_you_need_it: string;
+  price_usd: number | null;
+  cta_label: string;
+  stock_status?: string | null;
+}
+
+export interface BundleOffer {
+  label: string;
+  part_numbers: string[];
+  bundle_savings_usd: number;
+  rationale: string;
+}
+
+export interface RecommendationsResponse {
+  hero_line: string;
+  cards: RecommendationCard[];
+  bundle_offer: BundleOffer | null;
+  urgency_framing: string;
+  model_used: string;
+  prompt_version: string;
+  candidates_considered: number;
+  cards_returned: number;
+}
