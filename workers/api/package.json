@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.92.0",
+    "@clerk/backend": "3.4.4",
     "hono": "4.12.16",
     "svix": "1.92.2"
   },

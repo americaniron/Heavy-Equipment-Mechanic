@@ -1,0 +1,36 @@
+import type { MiddlewareHandler } from "hono";
+import type { Env, Variables } from "../env";
+import { verifyClerkJwt } from "./clerk-auth";
+import { jsonError, ErrorCode } from "./errors";
+
+/**
+ * Attaches `userId` to the Hono context if the request carries a valid
+ * Clerk session JWT. Use as a global middleware before requireTier().
+ *
+ * This middleware is *non-fatal*: if no token or token is invalid, it
+ * simply doesn't set userId. requireTier() returns 401 if userId is
+ * missing — this lets us mount the same auth middleware on routes that
+ * are public OR gated and decide per-route.
+ */
+export const clerkAuth: MiddlewareHandler<{
+  Bindings: Env;
+  Variables: Variables;
+}> = async (c, next) => {
+  const auth = c.req.header("authorization");
+  if (auth) {
+    const result = await verifyClerkJwt(auth, c.env);
+    if (result) c.set("userId", result.userId);
+  }
+  await next();
+};
+
+/** Hard auth gate. Use on routes that *require* a signed-in user. */
+export const requireAuth: MiddlewareHandler<{
+  Bindings: Env;
+  Variables: Variables;
+}> = async (c, next) => {
+  if (!c.get("userId")) {
+    return jsonError(c, 401, ErrorCode.Unauthenticated, "Sign in required");
+  }
+  await next();
+};
