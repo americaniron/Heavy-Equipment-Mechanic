@@ -175,3 +175,42 @@ export interface RepairPlanResponse {
   model_used: string;
   prompt_version: string;
 }
+
+// ----- Equipment + predictive types -----
+
+export interface Equipment {
+  id: string;
+  user_id: string;
+  make: string;
+  model: string;
+  year: number | null;
+  serial: string | null;
+  hours: number | null;
+  created_at: number;
+  updated_at: number;
+}
+export interface EquipmentListResponse {
+  equipment: Equipment[];
+}
+export interface EquipmentResponse {
+  equipment: Equipment;
+}
+
+export interface Prediction {
+  equipment_id: string;
+  risk_score: number;
+  predicted_failure_window: string;
+  recommended_action: string;
+  confidence: number;
+  based_on_diagnoses: number;
+  equipment: Equipment;
+}
+export interface PredictiveResponse {
+  predictions: Prediction[];
+  empty_state: "no_equipment" | "no_diagnoses" | null;
+  empty_message: string | null;
+  fleet_size?: number;
+  diagnoses_considered?: number;
+  model_used: string | null;
+  prompt_version: string;
+}
