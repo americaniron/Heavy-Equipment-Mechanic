@@ -7,6 +7,7 @@ import { partsRoutes } from "./routes/parts";
 import { diagnosisRoutes } from "./routes/diagnosis";
 import { troubleshootingRoutes } from "./routes/troubleshooting";
 import { recommendedPartsRoutes } from "./routes/recommended-parts";
+import { repairPlanRoutes } from "./routes/repair-plan";
 import { clerkAuth } from "./lib/auth-middleware";
 import { jsonError, ErrorCode } from "./lib/errors";
 import { log, newRequestId } from "./lib/log";
@@ -57,6 +58,7 @@ app.route("/api/parts", partsRoutes);
 app.route("/api/diagnosis", diagnosisRoutes);
 app.route("/api/troubleshooting", troubleshootingRoutes);
 app.route("/api/recommended-parts", recommendedPartsRoutes);
+app.route("/api/repair-plan", repairPlanRoutes);
 
 app.notFound((c) =>
   jsonError(c, 404, ErrorCode.NotFound, "Route not found"),

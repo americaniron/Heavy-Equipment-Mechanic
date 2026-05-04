@@ -152,3 +152,26 @@ export interface RecommendationsResponse {
   candidates_considered: number;
   cards_returned: number;
 }
+
+// ----- Repair plan types -----
+
+export interface RepairStep {
+  step: string;
+  time_min: number;
+  prerequisites: string[];
+}
+export interface RepairPlanData {
+  labor_hours_estimate: number;
+  required_tools: string[];
+  downtime_days_projection: number;
+  suggested_sequence: RepairStep[];
+  total_parts_cost_usd: number;
+  total_labor_cost_usd_low: number;
+  total_labor_cost_usd_high: number;
+}
+export interface RepairPlanResponse {
+  session_id: string;
+  plan: RepairPlanData;
+  model_used: string;
+  prompt_version: string;
+}
