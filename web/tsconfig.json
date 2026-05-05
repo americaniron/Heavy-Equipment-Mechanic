@@ -19,5 +19,5 @@
     "**/*.tsx",
     ".next/types/**/*.ts"
   ],
-  "exclude": ["node_modules", ".next", ".vercel"]
+  "exclude": ["node_modules", ".next", ".vercel", ".open-next", "e2e"]
 }

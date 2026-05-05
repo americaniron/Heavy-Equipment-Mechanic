@@ -15,21 +15,19 @@ const CONTENT_VERSION = "2026-05";
 const STORAGE_KEY = `fmi.banner.dismissed.v${CONTENT_VERSION}`;
 
 export function MonetizationBanner() {
-  // Default to NOT visible during SSR so the markup doesn't flash on
-  // hydration if the user has dismissed it previously. We flip to true
-  // in the effect once we've checked localStorage.
-  const [visible, setVisible] = useState(false);
-  const [hydrated, setHydrated] = useState(false);
+  // Default visible — SSR ships the banner immediately so first-paint
+  // shows it without waiting for hydration. After mount, we check
+  // localStorage and hide if previously dismissed. Brief flash for
+  // dismissed-revisitors is the tradeoff for first-time-visitor speed.
+  const [visible, setVisible] = useState(true);
 
   useEffect(() => {
-    setHydrated(true);
     try {
-      if (window.localStorage.getItem(STORAGE_KEY) !== "1") {
-        setVisible(true);
+      if (window.localStorage.getItem(STORAGE_KEY) === "1") {
+        setVisible(false);
       }
     } catch {
-      // localStorage not available (e.g., privacy mode) — show by default.
-      setVisible(true);
+      // localStorage not available — leave visible.
     }
   }, []);
 
@@ -38,11 +36,11 @@ export function MonetizationBanner() {
     try {
       window.localStorage.setItem(STORAGE_KEY, "1");
     } catch {
-      // Best-effort; if storage fails the banner just reappears next visit.
+      // Best-effort; banner reappears on next visit if storage fails.
     }
   }
 
-  if (!hydrated || !visible) return null;
+  if (!visible) return null;
 
   return (
     <div
