@@ -15,6 +15,7 @@ playbook (`PRODUCTION_CUTOVER.md`) can swap them with no surprises.
 | `NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL` | `/portal` | same |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | `pk_live_…` (real production Clerk key — Clerk has only one live instance) | same |
 | `NEXT_PUBLIC_PADDLE_CLIENT_TOKEN` | `test_DEFERRED_PLACEHOLDER` until Paddle ships, then real `test_…` sandbox token | real `live_…` token after Paddle prod cutover |
+| `NEXT_PUBLIC_LEARN_MORE_VIDEO_URL` | `https://pub-ebb6e7a11e2c4eafb3821ce2e65e06ee.r2.dev/learn-more.mp4` (R2 managed subdomain) | `https://media.fixmyiron.com/learn-more.mp4` (custom subdomain — see PRODUCTION_CUTOVER.md §0a) |
 
 ## Worker secrets (`wrangler secret put`, never in git)
 

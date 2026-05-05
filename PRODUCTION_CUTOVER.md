@@ -23,6 +23,55 @@ Tick each before scheduling the cutover.
 
 **Paddle is intentionally OUT of this checklist.** Paddle activation is a separate, post-cutover task — see "DEFERRED — PADDLE INTEGRATION" at the bottom.
 
+## 0a — MARKETING MEDIA (R2)
+
+The landing page Learn-More video is served from a public R2 bucket via the
+managed `r2.dev` subdomain in staging. For prod, use a custom subdomain so
+the URL doesn't change if the bucket is renamed and so cache headers can be
+controlled at the zone level.
+
+```bash
+# Create the prod media bucket
+npx wrangler r2 bucket create fixmyiron-media-prod
+
+# Re-upload the marketing video (kept out of git; lives at ./media/)
+npx wrangler r2 object put fixmyiron-media-prod/learn-more.mp4 --remote \
+  --file ./media/learn-more.mp4 \
+  --content-type "video/mp4" \
+  --cache-control "public, max-age=2592000, immutable"
+
+# Verify
+npx wrangler r2 object get fixmyiron-media-prod/learn-more.mp4 --remote --pipe | wc -c
+# Expect: 78783518
+
+# Set up custom subdomain media.fixmyiron.com
+# 1. Cloudflare DNS for fixmyiron.com → add CNAME:
+#      media.fixmyiron.com → public.r2.dev (proxied OFF)
+# 2. R2 dashboard → fixmyiron-media-prod → Settings → Custom Domains →
+#    Connect Domain → media.fixmyiron.com
+# 3. Wait ~2 min for the cert.
+# 4. Verify:
+curl -sI https://media.fixmyiron.com/learn-more.mp4
+# Expect: 200, content-type: video/mp4, content-length 78783518.
+
+# Update the prod web wrangler config
+# In web/wrangler.prod.jsonc vars block:
+#   "NEXT_PUBLIC_LEARN_MORE_VIDEO_URL": "https://media.fixmyiron.com/learn-more.mp4"
+```
+
+If captions become available (the current build host has no ffmpeg, so the
+mov_text subtitle track inside the source MP4 wasn't extracted), add the
+.vtt to R2 and pass it as the `vttSrc` prop to `<LearnMoreVideoModal>`:
+
+```bash
+ffmpeg -i ./media/learn-more.mp4 -map 0:s:0 ./media/learn-more.vtt
+npx wrangler r2 object put fixmyiron-media-prod/learn-more.vtt --remote \
+  --file ./media/learn-more.vtt \
+  --content-type "text/vtt; charset=utf-8" \
+  --cache-control "public, max-age=2592000, immutable"
+# Then in the page: <LearnMoreButton videoSrc={...} vttSrc={...} />
+```
+
 ## 1 — CREATE PRODUCTION CLOUDFLARE RESOURCES
 
 ```bash

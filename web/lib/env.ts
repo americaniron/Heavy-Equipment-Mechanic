@@ -33,4 +33,5 @@ export const publicEnv = {
     "https://accounts.fixmyiron.com/sign-up",
   afterSignInUrl: process.env.NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL ?? "/portal",
   afterSignUpUrl: process.env.NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL ?? "/portal",
+  learnMoreVideoUrl: process.env.NEXT_PUBLIC_LEARN_MORE_VIDEO_URL ?? "",
 } as const;

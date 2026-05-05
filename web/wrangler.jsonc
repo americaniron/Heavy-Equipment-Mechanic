@@ -28,6 +28,11 @@
     // Paddle DEFERRED — placeholder kept so client code can read a defined
     // string. Replace with real test_… token when Paddle integration ships
     // (see DEPLOY_NOTES.md and PRODUCTION_CUTOVER.md "DEFERRED — PADDLE").
-    "NEXT_PUBLIC_PADDLE_CLIENT_TOKEN": "test_DEFERRED_PLACEHOLDER"
+    "NEXT_PUBLIC_PADDLE_CLIENT_TOKEN": "test_DEFERRED_PLACEHOLDER",
+    // Public R2 URL for the landing-page Learn-More marketing video.
+    // Bucket: fixmyiron-media-staging (r2.dev managed subdomain). At
+    // prod cutover, replace with a media.fixmyiron.com custom-domain
+    // URL — see PRODUCTION_CUTOVER.md.
+    "NEXT_PUBLIC_LEARN_MORE_VIDEO_URL": "https://pub-ebb6e7a11e2c4eafb3821ce2e65e06ee.r2.dev/learn-more.mp4"
   }
 }

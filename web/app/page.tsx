@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { MonetizationBanner } from "@/components/monetization-banner";
+import { LearnMoreButton } from "@/components/learn-more-button";
+import { publicEnv } from "@/lib/env";
 
 export default function HomePage() {
   return (
@@ -32,6 +34,7 @@ export default function HomePage() {
             >
               See pricing
             </Link>
+            <LearnMoreButton videoSrc={publicEnv.learnMoreVideoUrl} />
           </div>
         </section>
       </main>
