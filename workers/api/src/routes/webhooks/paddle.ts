@@ -1,3 +1,16 @@
+/**
+ * Paddle webhook handler.
+ *
+ * NOTE: Paddle integration is currently DEFERRED. PADDLE_WEBHOOK_SECRET
+ * is a placeholder (`pdl_ntfset_DEFERRED_PLACEHOLDER`); no real Paddle
+ * destination is configured to point at this endpoint. The handler
+ * code below is fully wired and will work the moment a real secret is
+ * pushed and Paddle starts delivering events. See PRODUCTION_CUTOVER.md
+ * "DEFERRED — PADDLE INTEGRATION" for activation steps.
+ *
+ * Until then, this endpoint exists harmlessly: any unauthenticated
+ * delivery (or attacker probe) gets rejected at the HMAC step with 401.
+ */
 import { Hono } from "hono";
 import type {
   Env,
