@@ -30,6 +30,11 @@ out/
 *.tsbuildinfo
 *.egg-info/
 
+# Playwright artifacts
+test-results/
+e2e-report/
+playwright-report/
+
 # Cloudflare
 .mf/
 .open-next/
