@@ -10,6 +10,7 @@ import { recommendedPartsRoutes } from "./routes/recommended-parts";
 import { repairPlanRoutes } from "./routes/repair-plan";
 import { equipmentRoutes } from "./routes/equipment";
 import { predictiveRoutes } from "./routes/predictive";
+import { faultCodesRoutes } from "./routes/fault-codes";
 import { clerkAuth } from "./lib/auth-middleware";
 import { jsonError, ErrorCode } from "./lib/errors";
 import { log, newRequestId } from "./lib/log";
@@ -63,6 +64,7 @@ app.route("/api/recommended-parts", recommendedPartsRoutes);
 app.route("/api/repair-plan", repairPlanRoutes);
 app.route("/api/equipment", equipmentRoutes);
 app.route("/api/predictive", predictiveRoutes);
+app.route("/api/fault-codes", faultCodesRoutes);
 
 app.notFound((c) =>
   jsonError(c, 404, ErrorCode.NotFound, "Route not found"),
@@ -76,4 +78,33 @@ app.onError((err, c) => {
   return jsonError(c, 500, ErrorCode.Internal, "Internal error");
 });
 
-export default app;
+/**
+ * Cron handler. Configured in wrangler.toml [triggers].crons.
+ *
+ * For now this is a heartbeat that enqueues a fault_code_refresh job
+ * onto the JOBS queue. A future Worker (or this Worker via a queue
+ * consumer binding) can pick up the job and re-seed fault_codes from
+ * an updated J1939 source. The seed-fault-codes.py script is the
+ * authoritative source today; the cron just makes the schedule explicit.
+ */
+async function scheduled(
+  controller: ScheduledController,
+  env: Env,
+  ctx: ExecutionContext,
+): Promise<void> {
+  const cron = controller.cron;
+  log.info("cron_fired", { cron, scheduledTime: controller.scheduledTime });
+  ctx.waitUntil(
+    env.JOBS.send({ kind: "fault_code_refresh", code: "*" }).catch((e) =>
+      log.error("cron_enqueue_failed", {
+        cron,
+        err: e instanceof Error ? e.message : String(e),
+      }),
+    ),
+  );
+}
+
+export default {
+  fetch: app.fetch.bind(app),
+  scheduled,
+};

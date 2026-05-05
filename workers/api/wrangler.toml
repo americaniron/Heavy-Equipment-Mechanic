@@ -59,6 +59,11 @@ new_sqlite_classes = ["DiagnosticSession"]
 [observability]
 enabled = true
 
-# Cron triggers (used by future fault-code refresh in next slice; declared empty for now)
+# Cron triggers — currently DISABLED because the Cloudflare account has
+# already hit the 5-cron-trigger account-wide cap. The scheduled()
+# handler in src/index.ts and the JOBS queue-producer binding stay
+# wired so re-enabling is a one-line change once the quota is bumped
+# (or another cron is freed up). When re-enabled, the cron is:
+#   weekly Sunday 06:00 UTC, enqueues a fault_code_refresh job.
 # [triggers]
-# crons = ["0 6 * * 0"]  # weekly Sun 06:00 UTC — uncomment when consumer lands
+# crons = ["0 6 * * SUN"]
