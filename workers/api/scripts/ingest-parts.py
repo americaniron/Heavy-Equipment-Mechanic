@@ -62,7 +62,7 @@ ROOT = Path(__file__).resolve().parents[3]
 DATA = ROOT / "data"
 STAGE = DATA / ".staged"
 WRANGLER_CFG = ROOT / "workers" / "api" / "wrangler.toml"
-DB_NAME = "fixmyiron-staging"
+DB_NAME = os.environ.get("FIXMYIRON_D1_DB_NAME", "fixmyiron-staging")
 
 ROWS_PER_FILE = 1000
 ROWS_PER_INSERT = 50  # multi-row VALUES per INSERT statement

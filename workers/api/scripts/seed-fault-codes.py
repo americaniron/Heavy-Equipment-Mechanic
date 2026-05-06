@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -33,7 +34,7 @@ from typing import Iterable
 ROOT = Path(__file__).resolve().parents[3]
 STAGE = ROOT / "data" / ".staged"
 WRANGLER_CFG = ROOT / "workers" / "api" / "wrangler.toml"
-DB_NAME = "fixmyiron-staging"
+DB_NAME = os.environ.get("FIXMYIRON_D1_DB_NAME", "fixmyiron-staging")
 SOURCE_URL = "https://www.sae.org/standards/content/j1939da/"
 
 ROWS_PER_FILE = 100  # one SPN's worth of (FMI×) rows per batch
