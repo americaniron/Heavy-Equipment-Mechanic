@@ -1,0 +1,70 @@
+name = "fixmyiron-api-prod"
+main = "src/index.ts"
+compatibility_date = "2025-01-15"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+# Plain (non-secret) vars
+[vars]
+PADDLE_ENVIRONMENT = "sandbox"
+CLERK_ACCOUNT_PORTAL_URL = "https://accounts.fixmyiron.com"
+# Updated to canonical apex once DNS cutover (Step 9) finishes; staying
+# permissive during the workers.dev smoke step is intentional — the very
+# first deploy targets *.workers.dev, so the prod web Worker is the only
+# legitimate origin until DNS flips.
+WEB_ORIGIN = "https://fixmyiron.com"
+
+# D1 — relational database (PROD)
+[[d1_databases]]
+binding = "DB"
+database_name = "fixmyiron-prod"
+database_id = "16bb71a1-f57f-4e37-bf12-d2f74a693aca"
+migrations_dir = "../../migrations"
+
+# KV — Paddle webhook idempotency (7d TTL writes)
+[[kv_namespaces]]
+binding = "PADDLE_EVENTS_SEEN"
+id = "4227f5619ed64ceba2490b400143a476"
+
+# KV — per-user Anthropic rate limit
+[[kv_namespaces]]
+binding = "RATE_LIMITS"
+id = "8c60c2ca218d4c4c97700a41541a8bfa"
+
+# KV — sessions / lightweight cache
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "1174c6d5f01e439789f3a28d42453f26"
+
+# R2 — PDFs, audio, uploaded photos. Bucket created at cutover; no
+# product surface writes here yet (PDF export still DEFERRED). Binding
+# is wired so re-enabling is a code-only change.
+[[r2_buckets]]
+binding = "ASSETS"
+bucket_name = "fixmyiron-assets-prod"
+
+# Queue — async jobs (enrichment, email, fault-code refresh)
+[[queues.producers]]
+binding = "JOBS"
+queue = "fixmyiron-jobs-prod"
+
+# Durable Object — per-customer diagnostic sessions
+[[durable_objects.bindings]]
+name = "DIAGNOSTIC_SESSION"
+class_name = "DiagnosticSession"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["DiagnosticSession"]
+
+# Observability
+[observability]
+enabled = true
+
+# Cron triggers — DISABLED in prod by deliberate decision (account is at
+# the 5-cron-trigger cap and we chose not to bump). fault_code_refresh
+# runs as a manual job until the quota is freed; re-enable by
+# uncommenting once a cron slot opens up. Source of truth: top of
+# PRODUCTION_CUTOVER.md "Cutover decisions".
+# [triggers]
+# crons = ["0 6 * * SUN"]

@@ -50,7 +50,7 @@ Tick each before scheduling the cutover.
 | 0.3 | Cloudflare account: cron-trigger quota bumped above 5 (currently capped — needed for fault-code refresh) | you | dashboard.cloudflare.com → Workers & Pages → Settings → request quota |
 | 0.4 | OAuth token (or replacement API token) has `r2 (write)` scope | you | needed for PDF export R2 bucket (currently DEFERRED) |
 | 0.5 | Decision: `api.fixmyiron.com` vs path-based routing for prod API | you | recommend subdomain — cleaner CORS, easier to swap |
-| 0.6 | Backup of staging D1 (`fixmyiron-staging`) on disk | you | `wrangler d1 export fixmyiron-staging --remote --output staging-backup-$(date +%F).sqlite` |
+| 0.6 | Backup of staging D1 (`fixmyiron-staging`) on disk | you | ❌ `wrangler d1 export` does NOT support databases with FTS5 virtual tables (parts catalog uses fts5). Workaround: rely on the ingest scripts as the source of truth (parts come from `data/*.csv`; fault codes from a deterministic SQL seed). User-data tables (users/equipment/diagnoses) carry no irreplaceable data on staging. Filed as wrangler limitation — revisit if Cloudflare adds FTS5 export support. |
 | 0.7 | DNS provider: Cloudflare DNS active for fixmyiron.com (not external) | confirm | required for path-based Workers routes |
 | 0.8 | All staging E2E tests run green with a real session token | you | `TEST_CLERK_SESSION_TOKEN=… cd web && npx playwright test` |
 | 0.9 | This document reviewed end-to-end | you | sanity check before pulling the trigger |

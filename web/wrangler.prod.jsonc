@@ -1,0 +1,36 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "fixmyiron-web-prod",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2025-01-15",
+  "compatibility_flags": [
+    "nodejs_compat",
+    "global_fetch_strictly_public"
+  ],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    // Phase-1 deploy targets the API at *.workers.dev. Phase-2 (Step 10)
+    // rewrites this to https://api.fixmyiron.com after DNS lands.
+    "NEXT_PUBLIC_API_URL": "https://fixmyiron-api-prod.americanironadmin.workers.dev",
+    "NEXT_PUBLIC_PADDLE_ENVIRONMENT": "sandbox",
+    "NEXT_PUBLIC_CLERK_SIGN_IN_URL": "https://accounts.fixmyiron.com/sign-in",
+    "NEXT_PUBLIC_CLERK_SIGN_UP_URL": "https://accounts.fixmyiron.com/sign-up",
+    "NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL": "/portal",
+    "NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL": "/portal",
+    // Same Clerk production instance for staging and prod (clerk.fixmyiron.com$).
+    "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuZml4bXlpcm9uLmNvbSQ",
+    // Paddle DEFERRED — placeholder kept so client code can read a defined
+    // string. Replaced when Paddle integration ships (see PRODUCTION_CUTOVER.md §11).
+    "NEXT_PUBLIC_PADDLE_CLIENT_TOKEN": "test_DEFERRED_PLACEHOLDER",
+    // Phase-1 video URL — managed r2.dev subdomain on fixmyiron-media-prod.
+    // Phase-2 (Step 10) swaps to https://media.fixmyiron.com/learn-more.mp4
+    // after the custom domain is bound to the bucket.
+    "NEXT_PUBLIC_LEARN_MORE_VIDEO_URL": "https://pub-45f1719d47e44578968ba4a7d64d597f.r2.dev/learn-more.mp4"
+  }
+}
