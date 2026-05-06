@@ -1,5 +1,26 @@
 # PRODUCTION_CUTOVER.md
 
+> **Scope correction (2026-05-06):** This document originally read as a
+> full apex cutover (replacing the legacy fixmyiron.com landing page with
+> the Next.js build). That was wrong. The legacy marketing site at
+> **www.fixmyiron.com** (Google Frontend → americanironus.com) is the
+> intended customer-facing landing and stays untouched. We deploy ONLY
+> the auth-gated `/portal` slice, on a dedicated subdomain.
+>
+> | Hostname | Owner | Purpose |
+> |---|---|---|
+> | www.fixmyiron.com | Legacy (Google Frontend) | Marketing, pricing, sign-up CTA, "Portal" link, "Start Diagnosis" CTA — UNTOUCHED |
+> | fixmyiron.com (apex) | Unrouted | Stays unrouted |
+> | portal.fixmyiron.com | This repo (fixmyiron-web-prod) | Auth-gated `/portal` app — host-scoped `/` → `/portal` redirect |
+> | api.fixmyiron.com | This repo (fixmyiron-api-prod) | API Worker |
+> | media.fixmyiron.com | This repo (fixmyiron-media-prod R2) | Learn-More video, future media |
+> | accounts.fixmyiron.com | Clerk Account Portal | Sign-in / sign-up flows |
+>
+> **Clerk auth fires only when** the user clicks the legacy site's
+> "Portal", "Sign in", "Sign up", or "Start Diagnosis" CTAs — all of
+> which point at the Clerk hosted pages or directly at portal.fixmyiron.com
+> (where Clerk middleware bounces unauthenticated visitors to sign-in).
+
 Ordered playbook to flip fixmyiron.com from staging to production.
 **Do NOT execute any step in this document without an explicit "deploy to prod" instruction.** This file is a planning artifact; the cutover is a single, deliberate session that follows it end-to-end.
 
@@ -32,10 +53,23 @@ cutover** — the rollback path (Step 10) requires it for "flip back to legacy".
 | 3 secrets | ✅ | API: 7 confirmed; Web: pending CLERK_SECRET_KEY (single command) |
 | 4 D1 schema + data | ✅ | 26,053 cat + 17,676 costex (intra-PDF dupes account for delta) + 957 fault codes; FTS verified |
 | 5 deploy workers.dev | ✅ | api: /healthz=200, /api/parts/search=401 (auth-valid). web: /=200, /portal=500 pending web secret |
-| 6 DNS cutover | ⏳ | apex/api/media DNS pending |
-| 7 rebuild canonical URLs | ⏳ | depends on 6 |
-| 8 Clerk after-sign-in | ⏳ | depends on 6 |
+| 6 DNS cutover | 🔁 | api.fixmyiron.com bound ✅; apex was bound by mistake → user reverting in dashboard; portal.fixmyiron.com binding queued; media.fixmyiron.com binding queued |
+| 7 rebuild canonical URLs | ⏳ | re-build pending — needs portal.fixmyiron.com binding active first |
+| 8 Clerk after-sign-in | ⏳ | dashboard update needed: add portal.fixmyiron.com to allowed origins |
 | 9 acceptance / E2E | ⏳ | depends on 6–8 |
+
+## Legacy-site link updates (out of Claude Code's scope — user will edit in legacy CMS)
+
+After portal.fixmyiron.com is live, the user updates these links on
+www.fixmyiron.com (legacy):
+
+| Legacy CTA | New target |
+|---|---|
+| "Portal" link | https://portal.fixmyiron.com/portal |
+| "Sign up" CTA | https://accounts.fixmyiron.com/sign-up |
+| "Sign in" CTA | https://accounts.fixmyiron.com/sign-in |
+| "Start Diagnosis" CTA | https://portal.fixmyiron.com/portal/diagnosis (Clerk middleware bounces anon → sign-in) |
+| (optional) "Learn More" video src | https://media.fixmyiron.com/learn-more.mp4 |
 
 ## Cutover decisions — locked for this session
 

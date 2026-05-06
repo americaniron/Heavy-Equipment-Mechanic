@@ -15,16 +15,14 @@
   "observability": {
     "enabled": true
   },
-  // Custom domain — Cloudflare auto-creates DNS + SSL when this is set.
-  // www.fixmyiron.com is intentionally NOT here yet: pre-cutover www is
-  // CNAME'd to ghs.googlehosted.com (legacy React app on Google Frontend),
-  // and wrangler 4.87 has no `override_existing_dns_record` option in the
-  // config schema. www is bound separately (see PRODUCTION_CUTOVER.md
-  // §www-binding) once an API token with dns_records:edit is available, OR
-  // by manually deleting the legacy www CNAME and redeploying with www in
-  // this routes array. Apex covers 99% of traffic; www can wait.
+  // Custom domain — portal.fixmyiron.com is the ONLY public hostname for
+  // this Worker. The legacy marketing site at www.fixmyiron.com (Google
+  // Frontend → americanironus.com) stays the customer-facing landing
+  // page; this Worker hosts only the auth-gated /portal slice plus a
+  // host-scoped / → /portal redirect (see next.config.mjs).
+  // The bare apex fixmyiron.com is intentionally unrouted.
   "routes": [
-    { "pattern": "fixmyiron.com", "custom_domain": true }
+    { "pattern": "portal.fixmyiron.com", "custom_domain": true }
   ],
   "vars": {
     // Canonical API URL — DNS + custom domain bound in Step 6 of the cutover.
@@ -41,9 +39,8 @@
     // Paddle DEFERRED — placeholder kept so client code can read a defined
     // string. Replaced when Paddle integration ships (see PRODUCTION_CUTOVER.md §11).
     "NEXT_PUBLIC_PADDLE_CLIENT_TOKEN": "test_DEFERRED_PLACEHOLDER",
-    // Phase-1 video URL — managed r2.dev subdomain on fixmyiron-media-prod.
-    // Phase-2 (Step 10) swaps to https://media.fixmyiron.com/learn-more.mp4
-    // after the custom domain is bound to the bucket.
-    "NEXT_PUBLIC_LEARN_MORE_VIDEO_URL": "https://pub-45f1719d47e44578968ba4a7d64d597f.r2.dev/learn-more.mp4"
+    // Canonical media URL — fixmyiron-media-prod bucket on the
+    // media.fixmyiron.com custom domain.
+    "NEXT_PUBLIC_LEARN_MORE_VIDEO_URL": "https://media.fixmyiron.com/learn-more.mp4"
   }
 }
