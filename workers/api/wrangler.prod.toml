@@ -4,6 +4,12 @@ compatibility_date = "2025-01-15"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 
+# Custom domain — Cloudflare auto-creates the DNS record and provisions the
+# edge SSL cert when this is set. workers_dev stays true as a fallback URL.
+[[routes]]
+pattern = "api.fixmyiron.com"
+custom_domain = true
+
 # Plain (non-secret) vars
 [vars]
 PADDLE_ENVIRONMENT = "sandbox"

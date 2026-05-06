@@ -2,6 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "fixmyiron-web-prod",
   "main": ".open-next/worker.js",
+  "workers_dev": true,
   "compatibility_date": "2025-01-15",
   "compatibility_flags": [
     "nodejs_compat",
@@ -14,10 +15,22 @@
   "observability": {
     "enabled": true
   },
+  // Custom domain — Cloudflare auto-creates DNS + SSL when this is set.
+  // www.fixmyiron.com is intentionally NOT here yet: pre-cutover www is
+  // CNAME'd to ghs.googlehosted.com (legacy React app on Google Frontend),
+  // and wrangler 4.87 has no `override_existing_dns_record` option in the
+  // config schema. www is bound separately (see PRODUCTION_CUTOVER.md
+  // §www-binding) once an API token with dns_records:edit is available, OR
+  // by manually deleting the legacy www CNAME and redeploying with www in
+  // this routes array. Apex covers 99% of traffic; www can wait.
+  "routes": [
+    { "pattern": "fixmyiron.com", "custom_domain": true }
+  ],
   "vars": {
-    // Phase-1 deploy targets the API at *.workers.dev. Phase-2 (Step 10)
-    // rewrites this to https://api.fixmyiron.com after DNS lands.
-    "NEXT_PUBLIC_API_URL": "https://fixmyiron-api-prod.americanironadmin.workers.dev",
+    // Canonical API URL — DNS + custom domain bound in Step 6 of the cutover.
+    // The workers.dev URL still works as a fallback (workers_dev=true on the
+    // API Worker) but client bundles ship with the canonical URL.
+    "NEXT_PUBLIC_API_URL": "https://api.fixmyiron.com",
     "NEXT_PUBLIC_PADDLE_ENVIRONMENT": "sandbox",
     "NEXT_PUBLIC_CLERK_SIGN_IN_URL": "https://accounts.fixmyiron.com/sign-in",
     "NEXT_PUBLIC_CLERK_SIGN_UP_URL": "https://accounts.fixmyiron.com/sign-up",
