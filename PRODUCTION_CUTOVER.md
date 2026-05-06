@@ -3,6 +3,40 @@
 Ordered playbook to flip fixmyiron.com from staging to production.
 **Do NOT execute any step in this document without an explicit "deploy to prod" instruction.** This file is a planning artifact; the cutover is a single, deliberate session that follows it end-to-end.
 
+## Pre-cutover DNS state — for rollback (captured 2026-05-06)
+
+Resolved against 1.1.1.1 immediately before the apex was changed:
+
+```
+fixmyiron.com           A     (none)
+fixmyiron.com           AAAA  (none)
+fixmyiron.com           CNAME (none)
+www.fixmyiron.com       CNAME ghs.googlehosted.com.    (Google Frontend; legacy React app)
+www.fixmyiron.com       A     192.178.50.51            (resolved via ghs.googlehosted.com)
+api.fixmyiron.com       (none)
+media.fixmyiron.com     (none)
+```
+
+The apex itself was not routed pre-cutover (no A/AAAA/CNAME). www serves
+Google's `Server: Google Frontend` — the legacy fixmyiron.com React app at
+`ghs.googlehosted.com`. **DO NOT decommission the Google Frontend target after
+cutover** — the rollback path (Step 10) requires it for "flip back to legacy".
+
+## Cutover decisions — locked for this session
+
+- **Cron triggers in prod:** SKIP. Cloudflare account quota stays at 5; no bump.
+  Document `fault_code_refresh` as a manual job for now (re-enabled later by
+  uncommenting `[triggers] crons = ["0 6 * * SUN"]` in `workers/api/wrangler.prod.toml`).
+- **D1 data:** re-ingest into prod, do NOT copy from staging (avoids dragging
+  test users / sessions into a fresh prod database).
+- **API URL:** `api.fixmyiron.com` subdomain (DNS-only / proxy off).
+- **Clerk after-sign-in URL:** relative `/portal` for both staging and prod.
+- **Skip auth'd staging E2E:** auth'd Playwright suite runs against PROD only,
+  post-cutover, in a real browser session. Reason: `auth.protect()` rewrite-to-404
+  was misleading the CLI test path; replaced with `redirectToSignIn()` (see
+  `web/middleware.ts`). Browser-driven testing on prod is faster and more
+  representative than wrestling a Clerk session token through Playwright headless.
+
 Staging today (verified): `fixmyiron-{api,web}-staging.americanironadmin.workers.dev` on Cloudflare account `1c07214c662a877a6d09d597d5f4a461`. All 9 product surfaces operational. 108 unit tests + 30 E2E tests passing (10 more E2E gated on a Clerk session token).
 
 ## 0 — PREREQUISITE CHECKLIST
