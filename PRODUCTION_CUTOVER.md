@@ -22,6 +22,21 @@ Google's `Server: Google Frontend` — the legacy fixmyiron.com React app at
 `ghs.googlehosted.com`. **DO NOT decommission the Google Frontend target after
 cutover** — the rollback path (Step 10) requires it for "flip back to legacy".
 
+## Cutover progress log (2026-05-06)
+
+| Step | Status | Notes |
+|---|---|---|
+| 0 verification | ✅ | staging green, dirty git resolved, /portal middleware fixed |
+| 1 prod resources | ✅ | D1 16bb71a1, KV (3), Q, R2 (2). All IDs in workers/api/wrangler.prod.toml |
+| 2 wrangler.prod configs | ✅ | committed |
+| 3 secrets | ✅ | API: 7 confirmed; Web: pending CLERK_SECRET_KEY (single command) |
+| 4 D1 schema + data | ✅ | 26,053 cat + 17,676 costex (intra-PDF dupes account for delta) + 957 fault codes; FTS verified |
+| 5 deploy workers.dev | ✅ | api: /healthz=200, /api/parts/search=401 (auth-valid). web: /=200, /portal=500 pending web secret |
+| 6 DNS cutover | ⏳ | apex/api/media DNS pending |
+| 7 rebuild canonical URLs | ⏳ | depends on 6 |
+| 8 Clerk after-sign-in | ⏳ | depends on 6 |
+| 9 acceptance / E2E | ⏳ | depends on 6–8 |
+
 ## Cutover decisions — locked for this session
 
 - **Cron triggers in prod:** SKIP. Cloudflare account quota stays at 5; no bump.
