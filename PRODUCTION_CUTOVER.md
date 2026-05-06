@@ -53,10 +53,27 @@ cutover** — the rollback path (Step 10) requires it for "flip back to legacy".
 | 3 secrets | ✅ | API: 7 confirmed; Web: pending CLERK_SECRET_KEY (single command) |
 | 4 D1 schema + data | ✅ | 26,053 cat + 17,676 costex (intra-PDF dupes account for delta) + 957 fault codes; FTS verified |
 | 5 deploy workers.dev | ✅ | api: /healthz=200, /api/parts/search=401 (auth-valid). web: /=200, /portal=500 pending web secret |
-| 6 DNS cutover | 🔁 | api.fixmyiron.com bound ✅; apex was bound by mistake → user reverting in dashboard; portal.fixmyiron.com binding queued; media.fixmyiron.com binding queued |
-| 7 rebuild canonical URLs | ⏳ | re-build pending — needs portal.fixmyiron.com binding active first |
-| 8 Clerk after-sign-in | ⏳ | dashboard update needed: add portal.fixmyiron.com to allowed origins |
-| 9 acceptance / E2E | ⏳ | depends on 6–8 |
+| 6 DNS cutover | ✅ | api.fixmyiron.com, portal.fixmyiron.com, media.fixmyiron.com all bound; apex unrouted; www legacy untouched |
+| 7 rebuild canonical URLs | ✅ | web rebuilt with NEXT_PUBLIC_API_URL=https://api.fixmyiron.com and LEARN_MORE_VIDEO_URL=https://media.fixmyiron.com/learn-more.mp4 |
+| 8 Clerk after-sign-in | ⏳ user-side | dashboard.clerk.com → Domains → add portal.fixmyiron.com to allowed origins |
+| 9 acceptance / E2E | ✅ smoke / ⏳ browser | Headless smoke ladder green; browser sign-up flow still pending user manual run |
+
+## Cutover live — 2026-05-06
+
+```
+portal.fixmyiron.com/                          → 307 → /portal
+portal.fixmyiron.com/portal             (anon) → 307 → accounts.fixmyiron.com/sign-in?redirect_url=…
+portal.fixmyiron.com/portal/parts       (anon) → 307 → accounts.fixmyiron.com/sign-in?redirect_url=…
+portal.fixmyiron.com/portal/diagnosis   (anon) → 307 → accounts.fixmyiron.com/sign-in?redirect_url=…
+api.fixmyiron.com/healthz                      → 200 {"ok":true,"env":"sandbox"}
+api.fixmyiron.com/healthz/db                   → 200 {"ok":true}
+media.fixmyiron.com/learn-more.mp4             → 200 video/mp4 78,783,518 bytes
+CORS preflight (origin portal.fixmyiron.com)   → 204 ACAO=https://portal.fixmyiron.com
+fixmyiron.com (apex)                           → DNS empty (unrouted, intentional)
+www.fixmyiron.com                              → 200 Google Frontend (legacy untouched)
+```
+
+D1 row counts at cutover: 43,729 parts (26,053 cat + 17,676 costex) + 957 fault codes; parts_fts MATCH 'hydraulic' returns 1,318 hits.
 
 ## Legacy-site link updates (out of Claude Code's scope — user will edit in legacy CMS)
 
