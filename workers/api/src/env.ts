@@ -10,6 +10,7 @@ export interface Env {
   PADDLE_EVENTS_SEEN: KVNamespace;
   RATE_LIMITS: KVNamespace;
   SESSIONS: KVNamespace;
+  AUTH_KV: KVNamespace;  // For session tokens
   // ASSETS (R2) — re-add when token has r2 scope. See wrangler.toml comment.
   JOBS: Queue<JobMessage>;
   DIAGNOSTIC_SESSION: DurableObjectNamespace;

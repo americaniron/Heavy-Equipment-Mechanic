@@ -1,19 +1,9 @@
-import { ClerkProvider } from "@clerk/nextjs";
-import { publicEnv } from "@/lib/env";
+import AuthCheck from "./auth-check";
 
 /**
  * Auth-gated portal shell.
  *
- * ClerkProvider lives here (not in the root layout) so public marketing
- * pages can prerender without the publishable key. Middleware.ts enforces
- * the actual auth gate; this layout only renders chrome — if the user
- * isn't signed in they've already been bounced by middleware before
- * this component runs.
- *
- * The portal subtree is forced dynamic (the parts page declares so
- * explicitly; other portal pages should follow). Static prerender of
- * Clerk-wrapped trees requires a publishable key at build time, which
- * we deliberately avoid coupling here.
+ * Uses local auth (no Clerk). AuthCheck verifies local session token.
  */
 export const dynamic = "force-dynamic";
 
@@ -23,13 +13,7 @@ export default function PortalLayout({
   children: React.ReactNode;
 }) {
   return (
-    <ClerkProvider
-      publishableKey={publicEnv.clerkPublishableKey || undefined}
-      signInUrl={publicEnv.signInUrl}
-      signUpUrl={publicEnv.signUpUrl}
-      signInFallbackRedirectUrl={publicEnv.afterSignInUrl}
-      signUpFallbackRedirectUrl={publicEnv.afterSignUpUrl}
-    >
+    <AuthCheck>
       <div className="min-h-screen">
         <header className="border-b border-equipment-700 bg-equipment-900">
           <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
@@ -47,7 +31,7 @@ export default function PortalLayout({
                 Parts
               </a>
               <a
-                href="https://accounts.fixmyiron.com/user"
+                href="#"
                 className="hover:text-zinc-100"
               >
                 Account
@@ -57,6 +41,6 @@ export default function PortalLayout({
         </header>
         <main className="mx-auto max-w-6xl px-4 py-8">{children}</main>
       </div>
-    </ClerkProvider>
+    </AuthCheck>
   );
 }

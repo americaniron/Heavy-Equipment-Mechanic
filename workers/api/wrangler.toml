@@ -32,6 +32,11 @@ id = "4129b00bc060470aa21ad460e5058aa2"
 binding = "SESSIONS"
 id = "388a24b3ecc14909b7e63d73bc4fbbf7"
 
+# KV — auth tokens (JWT replacement)
+[[kv_namespaces]]
+binding = "AUTH_KV"
+id = "a00000000000000000000000000000001"
+
 # R2 — PDFs, audio, uploaded photos.
 # DISABLED for staging: the current OAuth token lacks the r2 scope.
 # Re-enable after `wrangler login` with R2 included, or use an API token

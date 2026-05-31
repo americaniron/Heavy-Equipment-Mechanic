@@ -11,6 +11,7 @@ import { repairPlanRoutes } from "./routes/repair-plan";
 import { equipmentRoutes } from "./routes/equipment";
 import { predictiveRoutes } from "./routes/predictive";
 import { faultCodesRoutes } from "./routes/fault-codes";
+import { authRoutes } from "./routes/auth";
 import { clerkAuth } from "./lib/auth-middleware";
 import { jsonError, ErrorCode } from "./lib/errors";
 import { log, newRequestId } from "./lib/log";
@@ -49,6 +50,9 @@ app.use("*", async (c, next) => {
 });
 
 app.route("/", healthRoutes);
+// Auth routes are public - no clerkAuth
+app.route("/api/auth", authRoutes);
+
 app.route("/api/webhooks/clerk", clerkWebhook);
 app.route("/api/webhooks/paddle", paddleWebhook);
 
