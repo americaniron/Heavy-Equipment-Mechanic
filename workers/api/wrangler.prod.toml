@@ -15,10 +15,8 @@ custom_domain = true
 PADDLE_ENVIRONMENT = "sandbox"
 CLERK_ACCOUNT_PORTAL_URL = "https://accounts.fixmyiron.com"
 # Single allowed origin — the portal subdomain. The legacy marketing site
-# at www.fixmyiron.com does NOT call the API directly; only the portal
-# does. If we ever expose API endpoints to the marketing site (e.g., a
-# pricing-localizer pre-checkout call), add that origin here explicitly.
-WEB_ORIGIN = "https://portal.fixmyiron.com"
+# at www.fixmyiron.com also calls the API for auth.
+WEB_ORIGIN = "https://portal.fixmyiron.com,https://www.fixmyiron.com"
 
 # D1 — relational database (PROD)
 [[d1_databases]]

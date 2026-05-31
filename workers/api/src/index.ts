@@ -39,8 +39,9 @@ app.use("*", async (c, next) => {
   const origin = c.req.header("origin") ?? "";
   const allowed = c.env.WEB_ORIGIN;
   // Respond with the explicit allowed origin if it matches, else echo "*"
-  // for staging. Production deploy MUST set WEB_ORIGIN to a single value.
-  const allowOrigin = allowed && origin === allowed ? allowed : allowed || "*";
+  // Supports comma-separated origins (e.g., "https://a.com,https://b.com")
+  const allowOrigins = (allowed || "").split(",");
+  const allowOrigin = allowOrigins.includes(origin) ? origin : (allowed ? "*" : "*");
   c.header("access-control-allow-origin", allowOrigin);
   c.header("access-control-allow-headers", "authorization,content-type");
   c.header("access-control-allow-methods", "GET,POST,PATCH,DELETE,OPTIONS");
