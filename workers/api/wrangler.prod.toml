@@ -37,9 +37,14 @@ id = "4227f5619ed64ceba2490b400143a476"
 binding = "RATE_LIMITS"
 id = "8c60c2ca218d4c4c97700a41541a8bfa"
 
-# KV — sessions / lightweight cache
+# KV — sessions / lightweight cache  
 [[kv_namespaces]]
 binding = "SESSIONS"
+id = "1174c6d5f01e439789f3a28d42453f26"
+
+# Using SESSIONS for auth tokens too (workaround - no separate AUTH_KV)
+[[kv_namespaces]]
+binding = "AUTH_KV"
 id = "1174c6d5f01e439789f3a28d42453f26"
 
 # R2 — PDFs, audio, uploaded photos. Bucket created at cutover; no
