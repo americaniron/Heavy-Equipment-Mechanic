@@ -35,7 +35,7 @@ id = "388a24b3ecc14909b7e63d73bc4fbbf7"
 # KV — auth tokens (JWT replacement)
 [[kv_namespaces]]
 binding = "AUTH_KV"
-id = "a00000000000000000000000000000001"
+id = "367342e6ab684242be922dc69e425917"
 
 # R2 — PDFs, audio, uploaded photos.
 # DISABLED for staging: the current OAuth token lacks the r2 scope.
