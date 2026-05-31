@@ -47,5 +47,6 @@ export default clerkMiddleware(
 );
 
 export const config = {
-  matcher: ["/portal/:path*"],
+  // Match portal routes AND the root - ensure auth gate at every entry point
+  matcher: ["/portal(.*)", "/"],
 };
