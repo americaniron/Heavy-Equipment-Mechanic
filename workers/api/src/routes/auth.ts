@@ -45,14 +45,20 @@ async function sendPasswordResetEmail(
   const text = `Use this link to reset your FixMyIron password:\n\n${resetUrl}\n\nThis link expires in 1 hour.`;
 
   if (c.env.EMAIL) {
-    await c.env.EMAIL.send({
-      from: "FixMyIron <noreply@fixmyiron.com>",
-      to: email,
-      subject: "Reset your FixMyIron password",
-      html,
-      text,
-    });
-    return true;
+    try {
+      await c.env.EMAIL.send({
+        from: "FixMyIron <noreply@fixmyiron.com>",
+        to: email,
+        subject: "Reset your FixMyIron password",
+        html,
+        text,
+      });
+      return true;
+    } catch (err) {
+      log.error("cloudflare_email_send_failed", {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   if (c.env.RESEND_API_KEY) {
