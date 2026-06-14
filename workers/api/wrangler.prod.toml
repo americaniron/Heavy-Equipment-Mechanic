@@ -45,6 +45,9 @@ id = "1174c6d5f01e439789f3a28d42453f26"
 binding = "AUTH_KV"
 id = "1174c6d5f01e439789f3a28d42453f26"
 
+[[send_email]]
+name = "EMAIL"
+
 # R2 — PDFs, audio, uploaded photos. Bucket created at cutover; no
 # product surface writes here yet (PDF export still DEFERRED). Binding
 # is wired so re-enabling is a code-only change.

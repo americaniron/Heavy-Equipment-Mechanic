@@ -1,9 +1,18 @@
 import { Hono } from "hono";
-import { z } from "zod";
 import type { Env, Variables } from "../env";
 import { jsonError, ErrorCode } from "../lib/errors";
 import { requireAuth } from "../lib/auth-middleware";
-import { EquipmentInput, EquipmentPatch } from "../lib/equipment-schema";
+import {
+  camelizeRow,
+  camelizeRows,
+  getById,
+  insertRow,
+  nullIfBlank,
+  selectAll,
+  selectOne,
+  updateRowById,
+  type DbRow,
+} from "../lib/d1-helpers";
 
 export const equipmentRoutes = new Hono<{
   Bindings: Env;
@@ -12,114 +21,84 @@ export const equipmentRoutes = new Hono<{
 
 equipmentRoutes.use("*", requireAuth);
 
-const IdParam = z.object({ id: z.string().uuid() });
+const fields = [
+  "name",
+  "type",
+  "make",
+  "model",
+  "year",
+  "serial_number",
+  "smu_hours",
+  "warranty_expiry",
+  "notes",
+  "status",
+];
 
-interface EquipmentRow {
-  id: string;
-  user_id: string;
-  make: string;
-  model: string;
-  year: number | null;
-  serial: string | null;
-  hours: number | null;
-  created_at: number;
-  updated_at: number;
+function customerId(c: { get: (key: "customerId" | "userId") => unknown }): number {
+  const id = c.get("customerId");
+  return typeof id === "number" ? id : Number(c.get("userId"));
+}
+
+function pick(body: DbRow): DbRow {
+  const out: DbRow = {};
+  for (const field of fields) {
+    const camel = field.replace(/_([a-z])/g, (_, ch: string) => ch.toUpperCase());
+    out[field] = nullIfBlank(body[camel] ?? body[field]);
+  }
+  return out;
 }
 
 equipmentRoutes.get("/", async (c) => {
-  const userId = c.get("userId") as string;
-  const r = await c.env.DB.prepare(
-    "SELECT * FROM equipment WHERE user_id = ?1 ORDER BY created_at DESC",
-  )
-    .bind(userId)
-    .all<EquipmentRow>();
-  return c.json({ equipment: r.results ?? [] });
+  const rows = await selectAll<DbRow>(
+    c.env.DB,
+    "SELECT * FROM equipment WHERE customer_id = ?1 ORDER BY datetime(created_at) DESC, id DESC",
+    customerId(c),
+  );
+  return c.json({ equipment: camelizeRows(rows) });
 });
 
 equipmentRoutes.post("/", async (c) => {
-  const userId = c.get("userId") as string;
-  const body = await c.req.json().catch(() => null);
-  const parsed = EquipmentInput.safeParse(body);
-  if (!parsed.success) {
-    return jsonError(
-      c,
-      400,
-      ErrorCode.BadRequest,
-      "Invalid equipment input",
-      parsed.error.issues[0]?.message,
-    );
+  const body = (await c.req.json().catch(() => ({}))) as DbRow;
+  const name = String(body.name ?? `${body.make ?? ""} ${body.model ?? ""}`.trim()).trim();
+  if (!name) {
+    return jsonError(c, 400, ErrorCode.BadRequest, "Name is required");
   }
-  const id = crypto.randomUUID();
-  await c.env.DB.prepare(
-    `INSERT INTO equipment (id, user_id, make, model, year, serial, hours, created_at, updated_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, unixepoch(), unixepoch())`,
-  )
-    .bind(
-      id,
-      userId,
-      parsed.data.make,
-      parsed.data.model,
-      parsed.data.year,
-      parsed.data.serial,
-      parsed.data.hours,
-    )
-    .run();
-  const row = await c.env.DB.prepare("SELECT * FROM equipment WHERE id = ?1")
-    .bind(id)
-    .first<EquipmentRow>();
-  return c.json({ equipment: row }, 201);
+  const id = await insertRow(c.env.DB, "equipment", {
+    ...pick({ ...body, name }),
+    customer_id: customerId(c),
+    status: body.status ?? "active",
+  });
+  const row = await getById<DbRow>(c.env.DB, "equipment", id);
+  return c.json({ equipment: camelizeRow(row) }, 201);
 });
 
 equipmentRoutes.patch("/:id", async (c) => {
-  const userId = c.get("userId") as string;
-  const params = IdParam.safeParse({ id: c.req.param("id") });
-  if (!params.success) return jsonError(c, 400, ErrorCode.BadRequest, "Invalid id");
-  const body = await c.req.json().catch(() => null);
-  const parsed = EquipmentPatch.safeParse(body);
-  if (!parsed.success) {
-    return jsonError(c, 400, ErrorCode.BadRequest, "Invalid patch");
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id) || id <= 0) {
+    return jsonError(c, 400, ErrorCode.BadRequest, "Invalid id");
   }
-  // Build a partial UPDATE only over keys actually present.
-  const sets: string[] = [];
-  const binds: unknown[] = [];
-  let i = 1;
-  for (const k of ["make", "model", "year", "serial", "hours"] as const) {
-    if (parsed.data[k] !== undefined) {
-      sets.push(`${k} = ?${i++}`);
-      binds.push(parsed.data[k]);
-    }
-  }
-  if (sets.length === 0) {
-    return jsonError(c, 400, ErrorCode.BadRequest, "Nothing to update");
-  }
-  sets.push(`updated_at = unixepoch()`);
-  // Owned-by-user gate on the WHERE clause.
-  binds.push(params.data.id, userId);
-  const sql =
-    `UPDATE equipment SET ${sets.join(", ")} WHERE id = ?${i++} AND user_id = ?${i++}`;
-  const r = await c.env.DB.prepare(sql)
-    .bind(...binds)
-    .run();
-  if (!r.meta.changes) {
-    return jsonError(c, 404, ErrorCode.NotFound, "Equipment not found");
-  }
-  const row = await c.env.DB.prepare("SELECT * FROM equipment WHERE id = ?1")
-    .bind(params.data.id)
-    .first<EquipmentRow>();
-  return c.json({ equipment: row });
+  const owned = await selectOne<DbRow>(
+    c.env.DB,
+    "SELECT id FROM equipment WHERE id = ?1 AND customer_id = ?2",
+    id,
+    customerId(c),
+  );
+  if (!owned) return jsonError(c, 404, ErrorCode.NotFound, "Equipment not found");
+  const body = (await c.req.json().catch(() => ({}))) as DbRow;
+  await updateRowById(c.env.DB, "equipment", id, pick(body));
+  const row = await getById<DbRow>(c.env.DB, "equipment", id);
+  return c.json({ equipment: camelizeRow(row) });
 });
 
 equipmentRoutes.delete("/:id", async (c) => {
-  const userId = c.get("userId") as string;
-  const params = IdParam.safeParse({ id: c.req.param("id") });
-  if (!params.success) return jsonError(c, 400, ErrorCode.BadRequest, "Invalid id");
-  const r = await c.env.DB.prepare(
-    "DELETE FROM equipment WHERE id = ?1 AND user_id = ?2",
-  )
-    .bind(params.data.id, userId)
-    .run();
-  if (!r.meta.changes) {
-    return jsonError(c, 404, ErrorCode.NotFound, "Equipment not found");
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id) || id <= 0) {
+    return jsonError(c, 400, ErrorCode.BadRequest, "Invalid id");
   }
+  const r = await c.env.DB
+    .prepare("DELETE FROM equipment WHERE id = ?1 AND customer_id = ?2")
+    .bind(id, customerId(c))
+    .run();
+  if (!r.meta.changes) return jsonError(c, 404, ErrorCode.NotFound, "Equipment not found");
   return c.json({ ok: true });
 });

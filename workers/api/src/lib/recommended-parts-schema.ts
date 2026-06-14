@@ -30,7 +30,10 @@ export type RecommendationsOutput = z.infer<typeof RecommendationsOutput>;
  *  ad-hoc set of part numbers (cart-style). At least one is required. */
 export const RecommendInput = z
   .object({
-    session_id: z.string().uuid().optional(),
+    session_id: z.union([
+      z.string().uuid(),
+      z.coerce.number().int().positive().transform((value) => String(value)),
+    ]).optional(),
     cart_part_numbers: z.array(z.string().min(1).max(40)).max(50).default([]),
   })
   .refine(

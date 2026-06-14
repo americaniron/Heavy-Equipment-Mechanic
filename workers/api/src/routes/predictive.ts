@@ -11,6 +11,7 @@ import {
 } from "../prompts/predictive";
 import { PredictiveOutput } from "../lib/predictive-schema";
 import { log } from "../lib/log";
+import { camelizeRows, insertRow, selectAll, type DbRow } from "../lib/d1-helpers";
 
 export const predictiveRoutes = new Hono<{
   Bindings: Env;
@@ -20,17 +21,18 @@ export const predictiveRoutes = new Hono<{
 predictiveRoutes.use("*", requireAuth);
 
 interface EquipmentRow {
-  id: string;
+  id: number;
   make: string;
   model: string;
-  year: number | null;
+  year: string | null;
   serial: string | null;
-  hours: number | null;
+  hours: string | null;
 }
 interface SessionSummaryRow {
-  id: string;
-  created_at: number;
-  summary_json: string | null;
+  id: number;
+  created_at: string;
+  possible_causes: string | null;
+  parts_likely_needed: string | null;
   status: string;
 }
 
@@ -41,15 +43,24 @@ function stripFences(s: string): string {
   return t.slice(t.indexOf("\n") + 1, end > 0 ? end : undefined).trim();
 }
 
+predictiveRoutes.get("/", async (c) => {
+  const rows = await selectAll<DbRow>(
+    c.env.DB,
+    "SELECT * FROM predictive_alerts WHERE customer_id = ?1 ORDER BY datetime(generated_at) DESC LIMIT 100",
+    Number(c.get("userId")),
+  );
+  return c.json({ alerts: camelizeRows(rows) });
+});
+
 predictiveRoutes.post("/", async (c) => {
   const userId = c.get("userId") as string;
   const requestId = c.get("requestId");
 
   const eq = await c.env.DB.prepare(
-    `SELECT id, make, model, year, serial, hours
-     FROM equipment WHERE user_id = ?1 ORDER BY created_at DESC LIMIT 50`,
+    `SELECT id, make, model, year, serial_number AS serial, smu_hours AS hours
+     FROM equipment WHERE customer_id = ?1 ORDER BY datetime(created_at) DESC LIMIT 50`,
   )
-    .bind(userId)
+    .bind(Number(userId))
     .all<EquipmentRow>();
   const equipment = eq.results ?? [];
 
@@ -68,13 +79,15 @@ predictiveRoutes.post("/", async (c) => {
   // Recent diagnosis history for context. Cap at 20 most-recent so we
   // don't blow the context window for users with long histories.
   const sess = await c.env.DB.prepare(
-    `SELECT id, created_at, summary_json, status
-     FROM diagnostic_sessions
-     WHERE user_id = ?1
-     ORDER BY created_at DESC
+    `SELECT ds.id, ds.started_at AS created_at, ds.status,
+            dr.possible_causes, dr.parts_likely_needed
+       FROM diagnostic_sessions ds
+       LEFT JOIN diagnostic_results dr ON dr.session_id = ds.id
+     WHERE ds.customer_id = ?1
+     ORDER BY datetime(ds.started_at) DESC
      LIMIT 20`,
   )
-    .bind(userId)
+    .bind(Number(userId))
     .all<SessionSummaryRow>();
   const sessions = sess.results ?? [];
 
@@ -103,16 +116,13 @@ predictiveRoutes.post("/", async (c) => {
 
   const historySection = sessions
     .map((s) => {
-      const date = new Date(s.created_at * 1000).toISOString().slice(0, 10);
-      const summary = s.summary_json
+      const date = String(s.created_at).slice(0, 10);
+      const summary = s.possible_causes
         ? (() => {
             try {
-              const parsed = JSON.parse(s.summary_json) as {
-                machine?: string;
-                causeCount?: number;
-                partCount?: number;
-              };
-              return `machine=${parsed.machine ?? "?"} causes=${parsed.causeCount ?? 0} parts=${parsed.partCount ?? 0}`;
+              const causes = JSON.parse(s.possible_causes ?? "[]") as unknown[];
+              const parts = JSON.parse(s.parts_likely_needed ?? "[]") as unknown[];
+              return `causes=${causes.length} parts=${parts.length}`;
             } catch {
               return "(unparseable summary)";
             }
@@ -172,13 +182,30 @@ predictiveRoutes.post("/", async (c) => {
 
   // Drop predictions for equipment_ids not in the user's fleet (defense
   // against the model hallucinating an id) and join with equipment data.
-  const eqById = new Map(equipment.map((e) => [e.id, e]));
+  const eqById = new Map(equipment.map((e) => [String(e.id), e]));
   const cleaned = parsed.predictions
     .filter((p) => eqById.has(p.equipment_id))
     .map((p) => ({
       ...p,
       equipment: eqById.get(p.equipment_id)!,
     }));
+
+  for (const prediction of cleaned) {
+    await insertRow(c.env.DB, "predictive_alerts", {
+      customer_id: Number(userId),
+      equipment_id: Number(prediction.equipment_id),
+      risk_score: prediction.risk_score,
+      predicted_failure_window: prediction.predicted_failure_window,
+      recommended_action: prediction.recommended_action,
+      confidence: prediction.confidence,
+    }).catch((err) =>
+      log.warn("predictive_alert_persist_failed", {
+        requestId,
+        userId,
+        err: err instanceof Error ? err.message : String(err),
+      }),
+    );
+  }
 
   return c.json({
     predictions: cleaned,

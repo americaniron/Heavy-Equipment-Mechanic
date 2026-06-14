@@ -27,6 +27,9 @@ export const RepairPlanOutput = z
 export type RepairPlanOutput = z.infer<typeof RepairPlanOutput>;
 
 export const RepairPlanInput = z.object({
-  session_id: z.string().uuid(),
+  session_id: z.union([
+    z.string().uuid(),
+    z.coerce.number().int().positive().transform((value) => String(value)),
+  ]),
 });
 export type RepairPlanInput = z.infer<typeof RepairPlanInput>;

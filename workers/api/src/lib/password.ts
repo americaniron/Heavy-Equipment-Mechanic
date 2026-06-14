@@ -1,12 +1,10 @@
-// Simple hash for testing
+import bcrypt from "bcryptjs";
+
 export async function hashPassword(password: string): Promise<string> {
-  const msgBuffer = new TextEncoder().encode(password + "salt");
-  const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return btoa(String.fromCharCode(...hashArray));
+  return bcrypt.hash(password, 10);
 }
 
 export async function verifyPassword(password: string, stored: string): Promise<boolean> {
-  const hash = await hashPassword(password);
-  return hash === stored;
+  if (!stored) return false;
+  return bcrypt.compare(password, stored);
 }

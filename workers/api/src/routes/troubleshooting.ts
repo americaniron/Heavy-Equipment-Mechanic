@@ -18,6 +18,7 @@ import {
 } from "../lib/troubleshooting-schema";
 import { diagnosticSession } from "../lib/diagnostic-session-client";
 import { log } from "../lib/log";
+import { insertRow } from "../lib/d1-helpers";
 
 export const troubleshootingRoutes = new Hono<{
   Bindings: Env;
@@ -27,10 +28,24 @@ export const troubleshootingRoutes = new Hono<{
 troubleshootingRoutes.use("*", requireAuth);
 
 const MAX_WIZARD_TURNS = 12;
-const SessionIdParam = z.object({ id: z.string().uuid() });
+const SessionIdParam = z.object({ id: z.coerce.number().int().positive().transform(String) });
 
-function newSessionId(): string {
-  return crypto.randomUUID();
+async function createTroubleshootingSession(
+  db: D1Database,
+  customerId: string,
+  input: z.infer<typeof StartInput>,
+): Promise<string> {
+  const id = await insertRow(db, "diagnostic_sessions", {
+    customer_id: Number(customerId),
+    status: "open",
+    machine_make: input.machine_make,
+    machine_model: input.machine_model,
+    symptoms: input.initial_complaint,
+    fault_codes_input: JSON.stringify([]),
+    recent_service: JSON.stringify([]),
+    operator_notes: "guided-troubleshooting",
+  });
+  return String(id);
 }
 
 function buildStartUserMessage(input: z.infer<typeof StartInput>): string {
@@ -74,6 +89,15 @@ function stripFences(s: string): string {
   return t.slice(t.indexOf("\n") + 1, end > 0 ? end : undefined).trim();
 }
 
+function safeJson(value: unknown, fallback: unknown) {
+  if (typeof value !== "string" || value.length === 0) return fallback;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+
 function rateLimitForTier(tier: "free" | "pro" | "shop"): number {
   return tier === "shop" ? 1000 : tier === "pro" ? 300 : 60;
 }
@@ -101,7 +125,7 @@ troubleshootingRoutes.post("/start", async (c) => {
     );
   }
 
-  const sessionId = newSessionId();
+  const sessionId = await createTroubleshootingSession(c.env.DB, userId, parsed.data);
   await diagnosticSession.init(c.env, userId, sessionId, {
     tierAtCreation: tier,
     mode: "wizard",
@@ -159,12 +183,8 @@ troubleshootingRoutes.post("/start", async (c) => {
     content: result.text,
   });
 
-  await c.env.DB.prepare(
-    `INSERT INTO diagnostic_sessions
-       (id, user_id, tier_at_creation, status, summary_json, created_at, updated_at)
-     VALUES (?1, ?2, ?3, 'open', NULL, unixepoch(), unixepoch())`,
-  )
-    .bind(sessionId, userId, tier)
+  await c.env.DB.prepare("UPDATE diagnostic_sessions SET model_used = ?1 WHERE id = ?2")
+    .bind(result.modelUsed, Number(sessionId))
     .run();
   await incrementQuota({ db: c.env.DB, userId, monthKey: quota.monthKey });
 
@@ -195,9 +215,9 @@ troubleshootingRoutes.post("/:id/answer", async (c) => {
   }
 
   const owned = await c.env.DB.prepare(
-    "SELECT id FROM diagnostic_sessions WHERE id = ?1 AND user_id = ?2",
+    "SELECT id FROM diagnostic_sessions WHERE id = ?1 AND customer_id = ?2",
   )
-    .bind(params.data.id, userId)
+    .bind(Number(params.data.id), Number(userId))
     .first<{ id: string }>();
   if (!owned) return jsonError(c, 404, ErrorCode.NotFound, "Session not found");
 
@@ -274,9 +294,9 @@ troubleshootingRoutes.post("/:id/answer", async (c) => {
   // If the wizard terminated, mark the D1 row closed.
   if (turn.terminate) {
     await c.env.DB.prepare(
-      "UPDATE diagnostic_sessions SET status = 'closed', updated_at = unixepoch() WHERE id = ?1",
+      "UPDATE diagnostic_sessions SET status = 'closed', completed_at = CURRENT_TIMESTAMP WHERE id = ?1",
     )
-      .bind(params.data.id)
+      .bind(Number(params.data.id))
       .run();
   }
 
@@ -298,11 +318,44 @@ troubleshootingRoutes.get("/:id", async (c) => {
     return jsonError(c, 400, ErrorCode.BadRequest, "Invalid session id");
   }
   const owned = await c.env.DB.prepare(
-    "SELECT id FROM diagnostic_sessions WHERE id = ?1 AND user_id = ?2",
+    "SELECT id FROM diagnostic_sessions WHERE id = ?1 AND customer_id = ?2",
   )
-    .bind(params.data.id, userId)
+    .bind(Number(params.data.id), Number(userId))
     .first<{ id: string }>();
   if (!owned) return jsonError(c, 404, ErrorCode.NotFound, "Session not found");
   const state = await diagnosticSession.getState(c.env, userId, params.data.id);
+  if (!state.meta) {
+    const turns = await c.env.DB.prepare(
+      "SELECT turn_number, question, answer, reasoning, terminate, conclusion, created_at FROM troubleshooting_turns WHERE session_id = ?1 ORDER BY turn_number, id",
+    )
+      .bind(Number(params.data.id))
+      .all<Record<string, unknown>>();
+    return c.json({
+      session_id: params.data.id,
+      meta: {
+        tierAtCreation: "free",
+        createdAt: Date.now(),
+        mode: "wizard",
+      },
+      turns: (turns.results ?? []).flatMap((turn) => {
+        const ts = turn.created_at ? new Date(String(turn.created_at)).getTime() : Date.now();
+        return [
+          ...(turn.answer ? [{ role: "user" as const, content: String(turn.answer), ts }] : []),
+          {
+            role: "assistant" as const,
+            content: JSON.stringify({
+              question: turn.question,
+              reasoning: turn.reasoning,
+              terminate: Boolean(turn.terminate),
+              conclusion: safeJson(turn.conclusion, null),
+            }),
+            ts,
+          },
+        ];
+      }),
+      playbook: null,
+      input: null,
+    });
+  }
   return c.json({ session_id: params.data.id, ...state });
 });

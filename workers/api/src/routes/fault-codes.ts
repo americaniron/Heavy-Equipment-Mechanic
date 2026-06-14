@@ -29,10 +29,10 @@ interface FaultCodeRow {
   code: string;
   description: string;
   severity: string | null;
-  likely_causes_json: string | null;
-  repair_actions_json: string | null;
+  likely_causes: string | null;
+  repair_actions: string | null;
   source_url: string | null;
-  last_refreshed: number;
+  last_refreshed: string;
 }
 
 function safeParseJsonArray(s: string | null): string[] {
@@ -41,6 +41,14 @@ function safeParseJsonArray(s: string | null): string[] {
     const v = JSON.parse(s);
     return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
   } catch {
+    const trimmed = s.trim();
+    if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+      const body = trimmed.slice(1, -1);
+      return body
+        .match(/"((?:[^"\\]|\\.)*)"|[^,]+/g)
+        ?.map((part) => part.trim().replace(/^"|"$/g, "").replace(/\\"/g, "\""))
+        .filter(Boolean) ?? [];
+    }
     return [];
   }
 }
@@ -93,7 +101,7 @@ faultCodesRoutes.get("/:code", async (c) => {
     return jsonError(c, 400, ErrorCode.BadRequest, "Invalid code");
   }
   const row = await c.env.DB.prepare(
-    `SELECT code, description, severity, likely_causes_json, repair_actions_json,
+    `SELECT code, description, severity, likely_causes, repair_actions,
             source_url, last_refreshed
      FROM fault_codes WHERE code = ?1`,
   )
@@ -120,8 +128,8 @@ faultCodesRoutes.get("/:code", async (c) => {
   }
 
   // PRO/SHOP: include causes + actions + related parts.
-  const causes = safeParseJsonArray(row.likely_causes_json);
-  const actions = safeParseJsonArray(row.repair_actions_json);
+  const causes = safeParseJsonArray(row.likely_causes);
+  const actions = safeParseJsonArray(row.repair_actions);
 
   // Related parts: find catalog parts whose description mentions any
   // significant token from the fault description (cheap heuristic).

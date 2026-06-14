@@ -2,6 +2,7 @@ import type { MiddlewareHandler } from "hono";
 import type { Env, Variables } from "../env";
 import { verifyClerkJwt } from "./clerk-auth";
 import { jsonError, ErrorCode } from "./errors";
+import { getCustomerByAuthToken } from "./d1-helpers";
 
 /**
  * Attaches `userId` to the Hono context if the request carries a valid
@@ -16,8 +17,32 @@ export const clerkAuth: MiddlewareHandler<{
   Bindings: Env;
   Variables: Variables;
 }> = async (c, next) => {
+  const legacyToken = c.req.header("x-auth-token");
+  if (legacyToken) {
+    const customer = await getCustomerByAuthToken(c.env.DB, legacyToken);
+    if (customer) {
+      const customerId = Number(customer.id);
+      c.set("customerId", customerId);
+      c.set("userId", String(customerId));
+      if (typeof customer.email === "string") c.set("userEmail", customer.email);
+    }
+    await next();
+    return;
+  }
+
   const auth = c.req.header("authorization");
-  if (auth) {
+  if (auth?.startsWith("Bearer ")) {
+    const token = auth.slice(7);
+    const customer = await getCustomerByAuthToken(c.env.DB, token);
+    if (customer) {
+      const customerId = Number(customer.id);
+      c.set("customerId", customerId);
+      c.set("userId", String(customerId));
+      if (typeof customer.email === "string") c.set("userEmail", customer.email);
+      await next();
+      return;
+    }
+
     const result = await verifyClerkJwt(auth, c.env);
     if (result) c.set("userId", result.userId);
   }

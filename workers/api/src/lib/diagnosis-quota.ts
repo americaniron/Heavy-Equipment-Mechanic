@@ -39,8 +39,7 @@ function monthKeyFromMs(ms: number): string {
 }
 
 interface UserQuotaRow {
-  diagnoses_this_month: number;
-  diagnoses_month_key: string | null;
+  count: number;
 }
 
 export async function checkQuota(args: {
@@ -58,18 +57,17 @@ export async function checkQuota(args: {
 
   const row = await args.db
     .prepare(
-      "SELECT diagnoses_this_month, diagnoses_month_key FROM users WHERE clerk_user_id = ?1",
+      `SELECT count FROM ai_rate_limits
+        WHERE customer_id = ?1 AND scope = 'diagnosis-monthly' AND window_start = ?2`,
     )
-    .bind(args.userId)
+    .bind(Number(args.userId), `${currentMonth}-01 00:00:00`)
     .first<UserQuotaRow>();
   if (!row) {
     // Brand-new user (Clerk webhook hasn't run yet); treat as fresh.
     return { ok: true, remaining: FREE_MONTHLY_LIMIT - 1, monthKey: currentMonth };
   }
 
-  // Stale month → effective count is 0.
-  const effectiveCount =
-    row.diagnoses_month_key === currentMonth ? row.diagnoses_this_month : 0;
+  const effectiveCount = row.count ?? 0;
 
   if (effectiveCount >= FREE_MONTHLY_LIMIT) {
     return {
@@ -97,17 +95,12 @@ export async function incrementQuota(args: {
 }): Promise<void> {
   await args.db
     .prepare(
-      `UPDATE users
-         SET diagnoses_this_month = CASE
-               WHEN diagnoses_month_key = ?2
-                 THEN diagnoses_this_month + 1
-               ELSE 1
-             END,
-             diagnoses_month_key = ?2,
-             updated_at = unixepoch()
-       WHERE clerk_user_id = ?1`,
+      `INSERT INTO ai_rate_limits (customer_id, scope, window_start, count)
+       VALUES (?1, 'diagnosis-monthly', ?2, 1)
+       ON CONFLICT(customer_id, scope, window_start)
+       DO UPDATE SET count = count + 1`,
     )
-    .bind(args.userId, args.monthKey)
+    .bind(Number(args.userId), `${args.monthKey}-01 00:00:00`)
     .run();
 }
 

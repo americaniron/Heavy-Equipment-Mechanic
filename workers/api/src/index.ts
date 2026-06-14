@@ -12,6 +12,7 @@ import { equipmentRoutes } from "./routes/equipment";
 import { predictiveRoutes } from "./routes/predictive";
 import { faultCodesRoutes } from "./routes/fault-codes";
 import { authRoutes } from "./routes/auth";
+import { portalRoutes } from "./routes/portal";
 import { clerkAuth } from "./lib/auth-middleware";
 import { jsonError, ErrorCode } from "./lib/errors";
 import { log, newRequestId } from "./lib/log";
@@ -43,7 +44,7 @@ app.use("*", async (c, next) => {
   const allowOrigins = (allowed || "").split(",");
   const allowOrigin = allowOrigins.includes(origin) ? origin : (allowed ? "*" : "*");
   c.header("access-control-allow-origin", allowOrigin);
-  c.header("access-control-allow-headers", "authorization,content-type");
+  c.header("access-control-allow-headers", "authorization,content-type,x-auth-token,x-crm-api-key");
   c.header("access-control-allow-methods", "GET,POST,PATCH,DELETE,OPTIONS");
   c.header("vary", "origin");
   if (c.req.method === "OPTIONS") return c.body(null, 204);
@@ -51,6 +52,7 @@ app.use("*", async (c, next) => {
 });
 
 app.route("/", healthRoutes);
+app.route("/api", healthRoutes);
 // Auth routes are public - no clerkAuth
 app.route("/api/auth", authRoutes);
 
@@ -61,6 +63,15 @@ app.route("/api/webhooks/paddle", paddleWebhook);
 // Webhook routes above this line do their own signature-based auth and
 // must not run through the Bearer-JWT middleware.
 app.use("/api/*", clerkAuth);
+
+app.route("/api/portal/ai/fault-codes", faultCodesRoutes);
+app.route("/api/portal/ai/parts", partsRoutes);
+app.route("/api/portal/ai/diagnosis", diagnosisRoutes);
+app.route("/api/portal/ai/troubleshooting", troubleshootingRoutes);
+app.route("/api/portal/ai/recommended-parts", recommendedPartsRoutes);
+app.route("/api/portal/ai/repair-plan", repairPlanRoutes);
+app.route("/api/portal/ai/predictive", predictiveRoutes);
+app.route("/api/portal", portalRoutes);
 
 app.route("/api/parts", partsRoutes);
 app.route("/api/diagnosis", diagnosisRoutes);

@@ -11,6 +11,15 @@ export interface Env {
   RATE_LIMITS: KVNamespace;
   SESSIONS: KVNamespace;
   AUTH_KV: KVNamespace;  // For session tokens
+  EMAIL?: {
+    send: (message: {
+      to: string | string[];
+      from: string;
+      subject: string;
+      html: string;
+      text?: string;
+    }) => Promise<unknown>;
+  };
   // ASSETS (R2) — re-add when token has r2 scope. See wrangler.toml comment.
   JOBS: Queue<JobMessage>;
   DIAGNOSTIC_SESSION: DurableObjectNamespace;
@@ -22,6 +31,9 @@ export interface Env {
 
   // Secrets (wrangler secret put / .dev.vars)
   ANTHROPIC_API_KEY: string;
+  RESEND_API_KEY?: string;
+  RESEND_FROM_EMAIL?: string;
+  PUBLIC_BASE_URL?: string;
   CLERK_SECRET_KEY: string;
   CLERK_WEBHOOK_SECRET: string;
   PADDLE_API_KEY: string;
@@ -50,6 +62,7 @@ export type SubscriptionStatus =
 /** Variables attached to Hono context after auth middleware runs. */
 export interface Variables {
   userId?: string;
+  customerId?: number;
   userEmail?: string;
   tier?: Tier;
   requestId: string;

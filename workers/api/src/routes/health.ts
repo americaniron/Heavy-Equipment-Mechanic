@@ -1,15 +1,18 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import type { Env, Variables } from "../env";
 
 export const healthRoutes = new Hono<{ Bindings: Env; Variables: Variables }>();
 
-healthRoutes.get("/healthz", (c) => {
+function healthResponse(c: Context<{ Bindings: Env; Variables: Variables }>) {
   return c.json({
     ok: true,
     env: c.env.PADDLE_ENVIRONMENT,
     requestId: c.get("requestId"),
   });
-});
+}
+
+healthRoutes.get("/health", healthResponse);
+healthRoutes.get("/healthz", healthResponse);
 
 /** Probes that the D1 binding is alive. Cheap (PRAGMA), zero rows. */
 healthRoutes.get("/healthz/db", async (c) => {

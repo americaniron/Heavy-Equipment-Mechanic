@@ -1,7 +1,10 @@
 import { z } from "zod";
 
 export const PredictionRow = z.object({
-  equipment_id: z.string().uuid(),
+  equipment_id: z.union([
+    z.string().uuid(),
+    z.coerce.number().int().positive().transform((value) => String(value)),
+  ]),
   risk_score: z.number().int().min(0).max(100),
   predicted_failure_window: z.string().min(1),
   recommended_action: z.string().min(1),

@@ -27,6 +27,15 @@ function stripFences(s: string): string {
   return t.slice(t.indexOf("\n") + 1, end > 0 ? end : undefined).trim();
 }
 
+function safeJson(value: unknown, fallback: unknown) {
+  if (typeof value !== "string" || value.length === 0) return fallback;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+
 function buildUserMessage(args: {
   machine: string;
   causes: string;
@@ -62,23 +71,46 @@ repairPlanRoutes.post("/", async (c) => {
 
   // Ownership check via D1.
   const owned = await c.env.DB.prepare(
-    "SELECT id FROM diagnostic_sessions WHERE id = ?1 AND user_id = ?2",
+    "SELECT id FROM diagnostic_sessions WHERE id = ?1 AND customer_id = ?2",
   )
-    .bind(parsed.data.session_id, userId)
+    .bind(Number(parsed.data.session_id), Number(userId))
     .first<{ id: string }>();
   if (!owned) return jsonError(c, 404, ErrorCode.NotFound, "Session not found");
 
   const state = await diagnosticSession.getState(c.env, userId, parsed.data.session_id);
-  const playbook = state.playbook as
+  let playbook = state.playbook as
     | {
         possible_causes?: Array<{ cause: string; likelihood: string; reasoning: string }>;
         tests_in_order?: Array<{ test: string; tools?: string[] }>;
         parts_likely_needed?: Array<{ part_number: string; description: string }>;
       }
     | null;
-  const sessionInput = state.input as
+  let sessionInput = state.input as
     | { machine_make?: string; machine_model?: string }
     | null;
+  if (!playbook) {
+    const result = await c.env.DB.prepare(
+      "SELECT possible_causes, tests_in_order, parts_likely_needed FROM diagnostic_results WHERE session_id = ?1",
+    )
+      .bind(Number(parsed.data.session_id))
+      .first<Record<string, unknown>>();
+    const session = await c.env.DB.prepare(
+      "SELECT machine_make, machine_model FROM diagnostic_sessions WHERE id = ?1",
+    )
+      .bind(Number(parsed.data.session_id))
+      .first<Record<string, unknown>>();
+    playbook = result
+      ? {
+          possible_causes: safeJson(result.possible_causes, []) as Array<{ cause: string; likelihood: string; reasoning: string }>,
+          tests_in_order: safeJson(result.tests_in_order, []) as Array<{ test: string; tools?: string[] }>,
+          parts_likely_needed: safeJson(result.parts_likely_needed, []) as Array<{ part_number: string; description: string }>,
+        }
+      : null;
+    sessionInput = {
+      machine_make: String(session?.machine_make ?? "Unknown machine"),
+      machine_model: String(session?.machine_model ?? ""),
+    };
+  }
 
   if (!playbook || !playbook.possible_causes || !playbook.tests_in_order) {
     return jsonError(

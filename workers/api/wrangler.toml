@@ -37,6 +37,9 @@ id = "388a24b3ecc14909b7e63d73bc4fbbf7"
 binding = "AUTH_KV"
 id = "367342e6ab684242be922dc69e425917"
 
+[[send_email]]
+name = "EMAIL"
+
 # R2 — PDFs, audio, uploaded photos.
 # DISABLED for staging: the current OAuth token lacks the r2 scope.
 # Re-enable after `wrangler login` with R2 included, or use an API token

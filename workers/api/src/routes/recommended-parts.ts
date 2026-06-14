@@ -33,6 +33,15 @@ interface PartRow {
   source_file: string;
 }
 
+function safeJson(value: unknown, fallback: unknown) {
+  if (typeof value !== "string" || value.length === 0) return fallback;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+
 /**
  * Pull a candidate-PN list to feed into the prompt. We give Claude the
  * specific catalog rows we want it to choose from so it doesn't
@@ -54,13 +63,10 @@ async function gatherCandidates(args: {
 
   if (input.session_id) {
     const state = await diagnosticSession.getState(env, userId, input.session_id);
-    if (!state.meta) {
-      throw new Error("session_not_found");
-    }
-    const playbook = state.playbook as
+    let playbook = state.playbook as
       | { parts_likely_needed?: Array<{ part_number?: string }> }
       | null;
-    const sessionInput = state.input as
+    let sessionInput = state.input as
       | {
           machine_make?: string;
           machine_model?: string;
@@ -68,6 +74,28 @@ async function gatherCandidates(args: {
           fault_codes?: string[];
         }
       | null;
+    if (!state.meta) {
+      const owned = await env.DB.prepare(
+        "SELECT * FROM diagnostic_sessions WHERE id = ?1 AND customer_id = ?2",
+      )
+        .bind(Number(input.session_id), Number(userId))
+        .first<Record<string, unknown>>();
+      if (!owned) throw new Error("session_not_found");
+      const result = await env.DB.prepare(
+        "SELECT parts_likely_needed FROM diagnostic_results WHERE session_id = ?1",
+      )
+        .bind(Number(input.session_id))
+        .first<{ parts_likely_needed: string | null }>();
+      playbook = {
+        parts_likely_needed: safeJson(result?.parts_likely_needed, []) as Array<{ part_number?: string }>,
+      };
+      sessionInput = {
+        machine_make: String(owned.machine_make ?? ""),
+        machine_model: String(owned.machine_model ?? ""),
+        symptoms: String(owned.symptoms ?? ""),
+        fault_codes: safeJson(owned.fault_codes_input, []) as string[],
+      };
+    }
 
     contextLines.push(
       `Machine: ${sessionInput?.machine_make ?? "unknown"} ${sessionInput?.machine_model ?? ""}`.trim(),

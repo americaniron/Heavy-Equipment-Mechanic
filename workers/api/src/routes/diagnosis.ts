@@ -22,6 +22,7 @@ import {
 } from "../lib/diagnosis-schema";
 import { diagnosticSession } from "../lib/diagnostic-session-client";
 import { log } from "../lib/log";
+import { insertRow } from "../lib/d1-helpers";
 
 export const diagnosisRoutes = new Hono<{
   Bindings: Env;
@@ -32,8 +33,25 @@ diagnosisRoutes.use("*", requireAuth);
 
 // ---------------------------------------------------------------- helpers --
 
-function newSessionId(): string {
-  return crypto.randomUUID();
+async function createDiagnosticSession(
+  db: D1Database,
+  customerId: string,
+  mode: "scenario" | "chat",
+  input: ScenarioInput | ChatInput,
+): Promise<string> {
+  const id = await insertRow(db, "diagnostic_sessions", {
+    customer_id: Number(customerId),
+    status: "open",
+    machine_make: "machine_make" in input ? input.machine_make : null,
+    machine_model: "machine_model" in input ? input.machine_model : null,
+    machine_year: "year" in input && input.year !== null ? String(input.year) : null,
+    machine_hours: "hours" in input && input.hours !== null ? String(input.hours) : null,
+    symptoms: "symptoms" in input ? input.symptoms : input.message,
+    fault_codes_input: "fault_codes" in input ? JSON.stringify(input.fault_codes) : JSON.stringify([]),
+    recent_service: "recent_service" in input ? JSON.stringify(input.recent_service) : JSON.stringify([]),
+    operator_notes: "operator_notes" in input ? input.operator_notes : mode,
+  });
+  return String(id);
 }
 
 function buildScenarioUserMessage(input: ScenarioInput): string {
@@ -85,6 +103,15 @@ function stripJsonFences(text: string): string {
   return trimmed;
 }
 
+function safeJson(value: unknown, fallback: unknown) {
+  if (typeof value !== "string" || value.length === 0) return fallback;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+
 // -------------------------------------------------------------- POST /scenario --
 
 diagnosisRoutes.post("/scenario", async (c) => {
@@ -124,7 +151,7 @@ diagnosisRoutes.post("/scenario", async (c) => {
     );
   }
 
-  const sessionId = newSessionId();
+  const sessionId = await createDiagnosticSession(c.env.DB, userId, "scenario", parsed.data);
   await diagnosticSession.init(c.env, userId, sessionId, {
     tierAtCreation: tier,
     mode: "scenario",
@@ -198,23 +225,35 @@ diagnosisRoutes.post("/scenario", async (c) => {
     role: "assistant",
     content: result.text,
   });
-
-  // Mirror a thin pointer row in D1 for analytics + repair-plan join.
   await c.env.DB.prepare(
-    `INSERT INTO diagnostic_sessions
-       (id, user_id, tier_at_creation, status, summary_json, created_at, updated_at)
-     VALUES (?1, ?2, ?3, 'open', ?4, unixepoch(), unixepoch())`,
+    "INSERT INTO diagnostic_messages (session_id, turn_number, role, content) VALUES (?1, ?2, ?3, ?4), (?1, ?5, ?6, ?7)",
+  )
+    .bind(Number(sessionId), 1, "user", userMessage, 2, "assistant", result.text)
+    .run();
+
+  await c.env.DB.prepare(
+    `INSERT INTO diagnostic_results
+       (session_id, possible_causes, tests_in_order, expected_readings, parts_likely_needed, safety_warnings)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+     ON CONFLICT(session_id) DO UPDATE SET
+       possible_causes = excluded.possible_causes,
+       tests_in_order = excluded.tests_in_order,
+       expected_readings = excluded.expected_readings,
+       parts_likely_needed = excluded.parts_likely_needed,
+       safety_warnings = excluded.safety_warnings,
+       generated_at = CURRENT_TIMESTAMP`,
   )
     .bind(
       sessionId,
-      userId,
-      tier,
-      JSON.stringify({
-        machine: `${parsed.data.machine_make} ${parsed.data.machine_model}`,
-        causeCount: playbook.possible_causes.length,
-        partCount: playbook.parts_likely_needed.length,
-      }),
+      JSON.stringify(playbook.possible_causes),
+      JSON.stringify(playbook.tests_in_order),
+      JSON.stringify(playbook.expected_readings),
+      JSON.stringify(playbook.parts_likely_needed),
+      JSON.stringify(playbook.safety_warnings),
     )
+    .run();
+  await c.env.DB.prepare("UPDATE diagnostic_sessions SET model_used = ?1 WHERE id = ?2")
+    .bind(result.modelUsed, Number(sessionId))
     .run();
 
   await incrementQuota({ db: c.env.DB, userId, monthKey: quota.monthKey });
@@ -251,7 +290,7 @@ diagnosisRoutes.post("/chat", async (c) => {
     );
   }
 
-  const sessionId = newSessionId();
+  const sessionId = await createDiagnosticSession(c.env.DB, userId, "chat", parsed.data);
   await diagnosticSession.init(c.env, userId, sessionId, {
     tierAtCreation: tier,
     mode: "chat",
@@ -290,13 +329,14 @@ diagnosisRoutes.post("/chat", async (c) => {
     role: "assistant",
     content: result.text,
   });
-
   await c.env.DB.prepare(
-    `INSERT INTO diagnostic_sessions
-       (id, user_id, tier_at_creation, status, summary_json, created_at, updated_at)
-     VALUES (?1, ?2, ?3, 'open', NULL, unixepoch(), unixepoch())`,
+    "INSERT INTO diagnostic_messages (session_id, turn_number, role, content) VALUES (?1, ?2, ?3, ?4), (?1, ?5, ?6, ?7)",
   )
-    .bind(sessionId, userId, tier)
+    .bind(Number(sessionId), 1, "user", parsed.data.message, 2, "assistant", result.text)
+    .run();
+
+  await c.env.DB.prepare("UPDATE diagnostic_sessions SET model_used = ?1 WHERE id = ?2")
+    .bind(result.modelUsed, Number(sessionId))
     .run();
   await incrementQuota({ db: c.env.DB, userId, monthKey: quota.monthKey });
 
@@ -310,7 +350,7 @@ diagnosisRoutes.post("/chat", async (c) => {
 
 // -------------------------------------------------------------- GET /:id --
 
-const SessionIdParam = z.object({ id: z.string().uuid() });
+const SessionIdParam = z.object({ id: z.coerce.number().int().positive().transform(String) });
 
 diagnosisRoutes.get("/:id", async (c) => {
   const userId = c.get("userId") as string;
@@ -322,14 +362,57 @@ diagnosisRoutes.get("/:id", async (c) => {
   // accidentally read another user's session, but the D1 row is the
   // canonical "did this user own this session" check.
   const row = await c.env.DB.prepare(
-    "SELECT id FROM diagnostic_sessions WHERE id = ?1 AND user_id = ?2",
+    "SELECT * FROM diagnostic_sessions WHERE id = ?1 AND customer_id = ?2",
   )
-    .bind(params.data.id, userId)
-    .first<{ id: string }>();
+    .bind(Number(params.data.id), Number(userId))
+    .first<Record<string, unknown>>();
   if (!row) {
     return jsonError(c, 404, ErrorCode.NotFound, "Session not found");
   }
   const state = await diagnosticSession.getState(c.env, userId, params.data.id);
+  if (!state.meta) {
+    const [result, messages] = await Promise.all([
+      c.env.DB.prepare("SELECT * FROM diagnostic_results WHERE session_id = ?1")
+        .bind(Number(params.data.id))
+        .first<Record<string, unknown>>(),
+      c.env.DB.prepare("SELECT role, content, created_at FROM diagnostic_messages WHERE session_id = ?1 ORDER BY turn_number, id")
+        .bind(Number(params.data.id))
+        .all<{ role: "user" | "assistant" | "system"; content: string; created_at: string }>(),
+    ]);
+    return c.json({
+      session_id: params.data.id,
+      meta: {
+        tierAtCreation: "free",
+        createdAt: row.started_at ? new Date(String(row.started_at)).getTime() : Date.now(),
+        mode: result ? "scenario" : "chat",
+        modelUsed: row.model_used ?? undefined,
+      },
+      turns: (messages.results ?? []).map((message) => ({
+        role: message.role,
+        content: message.content,
+        ts: new Date(message.created_at).getTime(),
+      })),
+      playbook: result
+        ? {
+            possible_causes: safeJson(result.possible_causes, []),
+            tests_in_order: safeJson(result.tests_in_order, []),
+            expected_readings: safeJson(result.expected_readings, {}),
+            parts_likely_needed: safeJson(result.parts_likely_needed, []),
+            safety_warnings: safeJson(result.safety_warnings, []),
+          }
+        : null,
+      input: {
+        machine_make: row.machine_make,
+        machine_model: row.machine_model,
+        year: row.machine_year ? Number(row.machine_year) : null,
+        hours: row.machine_hours ? Number(row.machine_hours) : null,
+        symptoms: row.symptoms,
+        fault_codes: safeJson(row.fault_codes_input, []),
+        recent_service: safeJson(row.recent_service, []),
+        operator_notes: row.operator_notes ?? "",
+      },
+    });
+  }
   return c.json({ session_id: params.data.id, ...state });
 });
 
@@ -349,9 +432,9 @@ diagnosisRoutes.post("/:id/messages", async (c) => {
   }
 
   const owned = await c.env.DB.prepare(
-    "SELECT id FROM diagnostic_sessions WHERE id = ?1 AND user_id = ?2",
+    "SELECT id FROM diagnostic_sessions WHERE id = ?1 AND customer_id = ?2",
   )
-    .bind(params.data.id, userId)
+    .bind(Number(params.data.id), Number(userId))
     .first<{ id: string }>();
   if (!owned) {
     return jsonError(c, 404, ErrorCode.NotFound, "Session not found");
@@ -396,6 +479,17 @@ diagnosisRoutes.post("/:id/messages", async (c) => {
     role: "assistant",
     content: result.text,
   });
+  const turnCount = await c.env.DB.prepare(
+    "SELECT COALESCE(MAX(turn_number), 0) AS n FROM diagnostic_messages WHERE session_id = ?1",
+  )
+    .bind(Number(params.data.id))
+    .first<{ n: number }>();
+  const nextTurn = (turnCount?.n ?? 0) + 1;
+  await c.env.DB.prepare(
+    "INSERT INTO diagnostic_messages (session_id, turn_number, role, content) VALUES (?1, ?2, ?3, ?4), (?1, ?5, ?6, ?7)",
+  )
+    .bind(Number(params.data.id), nextTurn, "user", parsed.data.message, nextTurn + 1, "assistant", result.text)
+    .run();
 
   return c.json({
     session_id: params.data.id,

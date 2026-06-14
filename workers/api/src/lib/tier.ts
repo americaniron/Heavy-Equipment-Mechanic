@@ -10,8 +10,15 @@ const PAST_DUE_GRACE_SECONDS = 3 * 24 * 60 * 60;
 interface SubRow {
   tier: Tier;
   status: SubscriptionStatus;
-  past_due_since: number | null;
-  current_period_end: number | null;
+  past_due_since: string | number | null;
+  current_period_end: string | number | null;
+}
+
+function timestampMs(value: string | number | null): number {
+  if (value === null) return 0;
+  if (typeof value === "number") return value < 1_000_000_000_000 ? value * 1000 : value;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 /**
@@ -32,9 +39,9 @@ export async function effectiveTier(
 ): Promise<Tier> {
   const row = await db
     .prepare(
-      "SELECT tier, status, past_due_since, current_period_end FROM subscriptions WHERE user_id = ?1",
+      "SELECT tier, status, past_due_since, current_period_end FROM subscriptions WHERE customer_id = ?1",
     )
-    .bind(userId)
+    .bind(Number(userId))
     .first<SubRow>();
 
   if (!row) return "free";
@@ -42,9 +49,9 @@ export async function effectiveTier(
   if (row.status === "active" || row.status === "trialing") return row.tier;
 
   if (row.status === "past_due") {
-    const since = row.past_due_since ?? 0;
-    const now = Math.floor(Date.now() / 1000);
-    if (since > 0 && now - since <= PAST_DUE_GRACE_SECONDS) return row.tier;
+    const sinceMs = timestampMs(row.past_due_since);
+    const nowMs = Date.now();
+    if (sinceMs > 0 && (nowMs - sinceMs) / 1000 <= PAST_DUE_GRACE_SECONDS) return row.tier;
     return "free";
   }
 
