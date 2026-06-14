@@ -16,8 +16,7 @@
     "enabled": true
   },
   // Custom domain — portal.fixmyiron.com is the ONLY public hostname for
-  // this Worker. The legacy marketing site at www.fixmyiron.com (Google
-  // Frontend → americanironus.com) stays the customer-facing landing
+  // this Worker. The marketing site at www.fixmyiron.com stays the customer-facing landing
   // page; this Worker hosts only the auth-gated /portal slice plus a
   // host-scoped / → /portal redirect (see next.config.mjs).
   // The bare apex fixmyiron.com is intentionally unrouted.
