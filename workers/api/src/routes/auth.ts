@@ -43,11 +43,34 @@ async function sendPasswordResetEmail(
   const resetUrl = `${passwordResetBaseUrl(c)}/reset-password?token=${encodeURIComponent(token)}`;
   const html = `<p>Use this link to reset your FixMyIron password:</p><p><a href="${resetUrl}">${resetUrl}</a></p><p>This link expires in 1 hour.</p>`;
   const text = `Use this link to reset your FixMyIron password:\n\n${resetUrl}\n\nThis link expires in 1 hour.`;
+  const from = c.env.RESEND_FROM_EMAIL || "FixMyIron <noreply@mail.fixmyiron.com>";
+
+  if (c.env.RESEND_API_KEY) {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${c.env.RESEND_API_KEY}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        from,
+        to: email,
+        subject: "Reset your FixMyIron password",
+        html,
+        text,
+      }),
+    });
+    if (!response.ok) {
+      log.error("resend_email_send_failed", { status: response.status });
+      return false;
+    }
+    return true;
+  }
 
   if (c.env.EMAIL) {
     try {
       await c.env.EMAIL.send({
-        from: "FixMyIron <noreply@fixmyiron.com>",
+        from,
         to: email,
         subject: "Reset your FixMyIron password",
         html,
@@ -59,24 +82,6 @@ async function sendPasswordResetEmail(
         err: err instanceof Error ? err.message : String(err),
       });
     }
-  }
-
-  if (c.env.RESEND_API_KEY) {
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${c.env.RESEND_API_KEY}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        from: c.env.RESEND_FROM_EMAIL || "FixMyIron <onboarding@resend.dev>",
-        to: email,
-        subject: "Reset your FixMyIron password",
-        html,
-        text,
-      }),
-    });
-    return response.ok;
   }
 
   return false;
@@ -238,7 +243,12 @@ authRoutes.post("/password-reset/request", async (c) => {
       .bind(token, Number(customer.id), expiresAt)
       .run();
     try {
-      await sendPasswordResetEmail(c, emailLc, token);
+      const emailed = await sendPasswordResetEmail(c, emailLc, token);
+      if (!emailed) {
+        log.error("password_reset_email_not_delivered", {
+          customerId: Number(customer.id),
+        });
+      }
     } catch (err) {
       log.error("password_reset_email_failed", {
         customerId: Number(customer.id),
