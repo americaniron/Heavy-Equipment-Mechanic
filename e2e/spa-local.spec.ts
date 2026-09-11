@@ -28,6 +28,7 @@ test.describe("local SPA native auth", () => {
   test("anonymous users can start text diagnosis after consent", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByTestId("landing-page")).toBeVisible();
+    await page.getByTestId("checkbox-consent").scrollIntoViewIfNeeded();
     await page.getByTestId("checkbox-consent").click();
     await expect(page.getByTestId("button-start-text-diagnosis")).toBeEnabled();
   });
