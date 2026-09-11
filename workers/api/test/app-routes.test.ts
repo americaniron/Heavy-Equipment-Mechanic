@@ -115,4 +115,60 @@ describe("worker public routes", () => {
     );
     expect(res.status).toBe(401);
   });
+
+  it("reports LiveAvatar availability without leaking keys", async () => {
+    const res = await worker.fetch(new Request("https://api.fixmyiron.com/api/avatar/available"), env(), ctx as any);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { provider?: string; configured?: boolean };
+    expect(body.provider).toBe("liveavatar-openai");
+    expect(body.configured).toBe(false);
+  });
+
+  it("returns 410 for deprecated D-ID speak", async () => {
+    const res = await worker.fetch(
+      new Request("https://api.fixmyiron.com/api/avatar/speak", { method: "POST", body: "{}" }),
+      env(),
+      ctx as any,
+    );
+    expect(res.status).toBe(410);
+  });
+
+  it("rejects native registration without required fields", async () => {
+    const res = await worker.fetch(
+      new Request("https://api.fixmyiron.com/api/auth/register", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "not-enough" }),
+      }),
+      env(),
+      ctx as any,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects unauthenticated session listing", async () => {
+    const res = await worker.fetch(new Request("https://api.fixmyiron.com/api/sessions"), env(), ctx as any);
+    expect(res.status).toBe(401);
+  });
+
+  it("rejects transcribe without a session or auth token", async () => {
+    const res = await worker.fetch(
+      new Request("https://api.fixmyiron.com/api/transcribe", { method: "POST", body: new FormData() }),
+      env(),
+      ctx as any,
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it("rejects Clerk webhooks without a Svix signature", async () => {
+    const res = await worker.fetch(
+      new Request("https://api.fixmyiron.com/api/webhooks/clerk", {
+        method: "POST",
+        body: JSON.stringify({ type: "user.created", data: {} }),
+      }),
+      env(),
+      ctx as any,
+    );
+    expect(res.status).toBe(401);
+  });
 });

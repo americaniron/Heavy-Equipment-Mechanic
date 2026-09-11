@@ -1936,6 +1936,7 @@ function AIFaultCodeSection({ authToken }: { authToken: string | null }) {
             ) : (
               <div data-testid="fault-code-result">
                 <p className="text-[#FFCD11] font-bold text-lg">{result.code || code}</p>
+                {result.manufacturer && <p className="text-gray-500 text-xs">{result.manufacturer}{result.spn ? ` · SPN ${result.spn}` : ""}{result.fmi ? ` / FMI ${result.fmi}` : ""}</p>}
                 <p className="text-white mt-1">{result.description || result.meaning || "Interpretation available after AI analysis"}</p>
                 {result.likely_causes && <p className="text-gray-300 text-sm mt-2">Causes: {String(result.likely_causes)}</p>}
                 {result.paid_fields_locked && <p className="text-yellow-400 text-xs mt-2">{result.upgrade_hint}</p>}

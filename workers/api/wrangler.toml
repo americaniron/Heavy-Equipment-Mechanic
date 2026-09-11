@@ -9,7 +9,7 @@ workers_dev = true
 APP_ENV = "staging"
 PADDLE_ENVIRONMENT = "sandbox"
 CLERK_ACCOUNT_PORTAL_URL = "https://www.fixmyiron.com/login"
-WEB_ORIGIN = "http://localhost:5173,http://localhost:3000,https://fixmyiron-web-staging.americanironadmin.workers.dev,https://fixmyiron-hem-git.pages.dev"
+WEB_ORIGIN = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173,http://localhost:3000,https://fixmyiron-web-staging.americanironadmin.workers.dev,https://fixmyiron-hem-git.pages.dev"
 
 # D1 — relational database
 [[d1_databases]]

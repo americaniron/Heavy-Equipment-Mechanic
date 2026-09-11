@@ -34,7 +34,7 @@ export default function ForgotPassword() {
     <div className="min-h-screen bg-[#111] flex items-center justify-center px-4">
       <Card className="w-full max-w-md bg-[#1a1a1a] border-[#333]">
         <CardHeader>
-          <CardTitle className="text-white">Forgot password</CardTitle>
+          <CardTitle className="text-white">Reset password</CardTitle>
           <CardDescription className="text-gray-400">
             Enter your FixMyIron email. We will send a reset link if the account exists.
           </CardDescription>
@@ -52,7 +52,7 @@ export default function ForgotPassword() {
                 data-testid="input-forgot-email"
               />
             </div>
-            <Button className="w-full bg-[#FFCD11] text-black" disabled={pending} data-testid="button-forgot-submit">
+            <Button className="w-full bg-[#FFCD11] text-black" disabled={pending} data-testid="button-send-reset">
               {pending ? "Sending…" : "Send reset link"}
             </Button>
             <Button type="button" variant="ghost" className="w-full text-gray-300" onClick={() => setLocation("/login")}>

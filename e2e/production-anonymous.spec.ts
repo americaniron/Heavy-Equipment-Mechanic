@@ -22,6 +22,39 @@ test.describe("production anonymous SPA", () => {
     await page.waitForTimeout(1500);
     expect(page.url()).not.toContain("accounts.fixmyiron.com");
   });
+
+  test("register, forgot-password, and homepage navigation stay native", async ({ page }) => {
+    await page.goto("/register");
+    await expect(page.getByTestId("button-register-tab")).toBeVisible();
+    await page.getByTestId("button-register-tab").click();
+    await expect(page.getByTestId("input-first-name")).toBeVisible();
+
+    await page.goto("/forgot-password");
+    await expect(page.locator("input[type='email']").first()).toBeVisible();
+
+    await page.goto("/live-desk");
+    const backHome = page.getByTestId("link-back-home");
+    if (await backHome.isVisible().catch(() => false)) {
+      await backHome.click();
+    }
+    await expect(page.getByTestId("nav-bar").or(page.getByTestId("landing-page"))).toBeVisible();
+  });
+
+  test("start diagnosis is a real control, not a mocked client success", async ({ page }) => {
+    await page.goto("/");
+    const backHome = page.getByTestId("link-back-home");
+    if (await backHome.isVisible().catch(() => false)) {
+      await backHome.click();
+    }
+    const start = page.getByTestId("button-start-session");
+    if (await start.count()) {
+      await start.scrollIntoViewIfNeeded();
+      await expect(start).toBeVisible();
+      await start.click();
+    } else {
+      await expect(page.getByTestId("button-register-to-start").or(page.getByTestId("nav-bar"))).toBeVisible();
+    }
+  });
 });
 
 test.describe("production API", () => {

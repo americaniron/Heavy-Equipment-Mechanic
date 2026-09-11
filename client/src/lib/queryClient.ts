@@ -35,6 +35,9 @@ export const getQueryFn: <T>(options: {
   async ({ queryKey }) => {
     const res = await fetch(queryKey.join("/") as string, {
       credentials: "include",
+      headers: localStorage.getItem("authToken")
+        ? { "x-auth-token": localStorage.getItem("authToken") as string }
+        : undefined,
     });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {

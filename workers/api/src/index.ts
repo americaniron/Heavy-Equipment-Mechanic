@@ -15,6 +15,7 @@ import { authRoutes } from "./routes/auth";
 import { portalRoutes } from "./routes/portal";
 import { avatarRoutes } from "./routes/avatar";
 import { liveSessionRoutes } from "./routes/sessions";
+import { transcribeRoutes } from "./routes/transcribe";
 import { clerkAuth } from "./lib/auth-middleware";
 import { jsonError, ErrorCode } from "./lib/errors";
 import { log, newRequestId } from "./lib/log";
@@ -78,6 +79,7 @@ app.use("/api/*", clerkAuth);
 
 app.route("/api/avatar", avatarRoutes);
 app.route("/api/sessions", liveSessionRoutes);
+app.route("/api/transcribe", transcribeRoutes);
 app.get("/api/shared/:token", async (c) => {
   const token = c.req.param("token");
   const row = await selectOne(

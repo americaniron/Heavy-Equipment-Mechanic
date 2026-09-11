@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,10 @@ const EQUIPMENT_TYPES = [
 ];
 
 export default function AuthPage() {
-  const [mode, setMode] = useState<"login" | "register">("login");
+  const [location, setLocation] = useLocation();
+  const [mode, setMode] = useState<"login" | "register">(() =>
+    window.location.pathname.startsWith("/register") ? "register" : "login",
+  );
   const [regStep, setRegStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [email, setEmail] = useState("");
@@ -41,15 +44,19 @@ export default function AuthPage() {
 
   const { login, register, isAuthenticated } = useAuth();
   const { toast } = useToast();
-  const [, setLocation] = useLocation();
 
   const params = new URLSearchParams(window.location.search);
   const redirectTo = params.get("redirect") || "/portal";
 
-  if (isAuthenticated) {
-    setLocation(redirectTo);
-    return null;
-  }
+  useEffect(() => {
+    setMode(location.startsWith("/register") ? "register" : "login");
+  }, [location]);
+
+  useEffect(() => {
+    if (isAuthenticated) setLocation(redirectTo);
+  }, [isAuthenticated, redirectTo, setLocation]);
+
+  if (isAuthenticated) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -139,7 +146,7 @@ export default function AuthPage() {
               <Button
                 variant={mode === "login" ? "default" : "outline"}
                 className={mode === "login" ? "flex-1 bg-[#FFCD11] text-black hover:bg-[#e6b800]" : "flex-1 border-[#444] text-gray-300"}
-                onClick={() => { setMode("login"); setRegStep(1); }}
+                onClick={() => { setMode("login"); setRegStep(1); setLocation("/login"); }}
                 data-testid="button-login-tab"
               >
                 Sign In
@@ -147,15 +154,15 @@ export default function AuthPage() {
               <Button
                 variant={mode === "register" ? "default" : "outline"}
                 className={mode === "register" ? "flex-1 bg-[#FFCD11] text-black hover:bg-[#e6b800]" : "flex-1 border-[#444] text-gray-300"}
-                onClick={() => { setMode("register"); setRegStep(1); }}
+                onClick={() => { setMode("register"); setRegStep(1); setLocation("/register"); }}
                 data-testid="button-register-tab"
               >
                 Create Account
               </Button>
             </div>
-            <CardTitle className="text-white text-lg">
-              {mode === "login" ? "Sign in to your account" :
-               regStep === 1 ? "Step 1: Your Information" : "Step 2: Equipment & Issue"}
+            <CardTitle className="text-white text-lg" data-testid="heading-auth">
+              {mode === "login" ? "Welcome back" :
+               regStep === 1 ? "Create account" : "Step 2: Equipment & Issue"}
             </CardTitle>
             <CardDescription className="text-gray-400">
               {mode === "login"

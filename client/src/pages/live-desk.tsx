@@ -155,6 +155,7 @@ export default function LiveDesk() {
   const avatarSessionTokenRef = useRef<string | null>(null);
   const avatarSessionIdRef = useRef<string | null>(null);
   const avatarProviderRef = useRef<"heygen" | null>(null);
+  const liveAvatarActiveRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const conversationRef = useRef<Array<{ role: string; content: string }>>([]);
   const pendingHandoffRef = useRef<any>(null);
@@ -226,6 +227,7 @@ export default function LiveDesk() {
   useEffect(() => { isTalkingRef.current = isTalking; }, [isTalking]);
 
   useEffect(() => {
+    if (liveAvatarActiveRef.current) return;
     if (!isTalking && !isProcessing && !introPlaying && avatarReady && sessionData && !micMuted && !manualStopRef.current) {
       if (!isRecordingRef.current && voiceCaptureActiveRef.current) {
         const timer = setTimeout(() => {
@@ -240,6 +242,7 @@ export default function LiveDesk() {
   }, [isTalking, isProcessing, introPlaying, avatarReady, sessionData, micMuted]);
 
   const startVoiceCaptureImmediate = useCallback(async () => {
+    if (liveAvatarActiveRef.current) return;
     if (isRecordingRef.current || voiceCaptureStartingRef.current) return;
     if (isTalkingRef.current || isProcessingRef.current || micMutedRef.current) {
       return;
@@ -312,7 +315,15 @@ export default function LiveDesk() {
 
           const formData = new FormData();
           formData.append("audio", blob, "recording.webm");
-          const res = await fetch("/api/transcribe", { method: "POST", body: formData });
+          const headers: Record<string, string> = {};
+          const session = sessionDataRef.current;
+          const sessionToken = session
+            ? (sessionStorage.getItem(`session_token_${session.id}`) || session.accessToken || "")
+            : "";
+          if (sessionToken) headers["x-session-token"] = sessionToken;
+          const storedAuth = localStorage.getItem("authToken");
+          if (storedAuth) headers["x-auth-token"] = storedAuth;
+          const res = await fetch("/api/transcribe", { method: "POST", headers, body: formData });
           if (!res.ok) throw new Error("Transcription failed");
           const { text } = await res.json();
 
@@ -456,6 +467,7 @@ export default function LiveDesk() {
     avatarSessionTokenRef.current = null;
     avatarSessionIdRef.current = null;
     avatarProviderRef.current = null;
+    liveAvatarActiveRef.current = false;
   }, []);
 
   useEffect(() => {
@@ -562,6 +574,31 @@ export default function LiveDesk() {
     }
   };
 
+  const persistSessionLine = async (
+    content: string,
+    role: "user" | "assistant" = "user",
+  ) => {
+    const session = sessionDataRef.current;
+    if (!session || !content.trim()) return;
+    const sessionToken =
+      accessToken ||
+      session.accessToken ||
+      sessionStorage.getItem(`session_token_${session.id}`);
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (sessionToken) headers["x-session-token"] = sessionToken;
+    if (authToken) headers["x-auth-token"] = authToken;
+    await fetch(`/api/sessions/${session.id}/message`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        content,
+        accessToken: sessionToken,
+        skipAi: true,
+        role,
+      }),
+    }).catch(() => {});
+  };
+
   const connectAvatar = async (agentType: string = "admin", language: string = "en"): Promise<Room | null> => {
     const res = await apiRequest("POST", "/api/avatar/session", { agentType, language });
     const data = await res.json();
@@ -642,12 +679,19 @@ export default function LiveDesk() {
             speakEndedResolveRef.current();
             speakEndedResolveRef.current = null;
           }
-        } else if (eventType === "avatar.transcription") {
-          if (message.text) {
-            setSubtitleText(message.text);
+        } else if (eventType === "avatar.transcription" || eventType === "agent.transcription" || eventType === "response.audio_transcript.done") {
+          const text = message.text || message.transcript;
+          if (text) {
+            setSubtitleText(text);
+            setTranscriptEntries(prev => [...prev, { role: "assistant", text, timestamp: new Date() }]);
+            persistSessionLine(text, "assistant");
           }
-        } else if (eventType === "user.transcription") {
-          console.log("LiveAvatar user transcription (ignored, using local capture):", message.text);
+        } else if (eventType === "user.transcription" || eventType === "conversation.item.input_audio_transcription.completed") {
+          const text = message.text || message.transcript;
+          if (text) {
+            setTranscriptEntries(prev => [...prev, { role: "user", text, timestamp: new Date(), agent: "You" }]);
+            persistSessionLine(text, "user");
+          }
         } else if (eventType === "session.stopped") {
           setAvatarReady(false);
         }
@@ -656,13 +700,19 @@ export default function LiveDesk() {
       }
     });
 
+    room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
+      setIsTalking(speakers.some((speaker) => !speaker.isLocal));
+    });
+
     room.on(RoomEvent.Disconnected, () => {
       setAvatarReady(false);
+      liveAvatarActiveRef.current = false;
     });
 
     await room.connect(data.livekitUrl, data.livekitClientToken);
     await room.localParticipant.setMicrophoneEnabled(true);
     roomRef.current = room;
+    liveAvatarActiveRef.current = true;
     console.log("[Avatar] Connected via LiveAvatar LiveKit + OpenAI Realtime mic publish");
 
     return room;
@@ -730,9 +780,12 @@ export default function LiveDesk() {
           conversationRef.current.push({ role: "assistant", content: introText });
           setTranscriptEntries(prev => [...prev, { role: "assistant", text: introText, timestamp: new Date(), agent: selectedLanguage === "ar" ? "فاطمة" : "Sarah" }]);
 
-          startVoiceCapture();
+          if (liveAvatarActiveRef.current) {
+            console.log("[Avatar] OpenAI Realtime owns the microphone; skipping local MediaRecorder");
+          } else {
+            startVoiceCapture();
+          }
           resetIdleTimer();
-          console.log("Voice capture started after intro");
 
           await fetch(`/api/sessions/${session.id}/message`, {
             method: "POST",
@@ -799,6 +852,9 @@ export default function LiveDesk() {
     resetIdleTimer();
     isRecordingRef.current = false;
     cleanupAudioNodes();
+    if (liveAvatarActiveRef.current && roomRef.current) {
+      roomRef.current.localParticipant.setMicrophoneEnabled(false).catch(() => {});
+    }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
       try { mediaRecorderRef.current.stop(); } catch {}
     }
@@ -884,13 +940,16 @@ export default function LiveDesk() {
       if (handoffData) {
         await performHandoff(handoffData);
       } else {
-        startVoiceCapture();
+        if (!liveAvatarActiveRef.current) startVoiceCapture();
       }
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
       setIsProcessing(false);
       isProcessingRef.current = false;
+      if (liveAvatarActiveRef.current && roomRef.current && !micMutedRef.current) {
+        roomRef.current.localParticipant.setMicrophoneEnabled(true).catch(() => {});
+      }
     }
   };
 
@@ -943,9 +1002,8 @@ export default function LiveDesk() {
 
         const mechEstimate = Math.max(5000, mechGreeting.length * 80);
         await waitForSpeakEnd(Math.min(mechEstimate, 30000));
-        startVoiceCapture();
+        if (!liveAvatarActiveRef.current) startVoiceCapture();
         resetIdleTimer();
-        console.log("Voice capture started after mechanic greeting");
       }, 3000);
     } catch (err) {
       console.error("Handoff error:", err);
@@ -967,6 +1025,10 @@ export default function LiveDesk() {
         micMutedRef.current = false;
         setMicMuted(false);
         manualStopRef.current = false;
+        if (liveAvatarActiveRef.current && roomRef.current) {
+          await roomRef.current.localParticipant.setMicrophoneEnabled(true);
+          return;
+        }
         voiceCaptureActiveRef.current = true;
         if (!isRecordingRef.current && !isTalkingRef.current && !isProcessingRef.current) {
           await startVoiceCaptureImmediate();
@@ -974,6 +1036,9 @@ export default function LiveDesk() {
       } else {
         micMutedRef.current = true;
         setMicMuted(true);
+        if (liveAvatarActiveRef.current && roomRef.current) {
+          await roomRef.current.localParticipant.setMicrophoneEnabled(false);
+        }
         stopVoiceCapture();
         voiceCaptureActiveRef.current = true;
       }
@@ -1844,14 +1909,26 @@ export default function LiveDesk() {
               </div>
 
               {!isAuthenticated ? (
-                <Button
-                  className="w-full h-14 text-lg font-black bg-[#FFCD11] text-black hover:bg-[#e6b800] rounded-lg shadow-lg shadow-[#FFCD11]/20"
-                  onClick={() => setLocation("/auth?redirect=/live-desk")}
-                  data-testid="button-register-to-start"
-                >
-                  <User className="w-5 h-5 mr-2" />
-                  {selectedLanguage === "ar" ? "سجل الدخول للبدء" : "REGISTER / SIGN IN TO START"}
-                </Button>
+                <div className="space-y-3">
+                  <Button
+                    className="w-full h-14 text-lg font-black bg-[#FFCD11] text-black hover:bg-[#e6b800] rounded-lg shadow-lg shadow-[#FFCD11]/20"
+                    onClick={() => setLocation("/auth?redirect=/live-desk")}
+                    data-testid="button-register-to-start"
+                  >
+                    <User className="w-5 h-5 mr-2" />
+                    {selectedLanguage === "ar" ? "سجل الدخول للبدء" : "REGISTER / SIGN IN TO START"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full h-12 border-[#FFCD11]/40 text-[#FFCD11] hover:bg-[#FFCD11]/10"
+                    onClick={startSession}
+                    disabled={!consentGiven || isConnecting}
+                    data-testid="button-start-text-diagnosis"
+                  >
+                    {isConnecting ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <MessageCircle className="w-5 h-5 mr-2" />}
+                    Start text diagnosis
+                  </Button>
+                </div>
               ) : (
                 <Button
                   className="w-full h-14 text-lg font-black bg-[#FFCD11] text-black hover:bg-[#e6b800] rounded-lg shadow-lg shadow-[#FFCD11]/20"
@@ -1907,10 +1984,6 @@ export default function LiveDesk() {
                 size="lg"
                 className="h-14 px-10 font-black bg-[#FFCD11] text-black hover:bg-[#e6b800] rounded-full shadow-[0_0_30px_rgba(255,205,17,0.15)]"
                 onClick={() => {
-                  if (!isAuthenticated) {
-                    setLocation("/auth?redirect=/live-desk");
-                    return;
-                  }
                   if (!consentGiven) {
                     document.getElementById("speak-admin-section")?.scrollIntoView({ behavior: "smooth" });
                     toast({ title: "Please check the consent box first", variant: "destructive" });
@@ -2084,8 +2157,11 @@ export default function LiveDesk() {
                 <p className="text-white text-sm font-semibold">AMERICAN IRON</p>
                 <p className="text-white/60 text-xs" data-testid="text-current-agent">
                   {currentAgent === "admin"
-                    ? "Registration Admin"
-                    : currentMechanic?.name || "Specialist"}
+                    ? (selectedLanguage === "ar" ? "فاطمة — الاستقبال" : "Sarah — Front Desk")
+                    : (currentMechanic?.name || "Specialist")}
+                </p>
+                <p className="text-[#FFCD11]/80 text-[10px] uppercase tracking-wider" data-testid="text-avatar-state">
+                  {isConnecting ? "connecting" : isTalking ? "speaking" : isProcessing ? "thinking" : isListening || avatarReady ? "listening" : "idle"}
                 </p>
               </div>
             </div>

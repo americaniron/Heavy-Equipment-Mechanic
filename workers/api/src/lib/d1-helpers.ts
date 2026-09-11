@@ -112,6 +112,11 @@ export async function getById<T = DbRow>(
   return selectOne<T>(db, `SELECT * FROM "${table}" WHERE id = ?1`, id);
 }
 
+export async function tableColumns(db: D1Database, table: string): Promise<Set<string>> {
+  const info = await db.prepare(`PRAGMA table_info("${table}")`).all<{ name: string }>();
+  return new Set((info.results ?? []).map((column) => column.name));
+}
+
 export async function createAuthSession(
   db: D1Database,
   customerId: number,

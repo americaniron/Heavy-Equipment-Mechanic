@@ -34,6 +34,10 @@ interface FaultCodeRow {
   repair_actions: string | null;
   source_url: string | null;
   last_refreshed: string;
+  manufacturer?: string | null;
+  spn?: string | null;
+  fmi?: string | null;
+  provenance?: string | null;
 }
 
 function safeParseJsonArray(s: string | null): string[] {
@@ -56,43 +60,48 @@ function safeParseJsonArray(s: string | null): string[] {
 
 const SearchQuery = z.object({
   q: z.string().trim().min(2).max(80).optional(),
+  manufacturer: z.string().trim().min(2).max(80).optional(),
   limit: z.coerce.number().int().min(1).max(50).optional(),
 });
 
 faultCodesRoutes.get("/search", async (c) => {
   const url = new URL(c.req.url);
   const parsed = SearchQuery.safeParse({
-    q: url.searchParams.get("q") ?? undefined,
+    q: url.searchParams.get("q") || undefined,
+    manufacturer: url.searchParams.get("manufacturer") || undefined,
     limit: url.searchParams.get("limit") ?? undefined,
   });
   if (!parsed.success) {
     return jsonError(c, 400, ErrorCode.BadRequest, "q must be 2-80 chars");
   }
-  const { q, limit = 25 } = parsed.data;
+  const { q, manufacturer, limit = 25 } = parsed.data;
   const normalized = q ? normalizeFaultCode(q) : "";
-  if (!normalized) {
-    // Empty-search: return the 25 most-recently-refreshed codes as a starter.
+  const maker = manufacturer ? manufacturer.toLowerCase() : "";
+  if (!normalized && !maker) {
     const r = await c.env.DB.prepare(
-      "SELECT code, description, severity FROM fault_codes ORDER BY last_refreshed DESC LIMIT ?1",
+      "SELECT code, description, severity, manufacturer FROM fault_codes ORDER BY last_refreshed DESC LIMIT ?1",
     )
       .bind(limit)
-      .all<{ code: string; description: string; severity: string | null }>();
+      .all<{ code: string; description: string; severity: string | null; manufacturer: string | null }>();
     return c.json({ results: r.results ?? [], total_estimate: 0 });
   }
-  // LIKE search on code + description. Codes are short (~20 chars max) so
-  // a LIKE is fine; we don't need FTS5 here.
   const pattern = `%${normalized.replace(/[%_]/g, "")}%`;
   const r = await c.env.DB.prepare(
-    `SELECT code, description, severity
+    `SELECT code, description, severity, manufacturer
      FROM fault_codes
-     WHERE code LIKE ?1 OR description LIKE ?1
+     WHERE (
+        ?1 = '' OR code LIKE ?2 OR description LIKE ?2 OR IFNULL(spn,'') LIKE ?2 OR IFNULL(fmi,'') LIKE ?2
+     )
+     AND (
+        ?3 = '' OR lower(IFNULL(manufacturer,'')) = ?3
+     )
      ORDER BY
-       CASE WHEN code LIKE ?2 THEN 0 ELSE 1 END,
+       CASE WHEN code LIKE ?4 THEN 0 ELSE 1 END,
        length(code), code
-     LIMIT ?3`,
+     LIMIT ?5`,
   )
-    .bind(pattern, `${normalized}%`, limit)
-    .all<{ code: string; description: string; severity: string | null }>();
+    .bind(normalized, pattern, maker, `${normalized}%`, limit)
+    .all<{ code: string; description: string; severity: string | null; manufacturer: string | null }>();
   return c.json({ results: r.results ?? [] });
 });
 
@@ -104,11 +113,11 @@ faultCodesRoutes.get("/:code", async (c) => {
   }
   const row = await c.env.DB.prepare(
     `SELECT code, description, severity, likely_causes, repair_actions,
-            source_url, last_refreshed
+            source_url, last_refreshed, manufacturer, spn, fmi, provenance
      FROM fault_codes WHERE code = ?1`,
   )
     .bind(code)
-    .first<FaultCodeRow>();
+    .first<FaultCodeRow & { manufacturer?: string | null; spn?: string | null; fmi?: string | null; provenance?: string | null }>();
   if (!row) return jsonError(c, 404, ErrorCode.NotFound, "Fault code not found");
 
   const tier = await effectiveTier(c.env.DB, userId);
@@ -119,6 +128,7 @@ faultCodesRoutes.get("/:code", async (c) => {
     code: row.code,
     description: row.description,
     severity: row.severity,
+    manufacturer: row.manufacturer ?? null,
   };
 
   if (!showPaid) {
@@ -162,6 +172,9 @@ faultCodesRoutes.get("/:code", async (c) => {
     related_parts: relatedParts,
     source_url: row.source_url,
     last_refreshed: row.last_refreshed,
+    spn: row.spn ?? null,
+    fmi: row.fmi ?? null,
+    provenance: row.provenance ?? null,
     paid_fields_locked: false,
   });
 });

@@ -178,6 +178,18 @@ export async function createCustomerPortalSession(
   return { url };
 }
 
+async function firstSubscriptionRow(
+  db: D1Database,
+  sql: string,
+  value: string | number,
+): Promise<DbRow | null> {
+  try {
+    return await selectOne<DbRow>(db, sql, value);
+  } catch {
+    return null;
+  }
+}
+
 export async function upsertStripeIds(
   env: Env,
   customerId: number,
@@ -191,34 +203,82 @@ export async function upsertStripeIds(
     pastDueSince?: number | null;
   },
 ): Promise<void> {
-  const existing = await selectOne<{ id: number }>(
+  const customer = await selectOne<{ clerk_user_id: string | null }>(
     env.DB,
-    "SELECT id FROM subscriptions WHERE customer_id = ?1 LIMIT 1",
+    "SELECT clerk_user_id FROM customers WHERE id = ?1",
     customerId,
   );
+  const clerkId = customer?.clerk_user_id ?? null;
+  const userKey = clerkId || `customer:${customerId}`;
   const now = Math.floor(Date.now() / 1000);
+
+  const existing =
+    (await firstSubscriptionRow(
+      env.DB,
+      "SELECT * FROM subscriptions WHERE customer_id = ?1 LIMIT 1",
+      customerId,
+    )) ||
+    (await firstSubscriptionRow(
+      env.DB,
+      "SELECT * FROM subscriptions WHERE user_id = ?1 LIMIT 1",
+      userKey,
+    )) ||
+    (clerkId
+      ? await firstSubscriptionRow(
+          env.DB,
+          "SELECT * FROM subscriptions WHERE user_id = ?1 LIMIT 1",
+          clerkId,
+        )
+      : null) ||
+    (patch.stripeCustomerId
+      ? await firstSubscriptionRow(
+          env.DB,
+          "SELECT * FROM subscriptions WHERE stripe_customer_id = ?1 LIMIT 1",
+          patch.stripeCustomerId,
+        )
+      : null);
+
+  const binds = [
+    customerId,
+    patch.stripeCustomerId ?? null,
+    patch.stripeSubscriptionId ?? null,
+    patch.stripePriceId ?? null,
+    patch.tier ?? "free",
+    patch.status ?? "canceled",
+    patch.currentPeriodEnd ?? null,
+    patch.pastDueSince ?? null,
+    now,
+    clerkId,
+    userKey,
+  ];
+
   if (!existing) {
-    await env.DB.prepare(
+    const inserts = [
       `INSERT INTO subscriptions (
          customer_id, stripe_customer_id, stripe_subscription_id, stripe_price_id,
-         tier, status, current_period_end, past_due_since, updated_at
-       ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`,
-    )
-      .bind(
-        customerId,
-        patch.stripeCustomerId ?? null,
-        patch.stripeSubscriptionId ?? null,
-        patch.stripePriceId ?? null,
-        patch.tier ?? "free",
-        patch.status ?? "canceled",
-        patch.currentPeriodEnd ?? null,
-        patch.pastDueSince ?? null,
-        now,
-      )
-      .run();
+         tier, status, current_period_end, past_due_since, updated_at, clerk_user_id
+       ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)`,
+      `INSERT INTO subscriptions (
+         user_id, customer_id, clerk_user_id, stripe_customer_id, stripe_subscription_id,
+         stripe_price_id, tier, status, current_period_end, past_due_since, updated_at
+       ) VALUES (?11, ?1, ?10, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`,
+    ];
+    let lastError: unknown;
+    for (const sql of inserts) {
+      try {
+        await env.DB.prepare(sql).bind(...binds).run();
+        return;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+    log.error("stripe_subscription_insert_failed", {
+      err: lastError instanceof Error ? lastError.message : String(lastError),
+    });
     return;
   }
-  await env.DB.prepare(
+
+  const updates = [
     `UPDATE subscriptions SET
        stripe_customer_id = COALESCE(?2, stripe_customer_id),
        stripe_subscription_id = COALESCE(?3, stripe_subscription_id),
@@ -229,19 +289,25 @@ export async function upsertStripeIds(
        past_due_since = ?8,
        updated_at = ?9
      WHERE customer_id = ?1`,
-  )
-    .bind(
-      customerId,
-      patch.stripeCustomerId ?? null,
-      patch.stripeSubscriptionId ?? null,
-      patch.stripePriceId ?? null,
-      patch.tier ?? null,
-      patch.status ?? null,
-      patch.currentPeriodEnd ?? null,
-      patch.pastDueSince ?? null,
-      now,
-    )
-    .run();
+    `UPDATE subscriptions SET
+       stripe_customer_id = COALESCE(?2, stripe_customer_id),
+       stripe_subscription_id = COALESCE(?3, stripe_subscription_id),
+       stripe_price_id = COALESCE(?4, stripe_price_id),
+       tier = COALESCE(?5, tier),
+       status = COALESCE(?6, status),
+       current_period_end = COALESCE(?7, current_period_end),
+       past_due_since = ?8,
+       updated_at = ?9
+     WHERE user_id = ?11`,
+  ];
+  for (const sql of updates) {
+    try {
+      const result = await env.DB.prepare(sql).bind(...binds).run();
+      if (result.meta.changes) return;
+    } catch {
+      /* try the next schema shape */
+    }
+  }
 }
 
 export async function applyStripeSubscriptionObject(

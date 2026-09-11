@@ -9,6 +9,7 @@ import {
   selectAll,
   selectOne,
   camelizeRow,
+  camelizeRows,
   type DbRow,
 } from "../lib/d1-helpers";
 import { complete } from "../lib/anthropic";
@@ -89,6 +90,17 @@ liveSessionRoutes.post("/", async (c) => {
   return c.json({ ...(camelizeRow(row) ?? {}), id, accessToken });
 });
 
+liveSessionRoutes.get("/", async (c) => {
+  const customer = await getCustomerByAuthToken(c.env.DB, tokenFrom(c));
+  if (!customer) return jsonError(c, 401, ErrorCode.Unauthenticated, "Sign in required");
+  const rows = await selectAll<DbRow>(
+    c.env.DB,
+    "SELECT * FROM sessions WHERE customer_id = ?1 ORDER BY id DESC LIMIT 50",
+    Number(customer.id),
+  );
+  return c.json(camelizeRows(rows));
+});
+
 liveSessionRoutes.get("/:id", async (c) => {
   const customer = await getCustomerByAuthToken(c.env.DB, tokenFrom(c));
   const access = sessionAccess(c);
@@ -132,15 +144,16 @@ liveSessionRoutes.post("/:id/message", async (c) => {
   const content = String(body.content ?? body.message ?? "").trim();
   if (!content) return jsonError(c, 400, ErrorCode.BadRequest, "Message content is required");
 
+  const storedRole = body.skipAi === true && body.role === "assistant" ? "assistant" : "user";
   await insertRow(c.env.DB, "session_messages", {
     session_id: sessionId,
-    role: "user",
+    role: storedRole,
     content,
     agent_type: typeof body.agentType === "string" ? body.agentType : "admin",
   });
 
   if (body.skipAi === true || content.startsWith("[")) {
-    return c.json({ reply: "", role: "assistant", skipped: true });
+    return c.json({ reply: "", role: storedRole, skipped: true });
   }
 
   if (!c.env.ANTHROPIC_API_KEY) {
