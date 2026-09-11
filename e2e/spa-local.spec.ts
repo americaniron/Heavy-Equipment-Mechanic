@@ -16,7 +16,7 @@ test.describe("local SPA native auth", () => {
     await page.goto("/login");
     await expect(page.getByTestId("input-email")).toBeVisible();
     await page.getByTestId("link-back-home").click();
-    await expect(page.getByTestId("landing-page").or(page.getByTestId("nav-bar"))).toBeVisible();
+    await expect(page.getByTestId("landing-page")).toBeVisible();
   });
 
   test("forgot-password uses the native reset form", async ({ page }) => {
@@ -30,5 +30,11 @@ test.describe("local SPA native auth", () => {
     await expect(page.getByTestId("landing-page")).toBeVisible();
     await page.getByTestId("checkbox-consent").click();
     await expect(page.getByTestId("button-start-text-diagnosis")).toBeEnabled();
+  });
+
+  test("portal without a session stays on FixMyIron", async ({ page }) => {
+    await page.goto("/portal");
+    await page.waitForTimeout(800);
+    expect(page.url()).not.toContain("accounts.fixmyiron.com");
   });
 });
