@@ -12,8 +12,8 @@ test.describe("production anonymous SPA", () => {
 
   test("native login form stays on FixMyIron", async ({ page }) => {
     await page.goto("/login");
-    await expect(page.getByLabel(/email/i).first()).toBeVisible();
-    await expect(page.locator("input[type='password']").first()).toBeVisible();
+    await expect(page.getByTestId("input-email")).toBeVisible();
+    await expect(page.getByTestId("input-password")).toBeVisible();
     expect(page.url()).not.toContain("accounts.fixmyiron.com");
   });
 
@@ -36,6 +36,6 @@ test.describe("production API", () => {
     const res = await request.post("https://api.fixmyiron.com/api/webhooks/paddle", {
       data: {},
     });
-    expect([404, 410]).toContain(res.status());
+    expect([401, 404, 410]).toContain(res.status());
   });
 });

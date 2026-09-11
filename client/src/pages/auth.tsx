@@ -237,10 +237,11 @@ export default function AuthPage() {
               {mode === "login" || (mode === "register" && regStep === 1) ? (
                 <>
                   <div>
-                    <Label className="text-gray-300 text-sm">Email *</Label>
+                    <Label htmlFor="login-email" className="text-gray-300 text-sm">Email *</Label>
                     <div className="relative mt-1">
                       <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
                       <Input
+                        id="login-email"
                         type="email"
                         value={email}
                         onChange={e => setEmail(e.target.value)}
@@ -252,10 +253,11 @@ export default function AuthPage() {
                     </div>
                   </div>
                   <div>
-                    <Label className="text-gray-300 text-sm">Password *</Label>
+                    <Label htmlFor="login-password" className="text-gray-300 text-sm">Password *</Label>
                     <div className="relative mt-1">
                       <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
                       <Input
+                        id="login-password"
                         type="password"
                         value={password}
                         onChange={e => setPassword(e.target.value)}
