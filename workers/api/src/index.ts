@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Env, Variables } from "./env";
 import { healthRoutes } from "./routes/health";
 import { clerkWebhook } from "./routes/webhooks/clerk";
-import { paddleWebhook } from "./routes/webhooks/paddle";
+import { stripeWebhook } from "./routes/webhooks/stripe";
 import { partsRoutes } from "./routes/parts";
 import { diagnosisRoutes } from "./routes/diagnosis";
 import { troubleshootingRoutes } from "./routes/troubleshooting";
@@ -13,9 +13,13 @@ import { predictiveRoutes } from "./routes/predictive";
 import { faultCodesRoutes } from "./routes/fault-codes";
 import { authRoutes } from "./routes/auth";
 import { portalRoutes } from "./routes/portal";
+import { avatarRoutes } from "./routes/avatar";
+import { liveSessionRoutes } from "./routes/sessions";
 import { clerkAuth } from "./lib/auth-middleware";
 import { jsonError, ErrorCode } from "./lib/errors";
 import { log, newRequestId } from "./lib/log";
+import { ensureOperationalSchema } from "./lib/ensure-schema";
+import { selectOne } from "./lib/d1-helpers";
 
 export { DiagnosticSession } from "./do/diagnostic-session";
 
@@ -25,6 +29,7 @@ app.use("*", async (c, next) => {
   const requestId = newRequestId();
   c.set("requestId", requestId);
   const started = Date.now();
+  await ensureOperationalSchema(c.env.DB).catch(() => undefined);
   await next();
   log.info("request", {
     requestId,
@@ -35,17 +40,19 @@ app.use("*", async (c, next) => {
   });
 });
 
-// CORS — tighten when WEB_ORIGIN is set; permissive in early staging only.
+// CORS — explicit allowlist only. Credentials-bearing browser calls must
+// never receive `*` in production.
 app.use("*", async (c, next) => {
   const origin = c.req.header("origin") ?? "";
-  const allowed = c.env.WEB_ORIGIN;
-  // Respond with the explicit allowed origin if it matches, else echo "*"
-  // Supports comma-separated origins (e.g., "https://a.com,https://b.com")
-  const allowOrigins = (allowed || "").split(",");
-  const allowOrigin = allowOrigins.includes(origin) ? origin : (allowed ? "*" : "*");
-  c.header("access-control-allow-origin", allowOrigin);
+  const allowed = (c.env.WEB_ORIGIN || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const allowOrigin = allowed.includes(origin) ? origin : "";
+  if (allowOrigin) c.header("access-control-allow-origin", allowOrigin);
   c.header("access-control-allow-headers", "authorization,content-type,x-auth-token,x-crm-api-key");
   c.header("access-control-allow-methods", "GET,POST,PATCH,DELETE,OPTIONS");
+  c.header("access-control-allow-credentials", "true");
   c.header("vary", "origin");
   if (c.req.method === "OPTIONS") return c.body(null, 204);
   await next();
@@ -53,16 +60,34 @@ app.use("*", async (c, next) => {
 
 app.route("/", healthRoutes);
 app.route("/api", healthRoutes);
-// Auth routes are public - no clerkAuth
 app.route("/api/auth", authRoutes);
 
 app.route("/api/webhooks/clerk", clerkWebhook);
-app.route("/api/webhooks/paddle", paddleWebhook);
+app.route("/api/webhooks/stripe", stripeWebhook);
+app.post("/api/webhooks/paddle", (c) =>
+  jsonError(
+    c,
+    410,
+    ErrorCode.Gone,
+    "Paddle billing has been replaced by Stripe.",
+    "Send events to /api/webhooks/stripe",
+  ),
+);
 
-// Attach Clerk session userId to context for any subsequent /api/* routes.
-// Webhook routes above this line do their own signature-based auth and
-// must not run through the Bearer-JWT middleware.
 app.use("/api/*", clerkAuth);
+
+app.route("/api/avatar", avatarRoutes);
+app.route("/api/sessions", liveSessionRoutes);
+app.get("/api/shared/:token", async (c) => {
+  const token = c.req.param("token");
+  const row = await selectOne(
+    c.env.DB,
+    "SELECT * FROM session_reports WHERE share_token = ?1 LIMIT 1",
+    token,
+  );
+  if (!row) return jsonError(c, 404, ErrorCode.NotFound, "Shared report not found");
+  return c.json(row);
+});
 
 app.route("/api/portal/ai/fault-codes", faultCodesRoutes);
 app.route("/api/portal/ai/parts", partsRoutes);

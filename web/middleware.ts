@@ -2,39 +2,20 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
 /**
- * Bulletproof middleware for cross-subdomain Clerk session.
- *
- * Why this shape:
- * - clerkMiddleware reads the publishable + secret keys explicitly so it
- *   uses the Clerk Frontend API (clerk.fixmyiron.com) for session
- *   verification regardless of cookie scoping quirks.
- * - Diagnostic logging is preserved so we can see what cookies / headers
- *   reach the Worker if the loop ever recurs.
- * - The redirect target is explicit (no relative URL guessing).
+ * Native FixMyIron auth lives on the production Vite SPA.
+ * Do not send users to Clerk Account Portal / accounts.fixmyiron.com.
  */
 const isProtectedRoute = createRouteMatcher(["/portal(.*)"]);
+const NATIVE_LOGIN = "https://www.fixmyiron.com/login";
 
 export default clerkMiddleware(
   async (auth, req) => {
     if (!isProtectedRoute(req)) return NextResponse.next();
 
     const { userId } = await auth();
-
     if (!userId) {
-      const cookieHeader = req.headers.get("cookie") ?? "";
-      const cookieKeys = cookieHeader
-        .split(";")
-        .map((c) => c.trim().split("=")[0])
-        .filter(Boolean);
-
-      console.log("middleware-no-session", {
-        url: req.url,
-        cookieKeys,
-        hasAuthHeader: !!req.headers.get("authorization"),
-      });
-
-      const signInUrl = new URL("https://accounts.fixmyiron.com/sign-in");
-      signInUrl.searchParams.set("redirect_url", req.url);
+      const signInUrl = new URL(NATIVE_LOGIN);
+      signInUrl.searchParams.set("redirect", req.url);
       return NextResponse.redirect(signInUrl);
     }
 
@@ -47,6 +28,5 @@ export default clerkMiddleware(
 );
 
 export const config = {
-  // Match portal routes AND the root - ensure auth gate at every entry point
   matcher: ["/portal(.*)", "/"],
 };

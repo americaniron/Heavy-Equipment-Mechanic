@@ -3,6 +3,7 @@ import type { Env, Variables } from "../../env";
 import { verifyClerkWebhook } from "../../lib/clerk-verify";
 import { jsonError, ErrorCode } from "../../lib/errors";
 import { log } from "../../lib/log";
+import { syncClerkUserToCustomer } from "../../lib/clerk-identity";
 
 export const clerkWebhook = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -50,8 +51,14 @@ clerkWebhook.post("/", async (c) => {
         log.warn("clerk_webhook_no_email", { requestId, eventType: event.type });
         return c.json({ ok: true, skipped: "no_primary_email" });
       }
-      // Insert with default tier='free' on first sight; keep tier on update
-      // (tier is owned by the Paddle webhook, not Clerk).
+      const firstName = String((event.data as { first_name?: string }).first_name ?? "");
+      const lastName = String((event.data as { last_name?: string }).last_name ?? "");
+      await syncClerkUserToCustomer(c.env, {
+        clerkUserId: data.id,
+        email,
+        firstName,
+        lastName,
+      });
       await c.env.DB.prepare(
         `INSERT INTO users (clerk_user_id, email, tier, created_at, updated_at)
          VALUES (?1, ?2, 'free', unixepoch(), unixepoch())
@@ -60,7 +67,8 @@ clerkWebhook.post("/", async (c) => {
            updated_at = unixepoch()`,
       )
         .bind(data.id, email)
-        .run();
+        .run()
+        .catch(() => undefined);
       log.info("clerk_user_synced", {
         requestId,
         eventType: event.type,
@@ -69,10 +77,15 @@ clerkWebhook.post("/", async (c) => {
       return c.json({ ok: true });
     }
     case "user.deleted": {
-      // Hard delete cascades to subscriptions, equipment, sessions.
-      await c.env.DB.prepare("DELETE FROM users WHERE clerk_user_id = ?1")
+      await c.env.DB.prepare(
+        "UPDATE customers SET status = 'deleted', clerk_user_id = NULL WHERE clerk_user_id = ?1",
+      )
         .bind(data.id)
         .run();
+      await c.env.DB.prepare("DELETE FROM users WHERE clerk_user_id = ?1")
+        .bind(data.id)
+        .run()
+        .catch(() => undefined);
       log.info("clerk_user_deleted", { requestId, userId: data.id });
       return c.json({ ok: true });
     }

@@ -5,47 +5,55 @@
  * .dev.vars locally). Every binding declared here MUST exist in wrangler.toml.
  */
 export interface Env {
-  // Bindings
   DB: D1Database;
   PADDLE_EVENTS_SEEN: KVNamespace;
   RATE_LIMITS: KVNamespace;
   SESSIONS: KVNamespace;
-  AUTH_KV: KVNamespace;  // For session tokens
+  AUTH_KV: KVNamespace;
   EMAIL?: {
     send: (message: {
       to: string | string[];
       from: string;
       subject: string;
       html: string;
-      text?: string;
+      text: string;
     }) => Promise<unknown>;
   };
-  // ASSETS (R2) — re-add when token has r2 scope. See wrangler.toml comment.
   JOBS: Queue<JobMessage>;
   DIAGNOSTIC_SESSION: DurableObjectNamespace;
 
-  // Plain vars (wrangler.toml [vars])
+  APP_ENV: string;
   PADDLE_ENVIRONMENT: "sandbox" | "production";
   CLERK_ACCOUNT_PORTAL_URL: string;
   WEB_ORIGIN: string;
+  PUBLIC_BASE_URL?: string;
 
-  // Secrets (wrangler secret put / .dev.vars)
   ANTHROPIC_API_KEY: string;
   RESEND_API_KEY?: string;
   RESEND_FROM_EMAIL?: string;
-  PUBLIC_BASE_URL?: string;
   CLERK_SECRET_KEY: string;
   CLERK_WEBHOOK_SECRET: string;
-  PADDLE_API_KEY: string;
-  PADDLE_WEBHOOK_SECRET: string;
-  PADDLE_PRICE_PRO: string;
-  PADDLE_PRICE_SHOP: string;
+  CLERK_PUBLISHABLE_KEY?: string;
+
+  STRIPE_SECRET_KEY?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
+  STRIPE_PRICE_PRO?: string;
+  STRIPE_PRICE_SHOP?: string;
+  STRIPE_PUBLISHABLE_KEY?: string;
+
+  OPENAI_API_KEY?: string;
+  HEYGEN_API_KEY?: string;
+  LIVEAVATAR_API_KEY?: string;
+  LIVEAVATAR_OPENAI_SECRET_ID?: string;
+  LIVEAVATAR_SANDBOX?: string;
+
+  /** Deprecated. Stripe replaced Paddle. Kept so existing secrets do not break boot. */
+  PADDLE_API_KEY?: string;
+  PADDLE_WEBHOOK_SECRET?: string;
+  PADDLE_PRICE_PRO?: string;
+  PADDLE_PRICE_SHOP?: string;
 }
 
-/**
- * Discriminated union for queue messages so consumers can switch on `kind`.
- * Add a new variant when a new async job type lands.
- */
 export type JobMessage =
   | { kind: "fault_code_refresh"; code: string }
   | { kind: "enrichment"; user_id: string }
@@ -59,7 +67,6 @@ export type SubscriptionStatus =
   | "paused"
   | "canceled";
 
-/** Variables attached to Hono context after auth middleware runs. */
 export interface Variables {
   userId?: string;
   customerId?: number;

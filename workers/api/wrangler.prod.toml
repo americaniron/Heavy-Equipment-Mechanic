@@ -12,11 +12,11 @@ custom_domain = true
 
 # Plain (non-secret) vars
 [vars]
+APP_ENV = "production"
 PADDLE_ENVIRONMENT = "sandbox"
-CLERK_ACCOUNT_PORTAL_URL = "https://accounts.fixmyiron.com"
-# Single allowed origin — the portal subdomain. The legacy marketing site
-# at www.fixmyiron.com also calls the API for auth.
-WEB_ORIGIN = "https://portal.fixmyiron.com,https://www.fixmyiron.com"
+CLERK_ACCOUNT_PORTAL_URL = "https://www.fixmyiron.com/login"
+WEB_ORIGIN = "https://fixmyiron.com,https://www.fixmyiron.com,https://portal.fixmyiron.com"
+PUBLIC_BASE_URL = "https://www.fixmyiron.com"
 
 # D1 — relational database (PROD)
 [[d1_databases]]

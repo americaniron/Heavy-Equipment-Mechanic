@@ -1,6 +1,9 @@
 import { Hono, type Context } from "hono";
 import type { Env, Variables } from "../env";
 import { requireAuth } from "../lib/auth-middleware";
+import { createCheckoutSession, createCustomerPortalSession } from "../lib/stripe-billing";
+import { effectiveTier } from "../lib/tier";
+import { normalizeFaultCode } from "../lib/fault-normalize";
 import {
   camelizeRow,
   camelizeRows,
@@ -557,6 +560,45 @@ portalRoutes.get("/ai/escalations/:id", async (c) => {
   return c.json(camelizeRow(row));
 });
 
+portalRoutes.get("/cases", async (c) => {
+  const rows = await selectAll<DbRow>(
+    c.env.DB,
+    `SELECT * FROM sessions WHERE customer_id = ?1
+      ORDER BY datetime(created_at) DESC, id DESC LIMIT 100`,
+    customerId(c),
+  );
+  return c.json(camelizeRows(rows));
+});
+
+portalRoutes.get("/fault-codes", async (c) => {
+  const raw = (new URL(c.req.url).searchParams.get("code") ?? "").trim();
+  if (raw.length < 2) return c.json({ error: "Enter a fault code" }, 400);
+  const normalized = normalizeFaultCode(raw);
+  const row = await selectOne<DbRow>(
+    c.env.DB,
+    `SELECT * FROM fault_codes
+      WHERE upper(replace(code,' ','')) = upper(replace(?1,' ',''))
+         OR code LIKE ?2
+      ORDER BY length(code) ASC
+      LIMIT 1`,
+    normalized,
+    `${normalized}%`,
+  );
+  if (!row) return c.json({ error: "Code not found", code: normalized }, 404);
+  const tier = await effectiveTier(c.env.DB, String(customerId(c)));
+  const paid = tier === "pro" || tier === "shop";
+  return c.json({
+    code: row.code,
+    description: row.description,
+    severity: row.severity,
+    manufacturer: row.manufacturer ?? null,
+    paid_fields_locked: !paid,
+    likely_causes: paid ? row.likely_causes : undefined,
+    repair_actions: paid ? row.repair_actions : undefined,
+    upgrade_hint: paid ? undefined : "Upgrade to Pro or Shop to see causes and repair actions.",
+  });
+});
+
 // ------------------------------------------------------------------ billing
 
 portalRoutes.get("/billing/me", async (c) => {
@@ -566,7 +608,7 @@ portalRoutes.get("/billing/me", async (c) => {
     "SELECT * FROM subscriptions WHERE customer_id = ?1",
     cid,
   );
-  const effectiveTier = (sub?.status === "active" || sub?.status === "trialing") ? sub.tier : "free";
+  const tier = await effectiveTier(c.env.DB, String(cid));
   const usage = await selectOne<{ count: number }>(
     c.env.DB,
     `SELECT count FROM ai_rate_limits
@@ -574,26 +616,65 @@ portalRoutes.get("/billing/me", async (c) => {
       ORDER BY window_start DESC LIMIT 1`,
     cid,
   );
-  const monthlyLimit = effectiveTier === "free" ? 3 : null;
+  const monthlyLimit = tier === "free" ? 3 : null;
   return c.json({
     customer_id: cid,
-    effective_tier: effectiveTier,
+    effective_tier: tier,
     raw_tier: sub?.tier ?? null,
     status: sub?.status ?? null,
     current_period_end: sub?.current_period_end ?? null,
     past_due_since: sub?.past_due_since ?? null,
+    stripe_customer_id: sub?.stripe_customer_id ?? null,
+    has_stripe_customer: Boolean(sub?.stripe_customer_id),
     diagnosis_usage: {
       this_month: usage?.count ?? 0,
       limit: monthlyLimit,
       unlimited: monthlyLimit === null,
     },
-    anthropic_rate_limit_per_hour: effectiveTier === "shop" ? 1000 : effectiveTier === "pro" ? 300 : 60,
+    anthropic_rate_limit_per_hour: tier === "shop" ? 1000 : tier === "pro" ? 300 : 60,
+    live_avatar_included: tier !== "free",
+    billing_provider: "stripe",
   });
 });
 
-portalRoutes.post("/billing/stripe/checkout-session", async (c) =>
-  c.json({ error: "Self-serve checkout is not enabled for this Cloudflare migration build." }, 202),
-);
+portalRoutes.post("/billing/stripe/checkout-session", async (c) => {
+  const cid = customerId(c);
+  const body = (await c.req.json().catch(() => ({}))) as { target_tier?: string };
+  const target = body.target_tier === "shop" ? "shop" : "pro";
+  const customer = await getById<DbRow>(c.env.DB, "customers", cid);
+  if (!customer) return c.json({ error: "Customer not found" }, 404);
+  const origin = c.req.header("origin") || "https://www.fixmyiron.com";
+  const result = await createCheckoutSession(c.env, {
+    customer,
+    targetTier: target,
+    successUrl: `${origin}/portal?section=billing&checkout=success`,
+    cancelUrl: `${origin}/portal?section=billing&checkout=cancel`,
+  });
+  if ("error" in result) {
+    return c.json({ error: result.error }, result.status as 502 | 503);
+  }
+  return c.json({ url: result.url, id: result.id, target_tier: target }, 201);
+});
+
+portalRoutes.post("/billing/portal-session", async (c) => {
+  const cid = customerId(c);
+  const sub = await selectOne<{ stripe_customer_id: string | null }>(
+    c.env.DB,
+    "SELECT stripe_customer_id FROM subscriptions WHERE customer_id = ?1 LIMIT 1",
+    cid,
+  );
+  if (!sub?.stripe_customer_id) {
+    return c.json({ error: "No Stripe customer is linked to this account yet." }, 400);
+  }
+  const origin = c.req.header("origin") || "https://www.fixmyiron.com";
+  const result = await createCustomerPortalSession(
+    c.env,
+    sub.stripe_customer_id,
+    `${origin}/portal?section=billing`,
+  );
+  if ("error" in result) return c.json({ error: result.error }, result.status as 502);
+  return c.json({ url: result.url }, 201);
+});
 
 portalRoutes.post("/billing/upgrade-intent", async (c) => {
   const cid = customerId(c);

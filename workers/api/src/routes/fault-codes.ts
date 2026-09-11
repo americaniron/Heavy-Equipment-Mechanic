@@ -4,6 +4,7 @@ import type { Env, Variables } from "../env";
 import { jsonError, ErrorCode } from "../lib/errors";
 import { requireAuth } from "../lib/auth-middleware";
 import { effectiveTier } from "../lib/tier";
+import { normalizeFaultCode } from "../lib/fault-normalize";
 
 export const faultCodesRoutes = new Hono<{
   Bindings: Env;
@@ -19,7 +20,7 @@ faultCodesRoutes.use("*", requireAuth);
  * Paddle activates, change this to `tier === 'pro' || tier === 'shop'`
  * — the rest of the gate logic is already wired and tested.
  */
-const VIEWER_SEES_PAID_FIELDS_FOR_ALL = true;
+const VIEWER_SEES_PAID_FIELDS_FOR_ALL = false;
 function viewerSeesPaidFields(tier: "free" | "pro" | "shop"): boolean {
   if (VIEWER_SEES_PAID_FIELDS_FOR_ALL) return true;
   return tier === "pro" || tier === "shop";
@@ -68,7 +69,8 @@ faultCodesRoutes.get("/search", async (c) => {
     return jsonError(c, 400, ErrorCode.BadRequest, "q must be 2-80 chars");
   }
   const { q, limit = 25 } = parsed.data;
-  if (!q) {
+  const normalized = q ? normalizeFaultCode(q) : "";
+  if (!normalized) {
     // Empty-search: return the 25 most-recently-refreshed codes as a starter.
     const r = await c.env.DB.prepare(
       "SELECT code, description, severity FROM fault_codes ORDER BY last_refreshed DESC LIMIT ?1",
@@ -79,17 +81,17 @@ faultCodesRoutes.get("/search", async (c) => {
   }
   // LIKE search on code + description. Codes are short (~20 chars max) so
   // a LIKE is fine; we don't need FTS5 here.
-  const pattern = `%${q.replace(/[%_]/g, "\\$&")}%`;
+  const pattern = `%${normalized.replace(/[%_]/g, "")}%`;
   const r = await c.env.DB.prepare(
     `SELECT code, description, severity
      FROM fault_codes
-     WHERE code LIKE ?1 ESCAPE '\\' OR description LIKE ?1 ESCAPE '\\'
+     WHERE code LIKE ?1 OR description LIKE ?1
      ORDER BY
-       CASE WHEN code LIKE ?2 ESCAPE '\\' THEN 0 ELSE 1 END,
+       CASE WHEN code LIKE ?2 THEN 0 ELSE 1 END,
        length(code), code
      LIMIT ?3`,
   )
-    .bind(pattern, `${q.replace(/[%_]/g, "\\$&")}%`, limit)
+    .bind(pattern, `${normalized}%`, limit)
     .all<{ code: string; description: string; severity: string | null }>();
   return c.json({ results: r.results ?? [] });
 });

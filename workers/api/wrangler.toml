@@ -6,9 +6,10 @@ workers_dev = true
 
 # Plain (non-secret) vars
 [vars]
+APP_ENV = "staging"
 PADDLE_ENVIRONMENT = "sandbox"
-CLERK_ACCOUNT_PORTAL_URL = "https://accounts.fixmyiron.com"
-WEB_ORIGIN = "https://fixmyiron-web-staging.americanironadmin.workers.dev"
+CLERK_ACCOUNT_PORTAL_URL = "https://www.fixmyiron.com/login"
+WEB_ORIGIN = "http://localhost:5173,http://localhost:3000,https://fixmyiron-web-staging.americanironadmin.workers.dev,https://fixmyiron-hem-git.pages.dev"
 
 # D1 — relational database
 [[d1_databases]]

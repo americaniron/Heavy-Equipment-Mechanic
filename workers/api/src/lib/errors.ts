@@ -14,6 +14,7 @@ export const ErrorCode = {
   InvalidSignature: "INVALID_SIGNATURE",
   Upstream: "UPSTREAM_ERROR",
   Internal: "INTERNAL_ERROR",
+  Gone: "GONE",
 } as const;
 export type ErrorCodeT = (typeof ErrorCode)[keyof typeof ErrorCode];
 
@@ -36,7 +37,7 @@ export function errorBody(
 }
 
 export type StatusCode =
-  | 400 | 401 | 402 | 403 | 404 | 409 | 429
+  | 400 | 401 | 402 | 403 | 404 | 409 | 410 | 429
   | 500 | 502 | 503;
 
 export function jsonError(
