@@ -247,6 +247,19 @@ function DiagnosisPlaybook({ data }: { data: any }) {
           </ol>
         </div>
       )}
+      {playbook.expected_readings && typeof playbook.expected_readings === "object" && Object.keys(playbook.expected_readings).length > 0 && (
+        <div>
+          <h4 className="font-semibold text-white">Reference readings</h4>
+          <dl className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {Object.entries(playbook.expected_readings).map(([label, value]) => (
+              <div key={label} className="rounded bg-[#222] p-3">
+                <dt className="text-gray-500">{label}</dt>
+                <dd className="text-gray-200">{String(value)}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
       {Array.isArray(playbook.parts_likely_needed) && playbook.parts_likely_needed.length > 0 && (
         <div>
           <h4 className="font-semibold text-white">Parts likely needed</h4>
@@ -2390,7 +2403,7 @@ function AITroubleshootingSection({ authToken }: { authToken: string | null }) {
   );
 }
 
-function AIFaultCodeSection({ authToken }: { authToken: string | null }) {
+function AIFaultCodeSection({ authToken, setLocation }: { authToken: string | null; setLocation: (path: string) => void }) {
   const [code, setCode] = useState("");
   const [result, setResult] = useState<any>(null);
   const [searching, setSearching] = useState(false);
@@ -2400,7 +2413,7 @@ function AIFaultCodeSection({ authToken }: { authToken: string | null }) {
     setSearching(true);
     try {
       const res = await apiFetch(
-        `/api/portal/fault-codes?code=${encodeURIComponent(code)}`,
+        `/api/portal/ai/fault-codes/${encodeURIComponent(code.trim())}`,
         {},
         { authenticated: true, token: authToken },
       );
@@ -2413,6 +2426,18 @@ function AIFaultCodeSection({ authToken }: { authToken: string | null }) {
       setResult({ error: error instanceof Error ? error.message : "Lookup failed" });
     }
     setSearching(false);
+  };
+
+  const causes = Array.isArray(result?.likely_causes) ? result.likely_causes : [];
+  const actions = Array.isArray(result?.repair_actions) ? result.repair_actions : [];
+  const relatedParts = Array.isArray(result?.related_parts) ? result.related_parts : [];
+  const requestRelatedPart = (part: any) => {
+    sessionStorage.setItem(QUOTE_DRAFT_KEY, JSON.stringify([{
+      partNumber: part.part_number,
+      description: part.description || "",
+      quantity: 1,
+    }]));
+    setLocation("/portal/purchase-parts");
   };
 
   return (
@@ -2439,11 +2464,50 @@ function AIFaultCodeSection({ authToken }: { authToken: string | null }) {
               <p className="text-gray-400" data-testid="text-fault-error">{result.error}</p>
             ) : (
               <div data-testid="fault-code-result">
-                <p className="text-[#FFCD11] font-bold text-lg">{result.code || code}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-[#FFCD11] font-bold text-lg">{result.code || code}</p>
+                  {result.severity && <Badge variant="secondary">{result.severity}</Badge>}
+                </div>
                 {result.manufacturer && <p className="text-gray-500 text-xs">{result.manufacturer}{result.spn ? ` · SPN ${result.spn}` : ""}{result.fmi ? ` / FMI ${result.fmi}` : ""}</p>}
                 <p className="text-white mt-1">{result.description || result.meaning || "Interpretation available after AI analysis"}</p>
-                {result.likely_causes && <p className="text-gray-300 text-sm mt-2">Causes: {String(result.likely_causes)}</p>}
-                {result.paid_fields_locked && <p className="text-yellow-400 text-xs mt-2">{result.upgrade_hint}</p>}
+                {causes.length > 0 && (
+                  <div className="mt-3">
+                    <p className="font-semibold text-white">Likely causes</p>
+                    <ul className="mt-1 list-disc pl-5 text-sm text-gray-300">
+                      {causes.map((cause: string, index: number) => <li key={index}>{cause}</li>)}
+                    </ul>
+                  </div>
+                )}
+                {actions.length > 0 && (
+                  <div className="mt-3">
+                    <p className="font-semibold text-white">Repair actions</p>
+                    <ol className="mt-1 list-decimal pl-5 text-sm text-gray-300">
+                      {actions.map((action: string, index: number) => <li key={index}>{action}</li>)}
+                    </ol>
+                  </div>
+                )}
+                {relatedParts.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    <p className="font-semibold text-white">Related catalog parts</p>
+                    {relatedParts.map((part: any) => (
+                      <div key={part.part_number} className="flex flex-wrap items-center justify-between gap-2 rounded bg-[#222] p-3">
+                        <div>
+                          <p className="font-mono text-[#FFCD11]">{part.part_number}</p>
+                          <p className="text-sm text-gray-300">{part.description}</p>
+                        </div>
+                        <Button size="sm" variant="outline" className="border-[#555] text-gray-300" onClick={() => requestRelatedPart(part)}>
+                          Request quote
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {result.paid_fields_locked && (
+                  <div className="mt-3 rounded border border-yellow-700/60 p-3">
+                    <p className="text-sm text-yellow-400">{result.upgrade_hint}</p>
+                    <Button size="sm" className="mt-2 bg-[#FFCD11] text-black" onClick={() => setLocation("/portal/billing")}>View plans</Button>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
@@ -2953,7 +3017,16 @@ function AIEscalationSection({ authToken }: { authToken: string | null }) {
 }
 
 export default function PortalPage() {
-  const { customer, authToken, logout, applySession, isAuthenticated, isLoading: authLoading } = useAuth();
+  const {
+    customer,
+    authToken,
+    logout,
+    retrySession,
+    applySession,
+    isAuthenticated,
+    isLoading: authLoading,
+    sessionError,
+  } = useAuth();
   const [location, setLocation] = useLocation();
   const [, params] = useRoute("/portal/:section");
   const querySection = new URLSearchParams(window.location.search).get("section");
@@ -2967,16 +3040,38 @@ export default function PortalPage() {
   }, [location, params?.section, querySection]);
 
   useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
+    if (!authLoading && !isAuthenticated && !(authToken && sessionError)) {
       const requestedPath = location.startsWith("/portal") ? location : "/portal";
       setLocation(`/login?redirect=${encodeURIComponent(requestedPath)}`);
     }
-  }, [authLoading, isAuthenticated, location, setLocation]);
+  }, [authLoading, authToken, isAuthenticated, location, sessionError, setLocation]);
 
   if (authLoading) {
     return (
       <div className="min-h-screen bg-[#111111] flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-[#FFCD11]" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated && authToken && sessionError) {
+    return (
+      <div className="min-h-screen bg-[#111111] flex items-center justify-center p-4">
+        <Card className="w-full max-w-md border-red-800 bg-[#1a1a1a]" role="alert" data-testid="session-restore-error">
+          <CardContent className="p-6 text-center">
+            <AlertTriangle className="mx-auto mb-3 h-10 w-10 text-red-400" />
+            <h1 className="text-lg font-semibold text-white">We could not restore your session</h1>
+            <p className="mt-2 text-sm text-gray-400">{sessionError}</p>
+            <div className="mt-5 flex flex-wrap justify-center gap-2">
+              <Button className="bg-[#FFCD11] text-black" onClick={retrySession} data-testid="button-retry-session">
+                <RefreshCw className="mr-2 h-4 w-4" /> Retry
+              </Button>
+              <Button variant="outline" className="border-[#444] text-gray-300" onClick={logout} data-testid="button-clear-session">
+                <LogOut className="mr-2 h-4 w-4" /> Sign out
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -2999,7 +3094,7 @@ export default function PortalPage() {
       case "ai-intake": return <AIIntakeSection setLocation={setLocation} />;
       case "ai-diagnosis": return <AIDiagnosisSection authToken={authToken} />;
       case "ai-troubleshooting": return <AITroubleshootingSection authToken={authToken} />;
-      case "ai-faultcodes": return <AIFaultCodeSection authToken={authToken} />;
+      case "ai-faultcodes": return <AIFaultCodeSection authToken={authToken} setLocation={setLocation} />;
       case "ai-parts": return <AIPartsSection authToken={authToken} setLocation={setLocation} />;
       case "ai-planning": return <AIRepairPlanningSection authToken={authToken} />;
       case "ai-predictive": return <AIPredictiveSection authToken={authToken} />;

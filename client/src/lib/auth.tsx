@@ -4,6 +4,7 @@ import { queryClient } from "./queryClient";
 import {
   AUTH_INVALIDATED_EVENT,
   AUTH_TOKEN_KEY,
+  ApiError,
   apiErrorMessage,
   apiFetch,
   clearStoredAuthToken,
@@ -26,9 +27,11 @@ interface AuthContextType {
   customer: Customer | null;
   authToken: string | null;
   isLoading: boolean;
+  sessionError: string | null;
   login: (email: string, password: string) => Promise<{ needsVerification?: boolean } | void>;
   register: (data: RegisterData) => Promise<{ requiresVerification?: boolean } | void>;
   logout: () => void;
+  retrySession: () => void;
   applySession: (data: Record<string, unknown>) => void;
   isAuthenticated: boolean;
 }
@@ -57,11 +60,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [authToken, setAuthToken] = useState<string | null>(getStoredAuthToken);
   const [isLoading, setIsLoading] = useState(true);
+  const [sessionError, setSessionError] = useState<string | null>(null);
+  const [sessionAttempt, setSessionAttempt] = useState(0);
 
   const clearAuth = useCallback(() => {
     setCustomer(null);
     setAuthToken(null);
     setIsLoading(false);
+    setSessionError(null);
     clearStoredAuthToken(false);
     queryClient.clear();
   }, []);
@@ -74,15 +80,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!authToken) {
       setIsLoading(false);
+      setSessionError(null);
       return;
     }
     setIsLoading(true);
+    setSessionError(null);
     apiFetch("/api/auth/me", {}, { authenticated: true, token: authToken })
       .then((response) => expectJson<Customer>(response, "Invalid session"))
-      .then(data => setCustomer(data))
-      .catch(() => clearAuth())
+      .then((data) => {
+        setCustomer(data);
+        setSessionError(null);
+      })
+      .catch((error: unknown) => {
+        if (error instanceof ApiError && error.status === 401) {
+          clearAuth();
+          return;
+        }
+        setCustomer(null);
+        setSessionError(error instanceof Error ? error.message : "Session verification is temporarily unavailable.");
+      })
       .finally(() => setIsLoading(false));
-  }, [authToken, clearAuth]);
+  }, [authToken, clearAuth, sessionAttempt]);
 
   const applySession = useCallback((data: Record<string, unknown>) => {
     const token = String(data.authToken ?? data.token ?? "");
@@ -90,6 +108,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(AUTH_TOKEN_KEY, token);
     setAuthToken(token);
     setCustomer((data.user as Customer) ?? (data as unknown as Customer));
+    setSessionError(null);
+  }, []);
+
+  const retrySession = useCallback(() => {
+    setSessionAttempt((attempt) => attempt + 1);
   }, []);
 
   const login = async (email: string, password: string) => {
@@ -142,7 +165,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ customer, authToken, isLoading, login, register, logout, applySession, isAuthenticated: !!customer }}>
+    <AuthContext.Provider value={{ customer, authToken, isLoading, sessionError, login, register, logout, retrySession, applySession, isAuthenticated: !!customer }}>
       {children}
     </AuthContext.Provider>
   );
