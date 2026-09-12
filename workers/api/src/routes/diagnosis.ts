@@ -545,10 +545,13 @@ diagnosisRoutes.get("/:id/pdf", async (c) => {
 
   // Ownership: a user may only export their OWN diagnosis. The D1 row is
   // the canonical owner check (customer_id === signed-in user).
+  // diagnostic_sessions.id is TEXT (migration 0001); bind the id as a string
+  // so the comparison matches regardless of D1's affinity coercion. Binding a
+  // number fails to match a TEXT id column under the local D1 simulation.
   const session = await c.env.DB.prepare(
     "SELECT * FROM diagnostic_sessions WHERE id = ?1 AND customer_id = ?2",
   )
-    .bind(Number(params.data.id), Number(userId))
+    .bind(params.data.id, Number(userId))
     .first<Record<string, unknown>>();
   if (!session) {
     return jsonError(c, 404, ErrorCode.NotFound, "Session not found");
