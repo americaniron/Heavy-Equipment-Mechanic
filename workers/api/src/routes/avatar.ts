@@ -71,7 +71,7 @@ avatarRoutes.post("/session", requireAuth, requireTier("pro"), async (c) => {
   }
 });
 
-avatarRoutes.post("/session/stop", async (c) => {
+avatarRoutes.post("/session/stop", requireAuth, requireTier("pro"), async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { sessionToken?: string };
   if (body.sessionToken) await stopLiveAvatarSession(body.sessionToken);
   return c.json({ ok: true });

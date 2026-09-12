@@ -458,9 +458,12 @@ export default function LiveDesk() {
       roomRef.current = null;
     }
     if (avatarSessionTokenRef.current) {
+      const stopHeaders: Record<string, string> = { "Content-Type": "application/json" };
+      const storedAuthToken = localStorage.getItem("authToken");
+      if (storedAuthToken) stopHeaders["x-auth-token"] = storedAuthToken;
       fetch("/api/avatar/session/stop", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: stopHeaders,
         body: JSON.stringify({ sessionToken: avatarSessionTokenRef.current }),
       }).catch(() => {});
     }
