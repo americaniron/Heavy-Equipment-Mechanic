@@ -34,6 +34,7 @@ export async function proxyToApi(request: Request, pathname: string): Promise<Re
   };
   if (request.method !== "GET" && request.method !== "HEAD") {
     init.body = request.body;
+    (init as RequestInit & { duplex?: string }).duplex = "half";
   }
   return fetch(target, init);
 }
