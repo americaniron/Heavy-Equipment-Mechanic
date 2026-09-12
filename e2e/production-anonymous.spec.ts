@@ -21,6 +21,13 @@ test.describe("production anonymous SPA", () => {
     expect(page.url()).not.toContain("accounts.fixmyiron.com");
   });
 
+  test("native register form stays on FixMyIron", async ({ page }) => {
+    await page.goto("/register");
+    await expect(page.getByTestId("input-first-name")).toBeVisible();
+    await expect(page.getByTestId("heading-auth")).toHaveText(/create account/i);
+    expect(page.url()).not.toContain("accounts.fixmyiron.com");
+  });
+
   test("portal without a session does not use Clerk hosted pages", async ({ page }) => {
     await page.goto("/portal");
     await page.waitForTimeout(1500);
@@ -51,5 +58,15 @@ test.describe("production API", () => {
     const code = body?.error?.code ?? body?.code;
     expect(code).not.toBe("OFFICIAL_SOURCE_REQUIRED");
     expect(res.status()).not.toBe(503);
+  });
+
+  test("anonymous text diagnosis can create a session", async ({ request }) => {
+    const res = await request.post("https://api.fixmyiron.com/api/sessions", {
+      data: { consentGiven: true, language: "en" },
+    });
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    expect(body.id).toBeTruthy();
+    expect(body.accessToken).toBeTruthy();
   });
 });

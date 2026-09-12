@@ -1,4 +1,5 @@
 import { log } from "./log";
+import { OPERATIONAL_DDL } from "./operational-ddl";
 
 interface ColumnSpec {
   table: string;
@@ -49,7 +50,40 @@ const COLUMNS: ColumnSpec[] = [
   { table: "fault_codes", column: "spn", ddl: "TEXT" },
   { table: "fault_codes", column: "fmi", ddl: "TEXT" },
   { table: "fault_codes", column: "provenance", ddl: "TEXT" },
+  { table: "sessions", column: "customer_id", ddl: "INTEGER" },
+  { table: "sessions", column: "access_token", ddl: "TEXT" },
+  { table: "sessions", column: "language", ddl: "TEXT" },
+  { table: "sessions", column: "consent_given", ddl: "INTEGER" },
+  { table: "sessions", column: "agent_provider", ddl: "TEXT" },
+  { table: "sessions", column: "mechanic_type", ddl: "TEXT" },
+  { table: "sessions", column: "status", ddl: "TEXT" },
+  { table: "sessions", column: "customer_name", ddl: "TEXT" },
+  { table: "sessions", column: "customer_email", ddl: "TEXT" },
 ];
+
+export function splitSqlStatements(sql: string): string[] {
+  const stripped = sql
+    .split("\n")
+    .map((line) => line.replace(/--.*$/, ""))
+    .join("\n");
+  const statements: string[] = [];
+  let buffer = "";
+  let depth = 0;
+  for (const ch of stripped) {
+    if (ch === "(") depth += 1;
+    if (ch === ")") depth = Math.max(0, depth - 1);
+    if (ch === ";" && depth === 0) {
+      const statement = buffer.trim();
+      if (statement) statements.push(statement);
+      buffer = "";
+    } else {
+      buffer += ch;
+    }
+  }
+  const last = buffer.trim();
+  if (last) statements.push(last);
+  return statements.filter((statement) => !/^PRAGMA\b/i.test(statement));
+}
 
 let ensured = false;
 let ensuring: Promise<void> | null = null;
@@ -58,6 +92,16 @@ export async function ensureOperationalSchema(db: D1Database): Promise<void> {
   if (ensured) return;
   if (ensuring) return ensuring;
   ensuring = (async () => {
+    for (const statement of splitSqlStatements(OPERATIONAL_DDL)) {
+      try {
+        await db.prepare(statement).run();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (!/already exists/i.test(message)) {
+          log.warn("schema_create_skipped", { err: message, sql: statement.slice(0, 80) });
+        }
+      }
+    }
     for (const spec of COLUMNS) {
       try {
         const info = await db
