@@ -344,11 +344,24 @@ export async function applyStripeSubscriptionObject(
 
   if (!customerId) return { customerId: null };
 
-  const items = object.items as { data?: Array<{ price?: { id?: string } }> } | undefined;
+  const items = object.items as
+    | { data?: Array<{ price?: { id?: string }; current_period_end?: number }> }
+    | undefined;
   const priceId = items?.data?.[0]?.price?.id;
   const status = mapStripeStatus(typeof object.status === "string" ? object.status : undefined);
+  // `current_period_end` was removed from the Subscription object in API
+  // version 2025-03-31.basil and moved onto each subscription item. Webhook
+  // payloads use whatever version the endpoint was created with, so accept
+  // both shapes: prefer the top-level field (older versions), then fall back
+  // to the first item's period end (basil and later).
+  // https://docs.stripe.com/changelog/basil/2025-03-31/deprecate-subscription-current-period-start-and-end
+  const itemPeriodEnd = items?.data?.[0]?.current_period_end;
   const periodEnd =
-    typeof object.current_period_end === "number" ? object.current_period_end : null;
+    typeof object.current_period_end === "number"
+      ? object.current_period_end
+      : typeof itemPeriodEnd === "number"
+        ? itemPeriodEnd
+        : null;
   const pastDueSince = status === "past_due" ? Math.floor(Date.now() / 1000) : null;
   const tier = status === "canceled" || status === "paused" ? "free" : tierForStripePrice(env, priceId);
 
