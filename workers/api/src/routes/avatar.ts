@@ -67,7 +67,17 @@ avatarRoutes.post("/session", requireAuth, requireTier("pro"), async (c) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     log.error("liveavatar_session_error", { err: message });
-    return jsonError(c, 502, ErrorCode.Upstream, "Unable to start a LiveAvatar session.");
+    // Surface a *sanitized* upstream reason (never the key itself) so the live
+    // GPT-voice/avatar failure can be root-caused. LiveAvatar auth failures
+    // (401/403) or a failed OpenAI secret registration almost always mean the
+    // LIVEAVATAR_API_KEY (a.k.a. HEYGEN_API_KEY) is invalid or expired.
+    const credentialFailure =
+      /LIVEAVATAR_(TOKEN|START)_(401|403)/.test(message) ||
+      message === "LIVEAVATAR_OPENAI_SECRET_CREATE_FAILED";
+    const detail = credentialFailure
+      ? `Upstream LiveAvatar auth failed (${message}). HUMAN ACTION REQUIRED — the LiveAvatar credential is likely invalid/expired: wrangler secret put LIVEAVATAR_API_KEY --config workers/api/wrangler.prod.toml`
+      : `Upstream LiveAvatar error (${message}).`;
+    return jsonError(c, 502, ErrorCode.Upstream, "Unable to start a LiveAvatar session.", detail);
   }
 });
 
