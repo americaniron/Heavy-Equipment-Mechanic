@@ -33,6 +33,18 @@ test.describe("production anonymous SPA", () => {
     await page.waitForTimeout(1500);
     expect(page.url()).not.toContain("accounts.fixmyiron.com");
   });
+
+  test("consent starts a native text diagnosis session", async ({ page, context }) => {
+    await context.grantPermissions(["microphone"]);
+    await page.goto("/");
+    await expect(page.getByTestId("landing-page")).toBeVisible();
+    await page.getByTestId("checkbox-consent").scrollIntoViewIfNeeded();
+    await page.getByTestId("checkbox-consent").click();
+    await expect(page.getByTestId("button-start-text-diagnosis")).toBeEnabled();
+    await page.getByTestId("button-start-text-diagnosis").click();
+    await expect(page.getByTestId("live-desk-active")).toBeVisible({ timeout: 45_000 });
+    expect(page.url()).not.toContain("accounts.fixmyiron.com");
+  });
 });
 
 test.describe("production API", () => {
