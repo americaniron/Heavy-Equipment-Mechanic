@@ -108,6 +108,14 @@ function isSectionId(value: string): value is SectionId {
   return Object.prototype.hasOwnProperty.call(sectionTitles, value);
 }
 
+function isDiagnosticSessionId(value: string): boolean {
+  const trimmed = value.trim();
+  return (
+    (/^\d+$/.test(trimmed) && Number.isSafeInteger(Number(trimmed)) && Number(trimmed) > 0) ||
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(trimmed)
+  );
+}
+
 function useAuthFetch(url: string, authToken: string | null, enabled = true) {
   return useQuery({
     queryKey: [url],
@@ -1276,7 +1284,7 @@ function ServiceSection({ authToken }: { authToken: string | null }) {
     try {
       await createMutation.mutateAsync({
         ...form,
-        equipmentId: form.equipmentId && form.equipmentId !== "none" ? parseInt(form.equipmentId) : null,
+        equipmentId: form.equipmentId && form.equipmentId !== "none" ? form.equipmentId : null,
       });
       toast({ title: "Service request created" });
       setForm({ type: "diagnostic", priority: "normal", description: "", faultCodes: "", equipmentId: "" });
@@ -1534,7 +1542,7 @@ function MaintenanceSection({ authToken }: { authToken: string | null }) {
       return;
     }
     try {
-      await createMutation.mutateAsync({ ...form, equipmentId: parseInt(form.equipmentId) });
+      await createMutation.mutateAsync({ ...form, equipmentId: form.equipmentId });
       toast({ title: "Maintenance schedule created" });
       setForm({ serviceType: "", intervalHours: "", lastServiceDate: "", nextServiceDate: "", equipmentId: "" });
       setShowForm(false);
@@ -2525,7 +2533,7 @@ function AIPartsSection({ authToken, setLocation }: { authToken: string | null; 
   const [requestError, setRequestError] = useState("");
   const { toast } = useToast();
   const run = async () => {
-    if (!/^\d+$/.test(sessionId) || Number(sessionId) <= 0) {
+    if (!isDiagnosticSessionId(sessionId)) {
       toast({ title: "Choose a diagnostic session", variant: "destructive" });
       return;
     }
@@ -2535,7 +2543,7 @@ function AIPartsSection({ authToken, setLocation }: { authToken: string | null; 
       const res = await apiFetch("/api/recommended-parts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: Number(sessionId) }),
+        body: JSON.stringify({ session_id: sessionId.trim() }),
       }, { authenticated: true, token: authToken });
       if (!res.ok) throw new ApiError(await apiErrorMessage(res, "Recommendation failed"), res.status);
       const data = await res.json();
@@ -2581,7 +2589,7 @@ function AIPartsSection({ authToken, setLocation }: { authToken: string | null; 
               </SelectContent>
             </Select>
           )}
-          <Input aria-label="Diagnostic session id" placeholder="Or enter a diagnostic session id" inputMode="numeric" value={sessionId} onChange={e => setSessionId(e.target.value.replace(/\D/g, ""))} className="bg-[#222] border-[#444] text-white" data-testid="input-parts-session" />
+          <Input aria-label="Diagnostic session id" placeholder="Or enter a diagnostic session id" value={sessionId} onChange={e => setSessionId(e.target.value)} className="bg-[#222] border-[#444] text-white" data-testid="input-parts-session" />
           <Button className="bg-[#FFCD11] text-black" onClick={run} disabled={pending || !sessionId} data-testid="button-recommend-parts">
             {pending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null} Recommend
           </Button>
@@ -2632,7 +2640,7 @@ function AIRepairPlanningSection({ authToken }: { authToken: string | null }) {
   const [requestError, setRequestError] = useState("");
   const { toast } = useToast();
   const run = async () => {
-    if (!/^\d+$/.test(sessionId) || Number(sessionId) <= 0) {
+    if (!isDiagnosticSessionId(sessionId)) {
       toast({ title: "Choose a diagnosis with a structured playbook", variant: "destructive" });
       return;
     }
@@ -2642,7 +2650,7 @@ function AIRepairPlanningSection({ authToken }: { authToken: string | null }) {
       const res = await apiFetch("/api/repair-plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: Number(sessionId) }),
+        body: JSON.stringify({ session_id: sessionId.trim() }),
       }, { authenticated: true, token: authToken });
       if (!res.ok) throw new ApiError(await apiErrorMessage(res, "Repair plan failed"), res.status);
       const data = await res.json();
@@ -2677,7 +2685,7 @@ function AIRepairPlanningSection({ authToken }: { authToken: string | null }) {
               </SelectContent>
             </Select>
           )}
-          <Input aria-label="Diagnostic session id" inputMode="numeric" placeholder="Or enter a diagnostic session id" value={sessionId} onChange={e => setSessionId(e.target.value.replace(/\D/g, ""))} className="bg-[#222] border-[#444] text-white" data-testid="input-plan-session" />
+          <Input aria-label="Diagnostic session id" placeholder="Or enter a diagnostic session id" value={sessionId} onChange={e => setSessionId(e.target.value)} className="bg-[#222] border-[#444] text-white" data-testid="input-plan-session" />
           <Button className="bg-[#FFCD11] text-black" onClick={run} disabled={pending || !sessionId} data-testid="button-repair-plan">
             {pending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null} Generate plan
           </Button>
