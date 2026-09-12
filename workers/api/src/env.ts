@@ -37,6 +37,13 @@ export interface Env {
   WEB_ORIGIN: string;
   PUBLIC_BASE_URL?: string;
 
+  /**
+   * Shared admin console password. Set via `wrangler secret put ADMIN_PASSWORD`
+   * in prod; never hard-coded. When unset the admin login fails closed (503) —
+   * there is no fallback/backdoor password.
+   */
+  ADMIN_PASSWORD?: string;
+
   ANTHROPIC_API_KEY: string;
   RESEND_API_KEY?: string;
   RESEND_FROM_EMAIL?: string;

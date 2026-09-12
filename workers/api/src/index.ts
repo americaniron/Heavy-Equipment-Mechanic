@@ -12,6 +12,7 @@ import { equipmentRoutes } from "./routes/equipment";
 import { predictiveRoutes } from "./routes/predictive";
 import { faultCodesRoutes } from "./routes/fault-codes";
 import { authRoutes } from "./routes/auth";
+import { adminRoutes } from "./routes/admin";
 import { portalRoutes } from "./routes/portal";
 import { avatarRoutes } from "./routes/avatar";
 import { liveSessionRoutes } from "./routes/sessions";
@@ -62,6 +63,11 @@ app.use("*", async (c, next) => {
 app.route("/", healthRoutes);
 app.route("/api", healthRoutes);
 app.route("/api/auth", authRoutes);
+
+// Admin console backend. Mounted BEFORE the customer clerkAuth middleware so
+// admin routes use their own `x-admin-token` scheme and are never gated by (or
+// dependent on) the Clerk/native customer auth on `/api/*`.
+app.route("/api/admin", adminRoutes);
 
 app.route("/api/webhooks/clerk", clerkWebhook);
 app.route("/api/webhooks/stripe", stripeWebhook);
