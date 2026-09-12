@@ -6,6 +6,24 @@ import { checkAndIncrement, WINDOW_MINUTE_MS } from "../lib/ratelimit";
 
 export const transcribeRoutes = new Hono<{ Bindings: Env; Variables: Variables }>();
 
+/**
+ * OpenAI file-transcription model for POST /v1/audio/transcriptions.
+ *
+ * `whisper-1` was deprecated on 2026-08-26 and shuts down 2027-02-26; the
+ * vendor's recommended replacement for uploaded/completed audio is
+ * `gpt-transcribe`, a documented drop-in on the same endpoint with
+ * `response_format=json` returning `{ text }`.
+ * Refs: https://developers.openai.com/api/docs/deprecations
+ *       https://developers.openai.com/cookbook/examples/migrating_from_whisper_to_gpt_transcribe
+ * Overridable at runtime via the OPENAI_TRANSCRIBE_MODEL env var (optional).
+ */
+export const OPENAI_TRANSCRIBE_MODEL = "gpt-transcribe";
+
+function transcribeModel(env: { OPENAI_TRANSCRIBE_MODEL?: string }): string {
+  const override = env.OPENAI_TRANSCRIBE_MODEL;
+  return override && override.trim() ? override.trim() : OPENAI_TRANSCRIBE_MODEL;
+}
+
 function tokenFrom(c: { req: { header: (name: string) => string | undefined } }): string | null {
   const legacy = c.req.header("x-auth-token");
   if (legacy) return legacy;
@@ -65,7 +83,7 @@ transcribeRoutes.post("/", async (c) => {
 
   const outbound = new FormData();
   outbound.append("file", audio, audio.name || "recording.webm");
-  outbound.append("model", "whisper-1");
+  outbound.append("model", transcribeModel(c.env as { OPENAI_TRANSCRIBE_MODEL?: string }));
   outbound.append("response_format", "json");
 
   const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
