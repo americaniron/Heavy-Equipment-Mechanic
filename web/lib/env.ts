@@ -27,10 +27,10 @@ export const publicEnv = {
     | "production",
   signInUrl:
     process.env.NEXT_PUBLIC_CLERK_SIGN_IN_URL ??
-    "https://accounts.fixmyiron.com/sign-in",
+    "https://www.fixmyiron.com/login",
   signUpUrl:
     process.env.NEXT_PUBLIC_CLERK_SIGN_UP_URL ??
-    "https://accounts.fixmyiron.com/sign-up",
+    "https://www.fixmyiron.com/register",
   afterSignInUrl: process.env.NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL ?? "/portal",
   afterSignUpUrl: process.env.NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL ?? "/portal",
   learnMoreVideoUrl: process.env.NEXT_PUBLIC_LEARN_MORE_VIDEO_URL ?? "",

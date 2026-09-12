@@ -6,7 +6,8 @@ export const healthRoutes = new Hono<{ Bindings: Env; Variables: Variables }>();
 function healthResponse(c: Context<{ Bindings: Env; Variables: Variables }>) {
   return c.json({
     ok: true,
-    env: c.env.PADDLE_ENVIRONMENT,
+    env: c.env.APP_ENV || c.env.PADDLE_ENVIRONMENT,
+    billing: "stripe",
     requestId: c.get("requestId"),
   });
 }

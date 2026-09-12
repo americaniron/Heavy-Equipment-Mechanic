@@ -37,12 +37,38 @@ export async function effectiveTier(
   db: D1Database,
   userId: string,
 ): Promise<Tier> {
-  const row = await db
-    .prepare(
-      "SELECT tier, status, past_due_since, current_period_end FROM subscriptions WHERE customer_id = ?1",
-    )
-    .bind(Number(userId))
-    .first<SubRow>();
+  const selectCols = "tier, status, past_due_since, current_period_end";
+  let row: SubRow | null = null;
+  const numeric = Number(userId);
+  if (Number.isInteger(numeric) && numeric > 0) {
+    try {
+      row = await db
+        .prepare(`SELECT ${selectCols} FROM subscriptions WHERE customer_id = ?1 LIMIT 1`)
+        .bind(numeric)
+        .first<SubRow>();
+    } catch {
+      row = null;
+    }
+  }
+  if (!row) {
+    try {
+      row = await db
+        .prepare(
+          `SELECT ${selectCols} FROM subscriptions WHERE user_id = ?1 OR clerk_user_id = ?1 LIMIT 1`,
+        )
+        .bind(String(userId))
+        .first<SubRow>();
+    } catch {
+      try {
+        row = await db
+          .prepare(`SELECT ${selectCols} FROM subscriptions WHERE user_id = ?1 LIMIT 1`)
+          .bind(String(userId))
+          .first<SubRow>();
+      } catch {
+        row = null;
+      }
+    }
+  }
 
   if (!row) return "free";
 

@@ -3,12 +3,14 @@ main = "src/index.ts"
 compatibility_date = "2025-01-15"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = true
+account_id = "1c07214c662a877a6d09d597d5f4a461"
 
 # Plain (non-secret) vars
 [vars]
+APP_ENV = "staging"
 PADDLE_ENVIRONMENT = "sandbox"
-CLERK_ACCOUNT_PORTAL_URL = "https://accounts.fixmyiron.com"
-WEB_ORIGIN = "https://fixmyiron-web-staging.americanironadmin.workers.dev"
+CLERK_ACCOUNT_PORTAL_URL = "https://www.fixmyiron.com/login"
+WEB_ORIGIN = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173,http://localhost:3000,https://fixmyiron-web-staging.americanironadmin.workers.dev,https://fixmyiron-hem-git.pages.dev"
 
 # D1 — relational database
 [[d1_databases]]
@@ -41,13 +43,17 @@ id = "367342e6ab684242be922dc69e425917"
 name = "EMAIL"
 
 # R2 — PDFs, audio, uploaded photos.
-# DISABLED for staging: the current OAuth token lacks the r2 scope.
-# Re-enable after `wrangler login` with R2 included, or use an API token
-# with `Workers R2 Storage Edit` permission. Foundation slice does not
-# touch R2; the binding will be wired when product surfaces need it.
-# [[r2_buckets]]
-# binding = "ASSETS"
-# bucket_name = "fixmyiron-assets-staging"
+# Bound so the live-session upload path (POST /api/sessions/:id/upload) can
+# write objects. Under `wrangler dev` this is a fully local R2 simulation
+# (no real r2 OAuth scope required); prod binds the same names in
+# wrangler.prod.toml against bucket `fixmyiron-assets-prod`.
+[[r2_buckets]]
+binding = "ASSETS"
+bucket_name = "fixmyiron-assets-staging"
+
+[[r2_buckets]]
+binding = "PORTAL_ASSETS"
+bucket_name = "fixmyiron-assets-staging"
 
 # Queue — async jobs (enrichment, email, fault-code refresh)
 [[queues.producers]]

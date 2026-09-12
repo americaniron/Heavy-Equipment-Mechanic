@@ -203,7 +203,7 @@ paddleWebhook.post("/", async (c) => {
   const verified = await verifyPaddleWebhook({
     signatureHeader: sigHeader,
     rawBody,
-    secret: c.env.PADDLE_WEBHOOK_SECRET,
+    secret: c.env.PADDLE_WEBHOOK_SECRET ?? "",
   });
   if (!verified.ok) {
     log.warn("paddle_webhook_rejected", {

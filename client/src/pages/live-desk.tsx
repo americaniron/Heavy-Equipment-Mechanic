@@ -1,0 +1,3463 @@
+import { useState, useRef, useEffect, useCallback } from "react";
+import { useLocation } from "wouter";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
+import { useAuth } from "@/lib/auth";
+import {
+  Room,
+  RoomEvent,
+  Track,
+  VideoPresets,
+  type RemoteTrackPublication,
+  type RemoteParticipant,
+} from "livekit-client";
+import {
+  Mic, MicOff, Send, Upload, FileText, Phone, Shield,
+  Loader2, Wrench, Zap, Anchor, Droplets, Cpu, User,
+  ChevronRight, X, Download, Share2, AlertTriangle, Volume2, Keyboard,
+  HardHat, Cog, ArrowRight, CheckCircle2, Star, Play, MessageCircle,
+  Search, ChevronDown, ChevronUp, Package
+} from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, Cell, ResponsiveContainer, PieChart, Pie, RadialBarChart, RadialBar } from "recharts";
+const shopBackgroundPath = "/media/shop-background.png";
+const logoPath = "/media/logo.png";
+const heroFacilityPath = "/media/hero-facility.png";
+const workshopVideoPath = "/media/workshop-bg.mp4";
+const aboutShopVideoPath = "/media/workshop-bg.mp4";
+const aboutNarrationPath = "";
+const serviceHeavyEquipPath = "/media/service-heavyequip.png";
+const servicePowerGenPath = "/media/service-powergen.png";
+const serviceMarinePath = "/media/service-marine.png";
+const serviceHydraulicsPath = "/media/service-hydraulics.png";
+const serviceElectricalPath = "/media/service-electrical.png";
+const servicePartsPath = "/media/service-parts.png";
+
+interface SessionData {
+  id: number;
+  status: string;
+  tier: string;
+  visitType: string | null;
+  mechanicType: string | null;
+  paymentStatus: string | null;
+  shareToken: string | null;
+  customerName: string | null;
+  equipmentType: string | null;
+  make: string | null;
+  model: string | null;
+  accessToken?: string;
+}
+
+interface ReportData {
+  id: number;
+  reportType: string;
+  content: any;
+  svgDiagram: string | null;
+  shareToken: string | null;
+}
+
+const MECHANIC_INFO: Record<string, Record<string, { name: string; title: string; icon: any }>> = {
+  en: {
+    heavy_equipment: { name: "Mike Torres", title: "Heavy Equipment Mechanic", icon: Wrench },
+    power_gen: { name: "Sarah Chen", title: "Power Generation Engineer", icon: Zap },
+    marine: { name: "James Coastal", title: "Marine Engine Mechanic", icon: Anchor },
+    hydraulics: { name: "David Pressure", title: "Hydraulics Specialist", icon: Droplets },
+    electrical: { name: "Elena Circuit", title: "Electrical Controls Specialist", icon: Cpu },
+    parts: { name: "Marcus", title: "Parts Assistance Specialist", icon: Package },
+  },
+  ar: {
+    heavy_equipment: { name: "خالد المهندس", title: "ميكانيكي معدات ثقيلة", icon: Wrench },
+    power_gen: { name: "ليلى", title: "مهندسة توليد الطاقة", icon: Zap },
+    marine: { name: "عمر البحري", title: "ميكانيكي محركات بحرية", icon: Anchor },
+    hydraulics: { name: "حسن", title: "أخصائي هيدروليك", icon: Droplets },
+    electrical: { name: "نور", title: "أخصائية كهرباء وتحكم", icon: Cpu },
+    parts: { name: "طارق", title: "أخصائي قطع الغيار", icon: Package },
+  },
+};
+
+export default function LiveDesk() {
+  const { toast } = useToast();
+  const { customer, isAuthenticated, isLoading: authLoading, authToken } = useAuth();
+  const [, setLocation] = useLocation();
+  const [sessionData, setSessionData] = useState<SessionData | null>(null);
+  const [consentGiven, setConsentGiven] = useState(false);
+  const [selectedLanguage, setSelectedLanguage] = useState<"en" | "ar">("en");
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [avatarReady, setAvatarReady] = useState(false);
+  const [isTalking, setIsTalking] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [inputText, setInputText] = useState("");
+  const [showTextInput, setShowTextInput] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [currentAgent, setCurrentAgent] = useState<"admin" | "mechanic">("admin");
+  const [mechanicType, setMechanicType] = useState<string | null>(null);
+  const [handoffInProgress, setHandoffInProgress] = useState(false);
+  const [introPlaying, setIntroPlaying] = useState(false);
+  const [subtitleText, setSubtitleText] = useState("");
+  const [transcriptEntries, setTranscriptEntries] = useState<Array<{ role: "user" | "assistant"; text: string; timestamp: Date; agent?: string }>>([]);
+  const [showTranscript, setShowTranscript] = useState(true);
+  const transcriptEndRef = useRef<HTMLDivElement>(null);
+  const [showReport, setShowReport] = useState(false);
+  const [report, setReport] = useState<ReportData | null>(null);
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  const [showActions, setShowActions] = useState(false);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [sharedReport, setSharedReport] = useState<{ report: ReportData; session: any } | null>(null);
+  const [showAboutVideo, setShowAboutVideo] = useState(false);
+  const [aboutNarrating, setAboutNarrating] = useState(false);
+  const [activeView, setActiveView] = useState<"home" | "services">("home");
+  const [expandedService, setExpandedService] = useState<number | null>(null);
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
+  const [verifyTarget, setVerifyTarget] = useState("");
+  const [verifyType, setVerifyType] = useState<"email" | "phone">("email");
+  const [verifyCode, setVerifyCode] = useState("");
+  const [verificationStatus, setVerificationStatus] = useState<"pending" | "verified" | "failed" | null>(null);
+  const aboutVideoRef = useRef<HTMLVideoElement>(null);
+  const aboutAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    if (transcriptEndRef.current) {
+      transcriptEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [transcriptEntries]);
+
+  const startAboutNarration = useCallback(() => {
+    if (!aboutNarrationPath) return;
+    if (aboutAudioRef.current) {
+      aboutAudioRef.current.pause();
+      aboutAudioRef.current = null;
+    }
+    const audio = new Audio(aboutNarrationPath);
+    audio.volume = 1.0;
+    audio.onplay = () => setAboutNarrating(true);
+    audio.onended = () => setAboutNarrating(false);
+    audio.onerror = () => setAboutNarrating(false);
+    audio.onpause = () => setAboutNarrating(false);
+    aboutAudioRef.current = audio;
+    audio.play().catch(() => setAboutNarrating(false));
+  }, []);
+
+  const stopAboutNarration = useCallback(() => {
+    if (aboutAudioRef.current) {
+      aboutAudioRef.current.pause();
+      aboutAudioRef.current.currentTime = 0;
+      aboutAudioRef.current = null;
+    }
+    setAboutNarrating(false);
+  }, []);
+
+  const videoContainerRef = useRef<HTMLDivElement>(null);
+  const roomRef = useRef<Room | null>(null);
+  const avatarSessionTokenRef = useRef<string | null>(null);
+  const avatarSessionIdRef = useRef<string | null>(null);
+  const avatarProviderRef = useRef<"heygen" | null>(null);
+  const liveAvatarActiveRef = useRef(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const conversationRef = useRef<Array<{ role: string; content: string }>>([]);
+  const pendingHandoffRef = useRef<any>(null);
+  const speakEndedResolveRef = useRef<(() => void) | null>(null);
+  const introPlayingRef = useRef(false);
+  const heroVideoRef = useRef<HTMLVideoElement>(null);
+
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioStreamRef = useRef<MediaStream | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isRecordingRef = useRef(false);
+  const recordingChunksRef = useRef<Blob[]>([]);
+  const vadFrameRef = useRef<number>(0);
+  const manualStopRef = useRef(false);
+  const micMutedRef = useRef(false);
+  const [micMuted, setMicMuted] = useState(false);
+  const voiceCaptureActiveRef = useRef(false);
+  const voiceCaptureStartingRef = useRef(false);
+  const sessionDataRef = useRef<SessionData | null>(null);
+  const isProcessingRef = useRef(false);
+  const handleUserMessageRef = useRef<(msg: string) => Promise<void>>(() => Promise.resolve());
+  const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const idleWarningTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const IDLE_WARNING_MS = 120000;
+  const IDLE_DISCONNECT_MS = 180000;
+
+  const cleanupAudioNodes = useCallback(() => {
+    if (vadFrameRef.current) {
+      cancelAnimationFrame(vadFrameRef.current);
+      vadFrameRef.current = 0;
+    }
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+    if (analyserSourceRef.current) {
+      try { analyserSourceRef.current.disconnect(); } catch {}
+      analyserSourceRef.current = null;
+    }
+  }, []);
+
+  const ensureMicStream = useCallback(async () => {
+    if (audioStreamRef.current && audioStreamRef.current.getTracks().some(t => t.readyState === "live")) {
+      return audioStreamRef.current;
+    }
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, sampleRate: 16000 }
+    });
+    audioStreamRef.current = stream;
+    return stream;
+  }, []);
+
+  const stopVoiceCapture = useCallback(() => {
+    manualStopRef.current = true;
+    voiceCaptureActiveRef.current = false;
+    isRecordingRef.current = false;
+    cleanupAudioNodes();
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      try { mediaRecorderRef.current.stop(); } catch {}
+    }
+    mediaRecorderRef.current = null;
+    recordingChunksRef.current = [];
+    setIsListening(false);
+  }, [cleanupAudioNodes]);
+
+  const isTalkingRef = useRef(false);
+  useEffect(() => { isTalkingRef.current = isTalking; }, [isTalking]);
+
+  useEffect(() => {
+    if (liveAvatarActiveRef.current) return;
+    if (!isTalking && !isProcessing && !introPlaying && avatarReady && sessionData && !micMuted && !manualStopRef.current) {
+      if (!isRecordingRef.current && voiceCaptureActiveRef.current) {
+        const timer = setTimeout(() => {
+          if (!isTalkingRef.current && !isProcessingRef.current && !micMutedRef.current && voiceCaptureActiveRef.current) {
+            console.log("[Voice] Avatar stopped talking — auto-restarting mic");
+            startVoiceCaptureImmediate();
+          }
+        }, 300);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [isTalking, isProcessing, introPlaying, avatarReady, sessionData, micMuted]);
+
+  const startVoiceCaptureImmediate = useCallback(async () => {
+    if (liveAvatarActiveRef.current) return;
+    if (isRecordingRef.current || voiceCaptureStartingRef.current) return;
+    if (isTalkingRef.current || isProcessingRef.current || micMutedRef.current) {
+      return;
+    }
+    voiceCaptureStartingRef.current = true;
+    manualStopRef.current = false;
+
+    try {
+      const stream = await ensureMicStream();
+
+      if (!audioContextRef.current || audioContextRef.current.state === "closed") {
+        audioContextRef.current = new AudioContext();
+      }
+      if (audioContextRef.current.state === "suspended") {
+        await audioContextRef.current.resume();
+      }
+
+      cleanupAudioNodes();
+
+      const source = audioContextRef.current.createMediaStreamSource(stream);
+      analyserSourceRef.current = source;
+      const analyser = audioContextRef.current.createAnalyser();
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.3;
+      source.connect(analyser);
+
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/webm")
+          ? "audio/webm"
+          : "audio/mp4";
+
+      const recorder = new MediaRecorder(stream, { mimeType });
+      recordingChunksRef.current = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0 && !isTalkingRef.current && !micMutedRef.current) {
+          recordingChunksRef.current.push(e.data);
+        }
+      };
+
+      recorder.onerror = () => {
+        isRecordingRef.current = false;
+        cleanupAudioNodes();
+        setIsListening(false);
+      };
+
+      recorder.onstop = async () => {
+        isRecordingRef.current = false;
+        cleanupAudioNodes();
+
+        if (manualStopRef.current || isTalkingRef.current || micMutedRef.current) {
+          recordingChunksRef.current = [];
+          return;
+        }
+
+        const blob = new Blob(recordingChunksRef.current, { type: mimeType });
+        recordingChunksRef.current = [];
+
+        if (blob.size < 3000) {
+          console.log("[Voice] Blob too small, restarting capture:", blob.size);
+          if (voiceCaptureActiveRef.current && !micMutedRef.current) {
+            startVoiceCaptureImmediate();
+          }
+          return;
+        }
+
+        try {
+          setIsListening(false);
+
+          const formData = new FormData();
+          formData.append("audio", blob, "recording.webm");
+          const headers: Record<string, string> = {};
+          const session = sessionDataRef.current;
+          const sessionToken = session
+            ? (sessionStorage.getItem(`session_token_${session.id}`) || session.accessToken || "")
+            : "";
+          if (sessionToken) headers["x-session-token"] = sessionToken;
+          const storedAuth = localStorage.getItem("authToken");
+          if (storedAuth) headers["x-auth-token"] = storedAuth;
+          const res = await fetch("/api/transcribe", { method: "POST", headers, body: formData });
+          if (!res.ok) throw new Error("Transcription failed");
+          const { text } = await res.json();
+
+          if (text && text.trim().length > 2) {
+            console.log("[Voice] Transcribed:", text);
+            await handleUserMessageRef.current(text.trim());
+          } else {
+            console.log("[Voice] Empty transcription, restarting capture");
+            if (voiceCaptureActiveRef.current && !micMutedRef.current) {
+              await new Promise(r => setTimeout(r, 500));
+              startVoiceCaptureImmediate();
+            }
+          }
+        } catch (err) {
+          console.error("[Voice] Transcription error:", err);
+          if (voiceCaptureActiveRef.current && !micMutedRef.current) {
+            await new Promise(r => setTimeout(r, 500));
+            startVoiceCaptureImmediate();
+          }
+        }
+      };
+
+      recorder.start(200);
+      mediaRecorderRef.current = recorder;
+      isRecordingRef.current = true;
+      setIsListening(true);
+
+      let speechDetected = false;
+      let silenceStart = 0;
+      let speechFrameCount = 0;
+      const SILENCE_THRESHOLD = 20;
+      const SPEECH_THRESHOLD = 35;
+      const MIN_SPEECH_FRAMES = 3;
+      const SILENCE_DURATION = 1200;
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+      const checkAudio = () => {
+        if (!isRecordingRef.current || manualStopRef.current) return;
+
+        if (isTalkingRef.current || micMutedRef.current) {
+          speechDetected = false;
+          speechFrameCount = 0;
+          silenceStart = 0;
+          recordingChunksRef.current = [];
+          vadFrameRef.current = requestAnimationFrame(checkAudio);
+          return;
+        }
+
+        analyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+        const avg = sum / dataArray.length;
+
+        if (avg > SPEECH_THRESHOLD) {
+          speechFrameCount++;
+          if (speechFrameCount >= MIN_SPEECH_FRAMES) {
+            speechDetected = true;
+          }
+          silenceStart = 0;
+        } else if (speechDetected && avg < SILENCE_THRESHOLD) {
+          if (!silenceStart) silenceStart = Date.now();
+          if (Date.now() - silenceStart > SILENCE_DURATION) {
+            if (recorder.state === "recording") {
+              recorder.stop();
+            }
+            return;
+          }
+        }
+
+        vadFrameRef.current = requestAnimationFrame(checkAudio);
+      };
+      vadFrameRef.current = requestAnimationFrame(checkAudio);
+
+    } catch (err) {
+      console.error("[Voice] Capture error:", err);
+      isRecordingRef.current = false;
+      toast({ title: "Microphone error", description: "Could not access microphone.", variant: "destructive" });
+    } finally {
+      voiceCaptureStartingRef.current = false;
+    }
+  }, [cleanupAudioNodes, toast, ensureMicStream]);
+
+  const startVoiceCapture = useCallback(async () => {
+    voiceCaptureActiveRef.current = true;
+    await startVoiceCaptureImmediate();
+  }, [startVoiceCaptureImmediate]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const shared = params.get("shared");
+    if (shared) {
+      loadSharedReport(shared);
+      window.history.replaceState({}, "", "/");
+    }
+
+    if (heroVideoRef.current) {
+      heroVideoRef.current.muted = true;
+      heroVideoRef.current.play().catch(() => {});
+    }
+
+    return () => {
+      cleanupAvatarSession();
+    };
+  }, []);
+
+  const cleanupAvatarSession = useCallback(() => {
+    if (idleTimerRef.current) { clearTimeout(idleTimerRef.current); idleTimerRef.current = null; }
+    if (idleWarningTimerRef.current) { clearTimeout(idleWarningTimerRef.current); idleWarningTimerRef.current = null; }
+    stopVoiceCapture();
+    if (audioStreamRef.current) {
+      audioStreamRef.current.getTracks().forEach(t => t.stop());
+      audioStreamRef.current = null;
+    }
+    if (audioContextRef.current && audioContextRef.current.state !== "closed") {
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
+    }
+    const container = videoContainerRef.current;
+    if (container) {
+      container.querySelectorAll("video").forEach(v => v.remove());
+    }
+    document.querySelectorAll("audio[style*='display: none']").forEach(a => {
+      (a as HTMLAudioElement).pause();
+      a.remove();
+    });
+    if (roomRef.current) {
+      try {
+        roomRef.current.disconnect();
+      } catch (e) {
+        console.error("Room disconnect error:", e);
+      }
+      roomRef.current = null;
+    }
+    if (avatarSessionTokenRef.current) {
+      const stopHeaders: Record<string, string> = { "Content-Type": "application/json" };
+      const storedAuthToken = localStorage.getItem("authToken");
+      if (storedAuthToken) stopHeaders["x-auth-token"] = storedAuthToken;
+      fetch("/api/avatar/session/stop", {
+        method: "POST",
+        headers: stopHeaders,
+        body: JSON.stringify({ sessionToken: avatarSessionTokenRef.current }),
+      }).catch(() => {});
+    }
+    avatarSessionTokenRef.current = null;
+    avatarSessionIdRef.current = null;
+    avatarProviderRef.current = null;
+    liveAvatarActiveRef.current = false;
+  }, []);
+
+  useEffect(() => {
+    const onLeave = () => cleanupAvatarSession();
+    window.addEventListener("pagehide", onLeave);
+    window.addEventListener("beforeunload", onLeave);
+    return () => {
+      window.removeEventListener("pagehide", onLeave);
+      window.removeEventListener("beforeunload", onLeave);
+    };
+  }, [cleanupAvatarSession]);
+
+  const speakWithBrowser = useCallback((text: string) => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+      utterance.onstart = () => setIsTalking(true);
+      utterance.onend = () => {
+        setIsTalking(false);
+        setTimeout(() => setSubtitleText(""), 2000);
+        if (speakEndedResolveRef.current) {
+          speakEndedResolveRef.current();
+          speakEndedResolveRef.current = null;
+        }
+      };
+      const voices = window.speechSynthesis.getVoices();
+      const langPrefix = selectedLanguage === "ar" ? "ar" : "en";
+      const preferred = voices.find(v => v.name.includes("Google") && v.lang.startsWith(langPrefix)) || voices.find(v => v.lang.startsWith(langPrefix));
+      if (preferred) utterance.voice = preferred;
+      if (selectedLanguage === "ar") utterance.lang = "ar";
+      window.speechSynthesis.speak(utterance);
+    }
+  }, [selectedLanguage]);
+
+  const waitForSpeakEnd = useCallback((timeoutMs: number = 30000): Promise<void> => {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        speakEndedResolveRef.current = null;
+        resolve();
+      }, timeoutMs);
+
+      speakEndedResolveRef.current = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+    });
+  }, []);
+
+  const sendAvatarSpeakCommand = useCallback(async (text: string) => {
+    setSubtitleText(text);
+    // Official LiveAvatar LITE + OpenAI Realtime: GPT speaks on the LiveKit
+    // audio track. Do not inject deprecated D-ID/HeyGen speak_text commands.
+  }, []);
+
+  const sendAvatarSpeakRef = useRef<(text: string) => Promise<void>>(async () => {});
+
+  const clearIdleTimers = useCallback(() => {
+    if (idleTimerRef.current) { clearTimeout(idleTimerRef.current); idleTimerRef.current = null; }
+    if (idleWarningTimerRef.current) { clearTimeout(idleWarningTimerRef.current); idleWarningTimerRef.current = null; }
+  }, []);
+
+  const resetIdleTimer = useCallback(() => {
+    clearIdleTimers();
+    if (!sessionDataRef.current) return;
+
+    idleWarningTimerRef.current = setTimeout(async () => {
+      if (!sessionDataRef.current) return;
+      const warningMsg = selectedLanguage === "ar"
+        ? "يبدو أنك مشغول. هل لا تزال هناك؟ سأنهي المحادثة خلال دقيقة إذا لم أسمع منك."
+        : "It seems like you may have stepped away. Are you still there? I'll end the session in about a minute if I don't hear back.";
+      try {
+        await sendAvatarSpeakRef.current(warningMsg);
+      } catch {}
+    }, IDLE_WARNING_MS);
+
+    idleTimerRef.current = setTimeout(async () => {
+      if (!sessionDataRef.current) return;
+      const goodbyeMsg = selectedLanguage === "ar"
+        ? "شكراً لتواصلك مع أمريكان أيرون. سأنهي الجلسة الآن. لا تتردد في العودة في أي وقت!"
+        : "Thank you for reaching out to American Iron. I'm ending the session now due to inactivity. Feel free to come back anytime!";
+      try {
+        await sendAvatarSpeakRef.current(goodbyeMsg);
+        await new Promise(r => setTimeout(r, 6000));
+      } catch {}
+      cleanupAvatarSession();
+      setSessionData(null);
+      sessionDataRef.current = null;
+      toast({ title: selectedLanguage === "ar" ? "انتهت الجلسة بسبب عدم النشاط" : "Session ended due to inactivity" });
+    }, IDLE_DISCONNECT_MS);
+  }, [selectedLanguage, cleanupAvatarSession, clearIdleTimers, toast]);
+
+  const loadSharedReport = async (token: string) => {
+    try {
+      const res = await fetch(`/api/shared/${token}`);
+      if (!res.ok) {
+        toast({ title: "Report not found", variant: "destructive" });
+        return;
+      }
+      setSharedReport(await res.json());
+    } catch {
+      toast({ title: "Error loading report", variant: "destructive" });
+    }
+  };
+
+  const persistSessionLine = async (
+    content: string,
+    role: "user" | "assistant" = "user",
+  ) => {
+    const session = sessionDataRef.current;
+    if (!session || !content.trim()) return;
+    const sessionToken =
+      accessToken ||
+      session.accessToken ||
+      sessionStorage.getItem(`session_token_${session.id}`);
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (sessionToken) headers["x-session-token"] = sessionToken;
+    if (authToken) headers["x-auth-token"] = authToken;
+    await fetch(`/api/sessions/${session.id}/message`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        content,
+        accessToken: sessionToken,
+        skipAi: true,
+        role,
+      }),
+    }).catch(() => {});
+  };
+
+  const connectAvatar = async (agentType: string = "admin", language: string = "en"): Promise<Room | null> => {
+    const res = await apiRequest("POST", "/api/avatar/session", { agentType, language });
+    const data = await res.json();
+
+    avatarProviderRef.current = "heygen";
+    avatarSessionTokenRef.current = data.sessionToken;
+    avatarSessionIdRef.current = data.sessionId;
+
+    const room = new Room({
+      adaptiveStream: true,
+      dynacast: true,
+      videoCaptureDefaults: {
+        resolution: VideoPresets.h720.resolution,
+      },
+    });
+
+    room.on(RoomEvent.TrackSubscribed, (track, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
+      console.log("Track subscribed:", track.kind, "from:", participant.identity, "sid:", track.sid);
+
+      if (track.kind === Track.Kind.Video) {
+        const container = videoContainerRef.current;
+        if (container) {
+          const existingVideos = container.querySelectorAll("video");
+          existingVideos.forEach(v => v.remove());
+
+          const videoElement = track.attach();
+          videoElement.style.width = "100%";
+          videoElement.style.height = "100%";
+          videoElement.style.objectFit = "cover";
+          videoElement.style.position = "absolute";
+          videoElement.style.top = "0";
+          videoElement.style.left = "0";
+          videoElement.style.zIndex = "1";
+          videoElement.setAttribute("data-testid", "video-avatar");
+          videoElement.setAttribute("autoplay", "true");
+          videoElement.setAttribute("playsinline", "true");
+          container.appendChild(videoElement);
+          console.log("Video track attached to container");
+        }
+        setAvatarReady(true);
+      }
+
+      if (track.kind === Track.Kind.Audio) {
+        const audioElement = track.attach();
+        audioElement.style.display = "none";
+        document.body.appendChild(audioElement);
+        console.log("Audio track attached");
+      }
+    });
+
+    room.on(RoomEvent.TrackUnsubscribed, (track) => {
+      console.log("Track unsubscribed:", track.kind);
+      track.detach().forEach((el) => el.remove());
+    });
+
+    room.on(RoomEvent.ParticipantConnected, (participant) => {
+      console.log("Participant connected:", participant.identity);
+    });
+
+    room.on(RoomEvent.Connected, () => {
+      console.log("Room connected successfully");
+    });
+
+    room.on(RoomEvent.DataReceived, (rawData, participant, kind, topic) => {
+      try {
+        const decoded = new TextDecoder().decode(rawData);
+        const message = JSON.parse(decoded);
+        const eventType = message.event_type || message.type;
+        console.log("LiveKit event:", eventType, "topic:", topic, JSON.stringify(message).slice(0, 200));
+
+        if (eventType === "avatar.speak_started" || eventType === "avatar_start_talking") {
+          setIsTalking(true);
+        } else if (eventType === "avatar.speak_ended" || eventType === "avatar_stop_talking") {
+          setIsTalking(false);
+          setTimeout(() => setSubtitleText(""), 3000);
+
+          if (speakEndedResolveRef.current) {
+            speakEndedResolveRef.current();
+            speakEndedResolveRef.current = null;
+          }
+        } else if (eventType === "avatar.transcription" || eventType === "agent.transcription" || eventType === "response.audio_transcript.done") {
+          const text = message.text || message.transcript;
+          if (text) {
+            setSubtitleText(text);
+            setTranscriptEntries(prev => [...prev, { role: "assistant", text, timestamp: new Date() }]);
+            persistSessionLine(text, "assistant");
+          }
+        } else if (eventType === "user.transcription" || eventType === "conversation.item.input_audio_transcription.completed") {
+          const text = message.text || message.transcript;
+          if (text) {
+            setTranscriptEntries(prev => [...prev, { role: "user", text, timestamp: new Date(), agent: "You" }]);
+            persistSessionLine(text, "user");
+          }
+        } else if (eventType === "session.stopped") {
+          setAvatarReady(false);
+        }
+      } catch (e) {
+        console.warn("Failed to parse LiveKit data message:", e);
+      }
+    });
+
+    room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
+      setIsTalking(speakers.some((speaker) => !speaker.isLocal));
+    });
+
+    room.on(RoomEvent.Disconnected, () => {
+      setAvatarReady(false);
+      liveAvatarActiveRef.current = false;
+    });
+
+    await room.connect(data.livekitUrl, data.livekitClientToken);
+    await room.localParticipant.setMicrophoneEnabled(true);
+    roomRef.current = room;
+    liveAvatarActiveRef.current = true;
+    console.log("[Avatar] Connected via LiveAvatar LiveKit + OpenAI Realtime mic publish");
+
+    return room;
+  };
+
+  const startSession = async () => {
+    if (!consentGiven) {
+      toast({ title: "Consent required", description: "Please accept the consent to begin.", variant: "destructive" });
+      return;
+    }
+
+    setIsConnecting(true);
+    micMutedRef.current = false;
+    setMicMuted(false);
+    voiceCaptureActiveRef.current = false;
+    voiceCaptureStartingRef.current = false;
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (authToken) headers["x-auth-token"] = authToken;
+      const res = await fetch("/api/sessions", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          consentGiven: true,
+          provider: "heygen",
+          language: selectedLanguage,
+          customerId: customer?.id || null,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to create session");
+      const session = await res.json();
+      setAccessToken(session.accessToken);
+      sessionStorage.setItem(`session_token_${session.id}`, session.accessToken);
+      setSessionData(session);
+      sessionDataRef.current = session;
+      setCurrentAgent("admin");
+
+      const introText = selectedLanguage === "ar"
+        ? "مرحباً! أنا فاطمة، مسؤولة الاستقبال في أمريكان أيرون. أهلاً وسهلاً بك! " +
+          "أنا هنا لمساعدتك. أخبرني عن المشكلة التي تواجهها مع معداتك وسأوصلك بالميكانيكي المتخصص المناسب. " +
+          "ما الذي يمكنني مساعدتك فيه اليوم؟"
+        : "Hi there! I'm Sarah, the front desk admin here at American Iron. Welcome! " +
+          "I'm here to help get you started. Just tell me a bit about the issue you're having with your equipment, " +
+          "and I'll connect you with the right specialist mechanic. What can I help you with today?";
+
+      let avatarConnected = false;
+      try {
+        const room = await connectAvatar("admin", selectedLanguage);
+        avatarConnected = true;
+
+        setTimeout(async () => {
+          setIntroPlaying(true);
+          introPlayingRef.current = true;
+
+          setSubtitleText(introText);
+          await sendAvatarSpeakCommand(introText);
+          const introEstimate = Math.max(5000, introText.length * 80);
+          await waitForSpeakEnd(Math.min(introEstimate, 60000));
+
+          if (introPlayingRef.current) {
+            setIntroPlaying(false);
+            introPlayingRef.current = false;
+            setShowTextInput(true);
+          }
+          conversationRef.current.push({ role: "assistant", content: introText });
+          setTranscriptEntries(prev => [...prev, { role: "assistant", text: introText, timestamp: new Date(), agent: selectedLanguage === "ar" ? "فاطمة" : "Sarah" }]);
+
+          if (liveAvatarActiveRef.current) {
+            console.log("[Avatar] OpenAI Realtime owns the microphone; skipping local MediaRecorder");
+          } else {
+            startVoiceCapture();
+          }
+          resetIdleTimer();
+
+          await fetch(`/api/sessions/${session.id}/message`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              content: "[Session started - Admin greeting and intro]",
+              accessToken: session.accessToken,
+              skipAi: true,
+            }),
+          }).catch(() => {});
+        }, 3000);
+      } catch (avatarErr: any) {
+        console.error("Avatar connection failed, using text mode:", avatarErr);
+        toast({ title: "Video avatar unavailable", description: "Continuing in text mode with voice.", variant: "default" });
+
+        setIntroPlaying(true);
+        introPlayingRef.current = true;
+        setSubtitleText(introText);
+        speakWithBrowser(introText);
+        await waitForSpeakEnd(90000);
+
+        if (introPlayingRef.current) {
+          setIntroPlaying(false);
+          introPlayingRef.current = false;
+          setShowTextInput(true);
+        }
+        conversationRef.current.push({ role: "assistant", content: introText });
+        setTranscriptEntries(prev => [...prev, { role: "assistant", text: introText, timestamp: new Date(), agent: selectedLanguage === "ar" ? "فاطمة" : "Sarah" }]);
+        startVoiceCapture();
+        resetIdleTimer();
+
+        await fetch(`/api/sessions/${session.id}/message`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content: "[Session started - Admin greeting (text mode)]",
+            accessToken: session.accessToken,
+            skipAi: true,
+          }),
+        }).catch(() => {});
+      }
+    } catch (err: any) {
+      toast({ title: "Connection failed", description: err.message || "Could not start session.", variant: "destructive" });
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const lastCueTimeRef = useRef<number>(0);
+
+  const sendAvatarListeningCue = useCallback(() => {
+    const room = roomRef.current;
+    if (!room || room.state !== "connected") return;
+    const now = Date.now();
+    if (now - lastCueTimeRef.current < 8000) return;
+    lastCueTimeRef.current = now;
+  }, []);
+
+  const handleUserMessage = async (userMsg: string) => {
+    const currentSession = sessionDataRef.current;
+    console.log("handleUserMessage called:", userMsg, "session:", !!currentSession, "processing:", isProcessingRef.current);
+    if (!currentSession || isProcessingRef.current || !userMsg.trim()) return;
+
+    resetIdleTimer();
+    isRecordingRef.current = false;
+    cleanupAudioNodes();
+    if (liveAvatarActiveRef.current && roomRef.current) {
+      roomRef.current.localParticipant.setMicrophoneEnabled(false).catch(() => {});
+    }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      try { mediaRecorderRef.current.stop(); } catch {}
+    }
+    mediaRecorderRef.current = null;
+    recordingChunksRef.current = [];
+    setIsListening(false);
+    setIsProcessing(true);
+    isProcessingRef.current = true;
+    conversationRef.current.push({ role: "user", content: userMsg });
+    setTranscriptEntries(prev => [...prev, { role: "user", text: userMsg, timestamp: new Date(), agent: currentAgent === "admin" ? "You" : "You" }]);
+
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      const sessionToken = accessToken || sessionStorage.getItem(`session_token_${currentSession.id}`);
+      if (sessionToken) headers["x-session-token"] = sessionToken;
+      if (authToken) headers["x-auth-token"] = authToken;
+      const response = await fetch(`/api/sessions/${currentSession.id}/message`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ content: userMsg, accessToken: sessionToken }),
+      });
+
+      if (!response.ok) {
+        toast({ title: "Error", description: "Failed to get response", variant: "destructive" });
+        setIsProcessing(false);
+        isProcessingRef.current = false;
+        return;
+      }
+
+      let fullText = "";
+      let handoffData: any = null;
+      const contentType = response.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        const payload = await response.json();
+        fullText = String(payload.reply || payload.content || "");
+        if (payload.handoff) handoffData = payload.handoff;
+      } else {
+        const reader = response.body?.getReader();
+        if (!reader) { setIsProcessing(false); isProcessingRef.current = false; return; }
+        const decoder = new TextDecoder();
+        let buffer = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            try {
+              const event = JSON.parse(line.slice(6));
+              if (event.type === "text") fullText += event.content;
+              else if (event.type === "handoff") handoffData = event;
+            } catch {}
+          }
+        }
+      }
+
+      if (fullText) {
+        const cleanedText = fullText
+          .replace(/<INTAKE_JSON>[\s\S]*?<\/INTAKE_JSON>/g, "")
+          .replace(/<VERIFY_REQUEST>[\s\S]*?<\/VERIFY_REQUEST>/g, "")
+          .replace(/<VERIFY_CODE>[\s\S]*?<\/VERIFY_CODE>/g, "")
+          .trim();
+        setSubtitleText(cleanedText);
+        conversationRef.current.push({ role: "assistant", content: cleanedText });
+        if (cleanedText) {
+          const agentLabel = currentAgent === "admin"
+            ? (selectedLanguage === "ar" ? "فاطمة" : "Sarah")
+            : (MECHANIC_INFO[selectedLanguage]?.[mechanicType || "heavy_equipment"]?.name || "Specialist");
+          setTranscriptEntries(prev => [...prev, { role: "assistant", text: cleanedText, timestamp: new Date(), agent: agentLabel }]);
+        }
+        if (cleanedText) await sendAvatarSpeakCommand(cleanedText);
+
+        const estimatedMs = Math.max(2000, cleanedText.length * 60);
+        await waitForSpeakEnd(Math.min(estimatedMs, 30000));
+
+        if (handoffData) {
+          await new Promise(r => setTimeout(r, 1500));
+        }
+      }
+
+      if (handoffData) {
+        await performHandoff(handoffData);
+      } else {
+        if (!liveAvatarActiveRef.current) startVoiceCapture();
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsProcessing(false);
+      isProcessingRef.current = false;
+      if (liveAvatarActiveRef.current && roomRef.current && !micMutedRef.current) {
+        roomRef.current.localParticipant.setMicrophoneEnabled(true).catch(() => {});
+      }
+    }
+  };
+
+  handleUserMessageRef.current = handleUserMessage;
+  sendAvatarSpeakRef.current = sendAvatarSpeakCommand;
+
+  const performHandoff = async (handoffData: any) => {
+    if (!sessionDataRef.current) return;
+    setHandoffInProgress(true);
+
+    const mechType = handoffData.mechanicType || "heavy_equipment";
+    setMechanicType(mechType);
+    const mechanicInfo = MECHANIC_INFO[selectedLanguage] || MECHANIC_INFO.en;
+    const mechanic = mechanicInfo[mechType];
+
+    const transferMsg = selectedLanguage === "ar"
+      ? `سأقوم الآن بتحويلك إلى ${mechanic?.name || "المتخصص لدينا"}، ${mechanic?.title || "أخصائي التشخيص"}. سيعتنون بك جيداً. لحظة من فضلك.`
+      : `I'm now transferring you to ${mechanic?.name || "our specialist"}, our ${mechanic?.title || "diagnostic specialist"}. They'll take great care of you. One moment please.`;
+    setSubtitleText(transferMsg);
+    setTranscriptEntries(prev => [...prev, { role: "assistant", text: transferMsg, timestamp: new Date(), agent: selectedLanguage === "ar" ? "فاطمة" : "Sarah" }]);
+    await sendAvatarSpeakCommand(transferMsg);
+
+    await waitForSpeakEnd(15000);
+    await new Promise(r => setTimeout(r, 1500));
+
+    try {
+      cleanupAvatarSession();
+      setAvatarReady(false);
+
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (accessToken) headers["x-session-token"] = accessToken;
+      if (authToken) headers["x-auth-token"] = authToken;
+      await fetch(`/api/sessions/${sessionDataRef.current!.id}/handoff`, {
+        method: "POST",
+        headers,
+      });
+      setCurrentAgent("mechanic");
+
+      const room = await connectAvatar(mechType, selectedLanguage);
+
+      setTimeout(async () => {
+        const mechGreeting = selectedLanguage === "ar"
+          ? `مرحباً! أنا ${mechanic?.name || "المتخصص"}. لقد راجعت معلومات القبول الخاصة بك وأنا مستعد لمساعدتك في تشخيص المشكلة. لنبدأ — هل يمكنك إخباري المزيد عما تواجهه؟`
+          : `Hello! I'm ${mechanic?.name || "your specialist"}. I've reviewed your intake information and I'm ready to help diagnose the issue. Let's get started — can you tell me more about what you're experiencing?`;
+        setSubtitleText(mechGreeting);
+        conversationRef.current.push({ role: "assistant", content: mechGreeting });
+        setTranscriptEntries(prev => [...prev, { role: "assistant", text: mechGreeting, timestamp: new Date(), agent: mechanic?.name || "Specialist" }]);
+        await sendAvatarSpeakCommand(mechGreeting);
+        setHandoffInProgress(false);
+
+        const mechEstimate = Math.max(5000, mechGreeting.length * 80);
+        await waitForSpeakEnd(Math.min(mechEstimate, 30000));
+        if (!liveAvatarActiveRef.current) startVoiceCapture();
+        resetIdleTimer();
+      }, 3000);
+    } catch (err) {
+      console.error("Handoff error:", err);
+      setHandoffInProgress(false);
+      toast({ title: "Transfer failed", variant: "destructive" });
+    }
+  };
+
+  const sendTextMessage = async () => {
+    if (!inputText.trim() || isProcessing) return;
+    const msg = inputText.trim();
+    setInputText("");
+    await handleUserMessage(msg);
+  };
+
+  const toggleMicrophone = async () => {
+    try {
+      if (micMuted) {
+        micMutedRef.current = false;
+        setMicMuted(false);
+        manualStopRef.current = false;
+        if (liveAvatarActiveRef.current && roomRef.current) {
+          await roomRef.current.localParticipant.setMicrophoneEnabled(true);
+          return;
+        }
+        voiceCaptureActiveRef.current = true;
+        if (!isRecordingRef.current && !isTalkingRef.current && !isProcessingRef.current) {
+          await startVoiceCaptureImmediate();
+        }
+      } else {
+        micMutedRef.current = true;
+        setMicMuted(true);
+        if (liveAvatarActiveRef.current && roomRef.current) {
+          await roomRef.current.localParticipant.setMicrophoneEnabled(false);
+        }
+        stopVoiceCapture();
+        voiceCaptureActiveRef.current = true;
+      }
+    } catch (err) {
+      console.error("Mic toggle error:", err);
+      toast({ title: "Microphone error", description: "Could not access microphone.", variant: "destructive" });
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!sessionDataRef.current || !e.target.files) return;
+    const formData = new FormData();
+    Array.from(e.target.files).forEach((file) => formData.append("files", file));
+
+    try {
+      const headers: Record<string, string> = {};
+      if (accessToken) headers["x-session-token"] = accessToken;
+      const res = await fetch(`/api/sessions/${sessionDataRef.current.id}/upload`, {
+        method: "POST",
+        headers,
+        body: formData,
+      });
+      if (res.ok) {
+        toast({ title: "Files uploaded", description: "Attached to your session." });
+      }
+    } catch (err: any) {
+      toast({ title: "Upload failed", variant: "destructive" });
+    }
+    e.target.value = "";
+  };
+
+  const generateReport = async () => {
+    if (!sessionData) return;
+    setIsGeneratingReport(true);
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (accessToken) headers["x-session-token"] = accessToken;
+      const res = await fetch(`/api/sessions/${sessionData.id}/report`, {
+        method: "POST",
+        headers,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: "Unknown error" }));
+        if (res.status === 402) {
+          toast({ title: selectedLanguage === "ar" ? "الدفع مطلوب للتقرير الاحترافي" : "Payment required for Pro report", variant: "destructive" });
+        } else {
+          toast({ title: selectedLanguage === "ar" ? "خطأ في إنشاء التقرير" : `Report error: ${errorData.error || "Please try again"}`, variant: "destructive" });
+        }
+        return;
+      }
+      const data = await res.json();
+      setReport(data);
+      setShowReport(true);
+      toast({ title: selectedLanguage === "ar" ? "تم إنشاء التقرير بنجاح" : "Report generated successfully" });
+    } catch (err: any) {
+      console.error("Report generation error:", err);
+      toast({ title: selectedLanguage === "ar" ? "خطأ في إنشاء التقرير" : "Error generating report. Please try again.", variant: "destructive" });
+    } finally {
+      setIsGeneratingReport(false);
+    }
+  };
+
+  const copyShareLink = async () => {
+    if (!report?.shareToken) return;
+    const url = `${window.location.origin}/?shared=${report.shareToken}`;
+    await navigator.clipboard.writeText(url);
+    toast({ title: "Link copied" });
+  };
+
+  const [isSendingTranscript, setIsSendingTranscript] = useState(false);
+
+  const downloadTranscript = () => {
+    if (transcriptEntries.length === 0) return;
+    const header = `═══════════════════════════════════════════════════════
+    AMERICAN IRON — AI Mechanic Analysis Transcript
+    Session: ${new Date().toLocaleString()}
+═══════════════════════════════════════════════════════\n\n`;
+
+    const body = transcriptEntries.map((entry, i) => {
+      const time = entry.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      const divider = entry.role === "user"
+        ? `── YOU [${time}] ${"─".repeat(40)}`
+        : `── ${(entry.agent || "AI").toUpperCase()} [${time}] ${"─".repeat(Math.max(1, 35 - (entry.agent?.length || 2)))}`;
+      return `${divider}\n\n${entry.text}\n`;
+    }).join("\n");
+
+    const footer = `\n${"═".repeat(55)}\nGenerated by AMERICAN IRON AI Diagnostic System\n${new Date().toLocaleString()}\n`;
+
+    const blob = new Blob([header + body + footer], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `AMERICAN_IRON_Analysis_${new Date().toISOString().split("T")[0]}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast({ title: selectedLanguage === "ar" ? "تم تنزيل التحليل" : "Analysis downloaded" });
+  };
+
+  const emailTranscript = async () => {
+    if (!sessionData || transcriptEntries.length === 0 || !authToken) return;
+    setIsSendingTranscript(true);
+    try {
+      const res = await fetch(`/api/sessions/${sessionData.id}/email-transcript`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-auth-token": authToken },
+        body: JSON.stringify({
+          transcript: transcriptEntries.map(e => ({
+            role: e.role,
+            text: e.text,
+            agent: e.agent,
+            timestamp: e.timestamp.toISOString(),
+          })),
+        }),
+      });
+      if (res.ok) {
+        toast({ title: selectedLanguage === "ar" ? "تم إرسال التحليل إلى بريدك الإلكتروني" : "Analysis sent to your email" });
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast({ title: data.error || "Failed to send email", variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: selectedLanguage === "ar" ? "خطأ في إرسال البريد" : "Error sending email", variant: "destructive" });
+    } finally {
+      setIsSendingTranscript(false);
+    }
+  };
+
+  const currentMechanicInfo = MECHANIC_INFO[selectedLanguage] || MECHANIC_INFO.en;
+  const currentMechanic = mechanicType ? currentMechanicInfo[mechanicType] : null;
+
+  if (sharedReport) {
+    const sr = sharedReport.report;
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        <title>Shared Report | AMERICAN IRON</title>
+        <header className="border-b border-border/50 px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center">
+              <Wrench className="w-4 h-4 text-primary-foreground" />
+            </div>
+            <div>
+              <h1 className="text-sm font-semibold">AMERICAN IRON</h1>
+              <p className="text-xs text-muted-foreground">Diagnostic Report</p>
+            </div>
+          </div>
+          <Button variant="secondary" size="sm" onClick={() => setSharedReport(null)} data-testid="button-back-home">
+            Start New Session
+          </Button>
+        </header>
+        <div className="flex-1 p-4 max-w-2xl mx-auto w-full">
+          <div className="space-y-4">
+            <Badge variant={sr.reportType === "pro" ? "default" : "secondary"}>
+              {sr.reportType === "pro" ? "Pro Diagnostic" : "Quick Advice"}
+            </Badge>
+            {sr.content && typeof sr.content === "object" && (
+              <ReportContent content={sr.content} />
+            )}
+            {sr.svgDiagram && (
+              <div>
+                <h4 className="text-sm font-semibold mb-2">Technical Diagram</h4>
+                <div className="bg-card rounded-md border border-card-border p-2 overflow-x-auto"
+                  dangerouslySetInnerHTML={{ __html: sr.svgDiagram }} />
+              </div>
+            )}
+          </div>
+        </div>
+        <footer className="border-t border-border/50 p-3 text-center text-xs text-muted-foreground flex items-center justify-center gap-1.5">
+          <Shield className="w-3 h-3" />
+          AI guidance is informational only. Not a substitute for certified inspection.
+        </footer>
+      </div>
+    );
+  }
+
+  if (authLoading) {
+    return (
+      <div className="h-screen w-screen bg-[#111111] flex items-center justify-center" data-testid="auth-loading">
+        <Loader2 className="h-8 w-8 animate-spin text-[#FFCD11]" />
+      </div>
+    );
+  }
+
+  if (!sessionData) {
+    const services = [
+      { icon: Wrench, title: "HEAVY EQUIPMENT", desc: "Excavators, bulldozers, loaders, and earthmoving machinery diagnostics", image: serviceHeavyEquipPath },
+      { icon: Zap, title: "POWER GENERATION", desc: "Generators, turbines, and power distribution system analysis", image: servicePowerGenPath },
+      { icon: Anchor, title: "MARINE ENGINES", desc: "Marine diesel, propulsion systems, and marine electrical diagnostics", image: serviceMarinePath },
+      { icon: Droplets, title: "HYDRAULIC SYSTEMS", desc: "Pumps, cylinders, valves, and complete hydraulic circuit analysis", image: serviceHydraulicsPath },
+      { icon: Cpu, title: "ELECTRICAL CONTROLS", desc: "PLCs, wiring, sensors, and control system troubleshooting", image: serviceElectricalPath },
+      { icon: Package, title: "PARTS ASSISTANCE", desc: "Part identification, cross-referencing, and compatibility verification", image: servicePartsPath },
+    ];
+
+    const serviceDetails = [
+      {
+        icon: Wrench, title: "HEAVY EQUIPMENT", image: serviceHeavyEquipPath,
+        desc: "Complete diagnostics and repair guidance for all types of heavy machinery and earthmoving equipment.",
+        items: [
+          "Excavator hydraulic system diagnostics & troubleshooting",
+          "Bulldozer undercarriage inspection & track tension analysis",
+          "Wheel loader transmission & drivetrain fault diagnosis",
+          "Backhoe swing motor & boom cylinder repair guidance",
+          "Grader blade control system calibration & adjustment",
+          "Skid steer hydraulic flow testing & valve diagnosis",
+          "Crane boom inspection & load capacity verification",
+          "Compactor vibration system analysis & bearing inspection",
+          "Engine overheating & cooling system diagnostics",
+          "Fuel injection system testing & injector diagnosis",
+          "Turbocharger boost pressure analysis & wastegate check",
+          "Exhaust aftertreatment (DPF/SCR) regeneration troubleshooting",
+        ]
+      },
+      {
+        icon: Zap, title: "POWER GENERATION", image: servicePowerGenPath,
+        desc: "Expert diagnostics for generators, turbines, and complete power distribution systems.",
+        items: [
+          "Diesel generator starting & cranking system diagnosis",
+          "Alternator voltage regulation & AVR troubleshooting",
+          "Transfer switch operation testing & ATS diagnostics",
+          "Paralleling generator synchronization & load sharing",
+          "Coolant system inspection & radiator flow analysis",
+          "Fuel system priming, filtering & injector testing",
+          "Governor speed control calibration & hunting fix",
+          "Battery charger & starting battery load testing",
+          "Exhaust manifold & turbo inspection for gen-sets",
+          "Control panel fault code reading & ECU diagnostics",
+          "Load bank testing & performance verification",
+          "Preventive maintenance scheduling & oil analysis",
+        ]
+      },
+      {
+        icon: Anchor, title: "MARINE ENGINES", image: serviceMarinePath,
+        desc: "Specialized marine diesel and propulsion system diagnostics for vessels of all sizes.",
+        items: [
+          "Marine diesel engine overhaul & top-end rebuild guidance",
+          "Raw water cooling system & heat exchanger inspection",
+          "Marine transmission & reduction gear diagnosis",
+          "Propeller shaft alignment & stern tube seal check",
+          "Marine fuel system water separation & filter service",
+          "Exhaust elbow & wet exhaust system corrosion inspection",
+          "Marine starter motor & charging system diagnostics",
+          "Zincs & cathodic protection system assessment",
+          "Bilge pump system testing & float switch diagnosis",
+          "Marine electrical panel & shore power connection check",
+          "Engine mount inspection & vibration isolation analysis",
+          "Winterization procedures & long-term storage prep",
+        ]
+      },
+      {
+        icon: Droplets, title: "HYDRAULIC SYSTEMS", image: serviceHydraulicsPath,
+        desc: "Full hydraulic circuit analysis including pumps, cylinders, valves, and fluid power systems.",
+        items: [
+          "Hydraulic pump flow testing & pressure diagnostics",
+          "Cylinder seal replacement & rod inspection guidance",
+          "Directional control valve spool & solenoid testing",
+          "Hydraulic hose routing, sizing & pressure rating",
+          "Relief valve pressure setting & adjustment",
+          "Hydraulic oil contamination analysis & flushing",
+          "Accumulator pre-charge pressure verification",
+          "Proportional valve calibration & current testing",
+          "Hydraulic motor case drain flow measurement",
+          "Pilot pressure system diagnosis & orifice check",
+          "Cooler & heat exchanger efficiency testing",
+          "Complete hydraulic schematic reading & circuit tracing",
+        ]
+      },
+      {
+        icon: Cpu, title: "ELECTRICAL CONTROLS", image: serviceElectricalPath,
+        desc: "PLC programming, sensor calibration, wiring diagnostics, and control system troubleshooting.",
+        items: [
+          "PLC fault code reading & ladder logic troubleshooting",
+          "Sensor calibration — pressure, temperature, position",
+          "Wiring harness continuity testing & connector diagnosis",
+          "CAN bus communication diagnostics & network analysis",
+          "Relay & contactor testing, coil resistance measurement",
+          "Variable frequency drive (VFD) parameter setup & faults",
+          "Motor starter overload setting & thermal protection",
+          "Grounding & bonding inspection for safety compliance",
+          "Instrument panel gauge calibration & sender testing",
+          "Telematics & GPS module setup and diagnostics",
+          "Battery isolator & disconnect switch inspection",
+          "24V/12V system voltage drop testing & parasitic draw",
+        ]
+      },
+      {
+        icon: Package, title: "PARTS ASSISTANCE", image: servicePartsPath,
+        desc: "Expert parts identification and cross-referencing for all heavy equipment manufacturers using part numbers or machine serial numbers.",
+        items: [
+          "OEM part identification from part numbers — all manufacturers",
+          "Machine serial number lookup & configuration breakdown",
+          "Cross-reference OEM to aftermarket part numbers",
+          "Parts compatibility verification across models & years",
+          "Superseded & discontinued part number tracking",
+          "Filter, belt & fluid specification lookup by machine serial",
+          "Undercarriage component identification & measurement specs",
+          "Engine rebuild kit & gasket set part matching",
+          "Hydraulic seal kit & O-ring specification lookup",
+          "Service kit & maintenance parts group identification",
+          "Parts group breakdown by machine system (engine, hydraulic, electrical)",
+          "Safety-critical parts identification & OEM recommendations",
+        ]
+      },
+    ];
+
+    const features = [
+      { icon: User, text: "Face-to-face AI video consultations — no travel, no waiting" },
+      { icon: HardHat, text: "6 specialist mechanics covering every system" },
+      { icon: FileText, text: "Pro diagnostic reports with parts lists & procedures" },
+      { icon: Shield, text: "Encrypted, secure & available 24/7 worldwide" },
+    ];
+
+    const impactStats = [
+      { value: "90%", label: "COST REDUCTION", sub: "vs. on-site diagnostic visit" },
+      { value: "< 5min", label: "TIME TO DIAGNOSIS", sub: "instant AI-powered analysis" },
+      { value: "24/7", label: "ALWAYS AVAILABLE", sub: "no appointments needed" },
+      { value: "6", label: "EXPERT DIVISIONS", sub: "every system covered" },
+    ];
+
+    if (activeView === "services") {
+      return (
+        <div className="min-h-screen bg-[#111111] text-white overflow-x-hidden" data-testid="services-page">
+          <title>AMERICAN IRON | Our Services</title>
+          <nav className="fixed top-0 left-0 right-0 z-50 bg-[#111111]/90 backdrop-blur-md border-b border-[#FFCD11]/10" data-testid="nav-bar-services">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+              <button onClick={() => setActiveView("home")} className="flex items-center gap-3 hover:opacity-80 transition-opacity" data-testid="button-back-home-services">
+                <ChevronRight className="w-4 h-4 text-gray-400 rotate-180" />
+                <img src={logoPath} alt="AMERICAN IRON" className="h-10 w-auto" />
+              </button>
+              <div className="flex items-center gap-3">
+                <a href="/portal" className="text-sm text-gray-400 hover:text-[#FFCD11] transition-colors font-medium" data-testid="link-portal-services">Customer Portal</a>
+                <Button
+                  size="sm"
+                  className="bg-[#FFCD11] text-black font-bold hover:bg-[#e6b800]"
+                  onClick={() => { setActiveView("home"); setTimeout(() => document.getElementById("speak-admin-section")?.scrollIntoView({ behavior: "smooth" }), 100); }}
+                  data-testid="button-services-nav-admin"
+                >
+                  <MessageCircle className="w-4 h-4 mr-1" />
+                  SPEAK WITH ADMIN
+                </Button>
+              </div>
+            </div>
+          </nav>
+
+          <div className="pt-24 pb-16 px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto">
+            <div className="text-center mb-12">
+              <p className="text-[#FFCD11] text-sm font-bold tracking-[0.2em] uppercase mb-3">COMPLETE SERVICE CATALOG</p>
+              <h1 className="text-3xl sm:text-4xl font-black text-white mb-4" data-testid="text-services-title">
+                EVERY REPAIR. EVERY SYSTEM.<br />
+                <span className="text-[#FFCD11]">WE COVER IT ALL.</span>
+              </h1>
+              <p className="text-gray-400 max-w-2xl mx-auto">
+                Our five expert divisions cover virtually every repair and diagnostic need for heavy industrial equipment. Click any section to see the full breakdown.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              {serviceDetails.map((svc, i) => (
+                <div
+                  key={i}
+                  className={`rounded-xl border transition-all duration-300 overflow-hidden ${expandedService === i ? "border-[#FFCD11]/40 bg-[#1a1a1a]" : "border-white/10 bg-[#161616] hover:border-[#FFCD11]/20"}`}
+                  data-testid={`service-detail-${i}`}
+                >
+                  <button
+                    className="w-full flex items-center gap-4 p-5 text-left"
+                    onClick={() => setExpandedService(expandedService === i ? null : i)}
+                    data-testid={`button-expand-service-${i}`}
+                  >
+                    <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 border border-white/10">
+                      <img src={svc.image} alt={svc.title} className="w-full h-full object-cover" />
+                    </div>
+                    <div className="w-10 h-10 rounded-md bg-[#FFCD11]/10 flex items-center justify-center flex-shrink-0">
+                      <svc.icon className="w-5 h-5 text-[#FFCD11]" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-base font-black text-white">{svc.title}</h3>
+                      <p className="text-gray-400 text-sm truncate">{svc.desc}</p>
+                    </div>
+                    <div className="flex-shrink-0">
+                      {expandedService === i ? (
+                        <ChevronUp className="w-5 h-5 text-[#FFCD11]" />
+                      ) : (
+                        <ChevronDown className="w-5 h-5 text-gray-500" />
+                      )}
+                    </div>
+                  </button>
+
+                  {expandedService === i && (
+                    <div className="px-5 pb-5 border-t border-white/5">
+                      <p className="text-gray-300 text-sm mb-4 pt-4">{svc.desc}</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {svc.items.map((item, j) => (
+                          <div key={j} className="flex items-start gap-2 text-sm" data-testid={`service-item-${i}-${j}`}>
+                            <CheckCircle2 className="w-4 h-4 text-[#FFCD11] flex-shrink-0 mt-0.5" />
+                            <span className="text-gray-300">{item}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-6">
+                        <Button
+                          className="bg-[#FFCD11] text-black font-bold hover:bg-[#e6b800]"
+                          onClick={() => { setActiveView("home"); setTimeout(() => document.getElementById("speak-admin-section")?.scrollIntoView({ behavior: "smooth" }), 100); }}
+                          data-testid={`button-speak-admin-${i}`}
+                        >
+                          <Search className="w-4 h-4 mr-2" />
+                          EXPLORE NOW
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-12 text-center">
+              <p className="text-gray-500 text-sm mb-4">Don't see your specific issue? Our admin will route you to the right specialist.</p>
+              <Button
+                size="lg"
+                className="h-14 px-10 text-lg font-black bg-[#FFCD11] text-black hover:bg-[#e6b800] rounded-lg shadow-lg shadow-[#FFCD11]/20"
+                onClick={() => { setActiveView("home"); setTimeout(() => document.getElementById("speak-admin-section")?.scrollIntoView({ behavior: "smooth" }), 100); }}
+                data-testid="button-services-speak-admin"
+              >
+                <MessageCircle className="w-5 h-5 mr-2" />
+                SPEAK WITH ADMIN
+              </Button>
+            </div>
+          </div>
+
+          <footer className="relative border-t border-white/5 bg-[#0d0d0d] py-10">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+                <div className="flex items-center gap-3">
+                  <img src={logoPath} alt="AMERICAN IRON" className="h-10 w-auto" />
+                  <div className="text-xs text-gray-500">
+                    <p>AI-Powered Heavy Equipment Diagnostics</p>
+                    <p className="mt-0.5">americanironus.com</p>
+                  </div>
+                </div>
+                <div className="text-xs text-gray-600">
+                  &copy; {new Date().getFullYear()} AMERICAN IRON. All rights reserved.
+                </div>
+              </div>
+            </div>
+          </footer>
+        </div>
+      );
+    }
+
+    return (
+      <div className="min-h-screen bg-[#111111] text-white overflow-x-hidden" data-testid="landing-page">
+        <title>AMERICAN IRON | Live AI Engineer Desk</title>
+        <meta name="description" content="Walk into AMERICAN IRON — AI-powered heavy equipment diagnostics with live video specialists." />
+        <meta property="og:title" content="AMERICAN IRON | Live AI Engineer Desk" />
+        <meta property="og:description" content="Real-time AI-powered heavy equipment diagnostics with live video avatars." />
+
+        {showAboutVideo && (
+          <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4" data-testid="about-video-modal">
+            <div className="relative w-full max-w-4xl">
+              <div className="absolute -top-12 right-0 flex items-center gap-4">
+                <button
+                  onClick={() => { if (aboutNarrating) stopAboutNarration(); else startAboutNarration(); }}
+                  className="text-white/70 hover:text-white transition-colors flex items-center gap-1.5 text-sm"
+                  data-testid="button-toggle-narration"
+                >
+                  <Volume2 className={`w-4 h-4 ${aboutNarrating ? "text-[#FFCD11]" : ""}`} />
+                  {aboutNarrating ? "Mute" : "Listen"}
+                </button>
+                <button
+                  onClick={() => { setShowAboutVideo(false); stopAboutNarration(); if (aboutVideoRef.current) aboutVideoRef.current.pause(); }}
+                  className="text-white/70 hover:text-white transition-colors flex items-center gap-1.5 text-sm"
+                  data-testid="button-close-about-video"
+                >
+                  Close <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="rounded-xl overflow-hidden border border-[#FFCD11]/20 shadow-2xl shadow-[#FFCD11]/10 relative">
+                <video
+                  ref={aboutVideoRef}
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  className="w-full h-auto"
+                  src={aboutShopVideoPath}
+                  data-testid="video-about-shop"
+                  onPlay={() => { setTimeout(() => startAboutNarration(), 500); }}
+                />
+                {aboutNarrating && (
+                  <div className="absolute bottom-4 left-4 right-4 flex items-center gap-2 bg-black/60 rounded-lg px-3 py-2">
+                    <Volume2 className="w-4 h-4 text-[#FFCD11] flex-shrink-0 animate-pulse" />
+                    <span className="text-white/80 text-xs">Narrating...</span>
+                  </div>
+                )}
+              </div>
+              <div className="mt-6 text-center space-y-3">
+                <h3 className="text-xl font-black text-white">ABOUT AMERICAN IRON</h3>
+                <p className="text-gray-300 text-sm max-w-2xl mx-auto leading-relaxed">
+                  AMERICAN IRON is a full-service AI-powered diagnostic facility specializing in heavy equipment, power generation, marine engines, hydraulic systems, and electrical controls. Our virtual shop floor brings decades of real-world mechanical expertise directly to you through face-to-face AI video consultations — no appointment needed.
+                </p>
+                <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                  <Button
+                    className="bg-[#FFCD11] text-black font-bold hover:bg-[#e6b800]"
+                    onClick={() => { setShowAboutVideo(false); stopAboutNarration(); setTimeout(() => document.getElementById("speak-admin-section")?.scrollIntoView({ behavior: "smooth" }), 100); }}
+                    data-testid="button-about-speak-admin"
+                  >
+                    <MessageCircle className="w-4 h-4 mr-2" />
+                    SPEAK WITH ADMIN
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="border-white/20 text-white hover:bg-white/10"
+                    onClick={() => { setShowAboutVideo(false); stopAboutNarration(); setActiveView("services"); }}
+                    data-testid="button-about-explore"
+                  >
+                    <Search className="w-4 h-4 mr-2" />
+                    EXPLORE SERVICES
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <nav className="fixed top-0 left-0 right-0 z-50" data-testid="nav-bar">
+          <div className="absolute inset-0 bg-[#111111]/80 backdrop-blur-xl border-b border-[#FFCD11]/5" />
+          <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <img src={logoPath} alt="AMERICAN IRON" className="h-10 w-auto" data-testid="img-logo-nav" />
+            </div>
+            <div className="hidden md:flex items-center gap-5 text-xs text-gray-500 uppercase tracking-wider font-medium">
+              <button onClick={() => setShowAboutVideo(true)} className="hover:text-[#FFCD11] transition-colors" data-testid="link-about">About</button>
+              <button onClick={() => setActiveView("services")} className="hover:text-[#FFCD11] transition-colors" data-testid="link-services">Services</button>
+              <a href="#why" className="hover:text-[#FFCD11] transition-colors" data-testid="link-why">Why Us</a>
+              <a href="/portal" className="hover:text-[#FFCD11] transition-colors" data-testid="link-portal">Portal</a>
+              <Button
+                size="sm"
+                className="bg-[#FFCD11] text-black hover:bg-[#e6b800] font-black text-xs tracking-wider rounded-full px-5"
+                onClick={() => document.getElementById("speak-admin-section")?.scrollIntoView({ behavior: "smooth" })}
+                data-testid="button-nav-speak-admin"
+              >
+                START NOW
+              </Button>
+            </div>
+          </div>
+        </nav>
+
+        <section className="relative min-h-screen flex flex-col" data-testid="hero-section">
+          <div className="absolute inset-0 overflow-hidden">
+            <video
+              ref={heroVideoRef}
+              autoPlay
+              loop
+              muted
+              playsInline
+              aria-hidden="true"
+              className="w-full h-full object-cover"
+              data-testid="video-hero-bg"
+              poster={heroFacilityPath}
+              src={workshopVideoPath}
+              style={{ filter: "brightness(0.3) saturate(0.8)" }}
+            />
+            <div className="absolute inset-0 bg-gradient-to-b from-[#111111] via-transparent to-[#111111]" />
+            <div className="absolute inset-0 bg-[#111111]/40" />
+          </div>
+
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-[#FFCD11] to-transparent" />
+
+          <div className="relative z-10 flex-1 flex items-center justify-center px-4 sm:px-6 pt-14">
+            <div className="max-w-6xl mx-auto w-full text-center space-y-6 sm:space-y-8">
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#FFCD11]/10 border border-[#FFCD11]/20 mb-2">
+                <div className="w-2 h-2 rounded-full bg-[#FFCD11] animate-pulse" />
+                <span className="text-[#FFCD11] text-[10px] sm:text-xs font-bold tracking-[0.25em] uppercase">LIVE AI ENGINEER DESK — ONLINE NOW</span>
+              </div>
+
+              <img
+                src={logoPath}
+                alt="AMERICAN IRON"
+                className="h-28 sm:h-40 lg:h-48 w-auto mx-auto drop-shadow-[0_0_40px_rgba(255,205,17,0.15)]"
+                data-testid="img-logo-hero"
+              />
+
+              <div className="space-y-4 sm:space-y-5">
+                <h1 className="text-4xl sm:text-6xl lg:text-7xl xl:text-8xl font-black text-white leading-[0.9] tracking-tight" data-testid="text-brand-name">
+                  TALK TO A MECHANIC.<br />
+                  <span className="text-[#FFCD11] drop-shadow-[0_0_30px_rgba(255,205,17,0.3)]">RIGHT NOW.</span>
+                </h1>
+                <p className="text-gray-300 text-lg sm:text-xl lg:text-2xl max-w-3xl mx-auto leading-relaxed font-light" data-testid="text-page-title">
+                  AI-powered video diagnostics for heavy equipment.
+                  <span className="text-white font-medium"> No appointment. No travel. No hourly rate.</span>
+                </p>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 pt-2">
+                <Button
+                  size="lg"
+                  className="h-16 px-10 text-base sm:text-lg font-black bg-[#FFCD11] text-black hover:bg-[#e6b800] rounded-full shadow-[0_0_40px_rgba(255,205,17,0.3)] hover:shadow-[0_0_60px_rgba(255,205,17,0.4)] transition-all duration-300"
+                  onClick={() => document.getElementById("speak-admin-section")?.scrollIntoView({ behavior: "smooth" })}
+                  data-testid="button-hero-speak-admin"
+                >
+                  <MessageCircle className="w-5 h-5 mr-2" />
+                  START FREE CONSULTATION
+                </Button>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="h-16 px-8 text-sm font-bold border-white/20 text-white hover:bg-white/5 rounded-full"
+                  onClick={() => setShowAboutVideo(true)}
+                  data-testid="button-hero-about"
+                >
+                  <Play className="w-4 h-4 mr-2" />
+                  SEE HOW IT WORKS
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-6 max-w-3xl mx-auto pt-6 sm:pt-10">
+                {impactStats.map((stat, i) => (
+                  <div key={i} className="text-center" data-testid={`stat-${i}`}>
+                    <p className="text-2xl sm:text-3xl lg:text-4xl font-black text-[#FFCD11] leading-none">{stat.value}</p>
+                    <p className="text-[9px] sm:text-[10px] font-bold text-white/60 tracking-[0.15em] uppercase mt-1.5">{stat.label}</p>
+                    <p className="text-[8px] sm:text-[9px] text-white/30 mt-0.5">{stat.sub}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="relative z-10 pb-8 text-center">
+            <button
+              onClick={() => document.getElementById("value-prop-section")?.scrollIntoView({ behavior: "smooth" })}
+              className="text-white/30 hover:text-[#FFCD11] transition-colors animate-bounce"
+              data-testid="button-scroll-down"
+            >
+              <ChevronDown className="w-6 h-6" />
+            </button>
+          </div>
+
+          <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-[#111111] to-transparent" />
+        </section>
+
+        <section id="value-prop-section" className="relative py-16 sm:py-20 bg-[#111111]" data-testid="value-prop-section">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6">
+            <div className="text-center mb-12 sm:mb-16">
+              <p className="text-[#FFCD11] text-xs font-bold tracking-[0.3em] uppercase mb-4">THE OLD WAY IS OVER</p>
+              <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-white leading-tight max-w-4xl mx-auto" data-testid="text-value-heading">
+                WHY FLY A TECHNICIAN OUT WHEN YOU CAN
+                <span className="text-[#FFCD11]"> TALK TO ONE INSTANTLY?</span>
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8">
+              <div className="relative group">
+                <div className="absolute inset-0 bg-gradient-to-b from-red-500/5 to-transparent rounded-2xl" />
+                <div className="relative p-6 sm:p-8 rounded-2xl border border-red-500/10 bg-[#1a1a1a]/50">
+                  <div className="text-red-400/60 text-xs font-bold tracking-[0.2em] uppercase mb-4">THE OLD WAY</div>
+                  <div className="space-y-3 text-sm text-gray-500">
+                    <div className="flex items-start gap-2"><X className="w-4 h-4 shrink-0 mt-0.5 text-red-400/40" /><span>$2,000+ travel & diagnostic fees</span></div>
+                    <div className="flex items-start gap-2"><X className="w-4 h-4 shrink-0 mt-0.5 text-red-400/40" /><span>Days or weeks to schedule</span></div>
+                    <div className="flex items-start gap-2"><X className="w-4 h-4 shrink-0 mt-0.5 text-red-400/40" /><span>Equipment sitting idle, losing money</span></div>
+                    <div className="flex items-start gap-2"><X className="w-4 h-4 shrink-0 mt-0.5 text-red-400/40" /><span>Limited to one specialist's opinion</span></div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="relative group md:-mt-4">
+                <div className="absolute -inset-[1px] bg-gradient-to-b from-[#FFCD11]/30 to-[#FFCD11]/5 rounded-2xl" />
+                <div className="relative p-6 sm:p-8 rounded-2xl bg-[#1a1a1a] border border-[#FFCD11]/20">
+                  <div className="text-[#FFCD11] text-xs font-bold tracking-[0.2em] uppercase mb-4">AMERICAN IRON WAY</div>
+                  <div className="space-y-3 text-sm text-gray-300">
+                    <div className="flex items-start gap-2"><CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-[#FFCD11]" /><span>Free AI-powered diagnostic session</span></div>
+                    <div className="flex items-start gap-2"><CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-[#FFCD11]" /><span>Instant — start in under 60 seconds</span></div>
+                    <div className="flex items-start gap-2"><CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-[#FFCD11]" /><span>Get your crew working the same day</span></div>
+                    <div className="flex items-start gap-2"><CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-[#FFCD11]" /><span>6 specialists, all available at once</span></div>
+                  </div>
+                  <div className="mt-5 pt-4 border-t border-[#FFCD11]/10 text-center">
+                    <span className="text-[#FFCD11] text-xs font-black tracking-wider">GAME CHANGER</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="relative group">
+                <div className="absolute inset-0 bg-gradient-to-b from-[#FFCD11]/3 to-transparent rounded-2xl" />
+                <div className="relative p-6 sm:p-8 rounded-2xl border border-white/5 bg-[#1a1a1a]/50">
+                  <div className="text-white/40 text-xs font-bold tracking-[0.2em] uppercase mb-4">WHAT YOU GET</div>
+                  <div className="space-y-3 text-sm text-gray-400">
+                    <div className="flex items-start gap-2"><Zap className="w-4 h-4 shrink-0 mt-0.5 text-[#FFCD11]/60" /><span>Live face-to-face video with AI mechanic</span></div>
+                    <div className="flex items-start gap-2"><FileText className="w-4 h-4 shrink-0 mt-0.5 text-[#FFCD11]/60" /><span>Pro diagnostic report with parts list</span></div>
+                    <div className="flex items-start gap-2"><Wrench className="w-4 h-4 shrink-0 mt-0.5 text-[#FFCD11]/60" /><span>Step-by-step repair procedures</span></div>
+                    <div className="flex items-start gap-2"><Shield className="w-4 h-4 shrink-0 mt-0.5 text-[#FFCD11]/60" /><span>Arabic & English support</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="services" className="relative py-16 sm:py-20 bg-[#0d0d0d]" data-testid="services-section">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center mb-12 sm:mb-16">
+              <p className="text-[#FFCD11] text-xs font-bold tracking-[0.3em] uppercase mb-3">6 SPECIALIST DIVISIONS</p>
+              <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-white" data-testid="text-services-heading">
+                EVERY SYSTEM. <span className="text-[#FFCD11]">COVERED.</span>
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5">
+              {services.map((svc, i) => (
+                <div
+                  key={i}
+                  className="group relative rounded-xl sm:rounded-2xl overflow-hidden cursor-pointer"
+                  onClick={() => { setExpandedService(i); setActiveView("services"); }}
+                  data-testid={`card-service-${i}`}
+                >
+                  <div className="aspect-[4/3] overflow-hidden">
+                    <img
+                      src={svc.image}
+                      alt={svc.title}
+                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                      style={{ filter: "brightness(0.4)" }}
+                    />
+                  </div>
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
+                  <div className="absolute inset-0 border border-white/5 rounded-xl sm:rounded-2xl group-hover:border-[#FFCD11]/30 transition-colors duration-300" />
+                  <div className="absolute bottom-0 left-0 right-0 p-3 sm:p-5">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <svc.icon className="w-4 h-4 text-[#FFCD11]" />
+                      <h3 className="text-xs sm:text-sm font-black text-white tracking-wide">{svc.title}</h3>
+                    </div>
+                    <p className="text-gray-400 text-[10px] sm:text-xs leading-relaxed hidden sm:block">{svc.desc}</p>
+                    <div className="flex items-center gap-1 text-[#FFCD11] text-[10px] sm:text-xs font-bold mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <span>Learn More</span>
+                      <ChevronRight className="w-3 h-3" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-8 sm:mt-10 text-center">
+              <Button
+                size="lg"
+                className="h-14 px-10 font-black bg-[#FFCD11] text-black hover:bg-[#e6b800] rounded-full shadow-[0_0_30px_rgba(255,205,17,0.2)]"
+                onClick={() => document.getElementById("speak-admin-section")?.scrollIntoView({ behavior: "smooth" })}
+                data-testid="card-service-speak-admin"
+              >
+                <MessageCircle className="w-5 h-5 mr-2" />
+                TALK TO A SPECIALIST NOW
+              </Button>
+            </div>
+          </div>
+        </section>
+
+        <section className="relative py-16 sm:py-24 overflow-hidden" data-testid="how-it-works-section">
+          <div className="absolute inset-0 bg-[#111111]" />
+          <div className="absolute right-0 top-0 w-[500px] h-[500px] bg-[#FFCD11]/[0.02] rounded-full blur-[120px]" />
+          <div className="absolute left-0 bottom-0 w-[400px] h-[400px] bg-[#FFCD11]/[0.02] rounded-full blur-[100px]" />
+
+          <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6">
+            <div className="text-center mb-12 sm:mb-16">
+              <p className="text-[#FFCD11] text-xs font-bold tracking-[0.3em] uppercase mb-3">DEAD SIMPLE</p>
+              <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-white" data-testid="text-how-heading">
+                60 SECONDS TO <span className="text-[#FFCD11]">EXPERT HELP</span>
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-10">
+              {[
+                { step: "1", title: "CLICK START", desc: "Hit the button. Our AI front desk admin greets you instantly — no forms, no sign-ups, no wait.", icon: Play },
+                { step: "2", title: "DESCRIBE IT", desc: "Talk naturally about your equipment issue. The admin connects you to the right specialist mechanic.", icon: MessageCircle },
+                { step: "3", title: "GET THE REPORT", desc: "Your specialist diagnoses the problem live and delivers a pro report with parts, procedures & diagrams.", icon: FileText },
+              ].map((item, i) => (
+                <div key={i} className="relative text-center" data-testid={`step-${i}`}>
+                  <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-[#FFCD11]/10 border border-[#FFCD11]/20 flex items-center justify-center mx-auto mb-5">
+                    <item.icon className="w-7 h-7 sm:w-8 sm:h-8 text-[#FFCD11]" />
+                  </div>
+                  <div className="text-[#FFCD11]/20 text-6xl sm:text-7xl font-black absolute -top-2 left-1/2 -translate-x-1/2 pointer-events-none select-none">{item.step}</div>
+                  <h3 className="text-base sm:text-lg font-black text-white mb-2">{item.title}</h3>
+                  <p className="text-gray-400 text-xs sm:text-sm leading-relaxed max-w-xs mx-auto">{item.desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section id="why" className="relative py-16 sm:py-20 bg-[#0d0d0d]" data-testid="why-section">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6">
+            <div className="text-center mb-12 sm:mb-16">
+              <p className="text-[#FFCD11] text-xs font-bold tracking-[0.3em] uppercase mb-3">WHY AMERICAN IRON</p>
+              <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-white leading-tight max-w-4xl mx-auto" data-testid="text-why-heading">
+                BUILT FOR THE PEOPLE WHO <span className="text-[#FFCD11]">BUILD THE WORLD</span>
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 sm:gap-12 items-center">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {features.map((feat, i) => (
+                  <div key={i} className="p-5 sm:p-6 rounded-2xl bg-[#1a1a1a] border border-white/5 hover:border-[#FFCD11]/20 transition-colors" data-testid={`feature-${i}`}>
+                    <feat.icon className="w-6 h-6 text-[#FFCD11] mb-3" />
+                    <p className="text-gray-300 text-sm leading-relaxed">{feat.text}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="relative">
+                <div className="rounded-2xl overflow-hidden border border-white/5">
+                  <img src={heroFacilityPath} alt="AMERICAN IRON Facility" className="w-full h-auto" style={{ filter: "brightness(0.7) saturate(1.1)" }} />
+                </div>
+                <div className="absolute -bottom-3 -right-3 px-5 py-3 bg-[#FFCD11] rounded-xl">
+                  <p className="text-black text-xs font-black tracking-wider">REVOLUTIONARY AI DIAGNOSTICS</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="speak-admin-section" className="relative py-20 sm:py-28 overflow-hidden" data-testid="speak-admin-section">
+          <div className="absolute inset-0 bg-[#111111]" />
+          <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSA2MCAwIEwgMCAwIDAgNjAiIGZpbGw9Im5vbmUiIHN0cm9rZT0icmdiYSgyNTUsMjA1LDE3LDAuMDMpIiBzdHJva2Utd2lkdGg9IjEiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IGZpbGw9InVybCgjZ3JpZCkiIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiLz48L3N2Zz4=')] opacity-50" />
+          <div className="absolute left-1/2 top-0 -translate-x-1/2 w-[600px] h-[600px] bg-[#FFCD11]/[0.03] rounded-full blur-[150px]" />
+
+          <div className="relative z-10 max-w-lg mx-auto px-4 sm:px-6 text-center space-y-8">
+            <div>
+              <p className="text-[#FFCD11] text-xs font-bold tracking-[0.3em] uppercase mb-4">READY WHEN YOU ARE</p>
+              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-white leading-tight" data-testid="text-speak-admin-heading">
+                START YOUR<br /><span className="text-[#FFCD11]">FREE SESSION</span>
+              </h2>
+              <p className="text-gray-400 text-sm leading-relaxed max-w-md mx-auto mt-4">
+                {isAuthenticated
+                  ? `${customer?.firstName}, your equipment info is ready. Our AI admin will connect you to the right specialist in seconds.`
+                  : "Register with your equipment details so our AI admin can skip the intake and connect you to the right specialist fast."}
+              </p>
+            </div>
+
+            <div className="bg-[#1a1a1a] backdrop-blur-sm rounded-2xl border border-[#FFCD11]/10 p-6 sm:p-8 space-y-5 shadow-[0_0_60px_rgba(255,205,17,0.05)]">
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-gray-300 uppercase tracking-wider">Select Language</label>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setSelectedLanguage("en")}
+                    className={`flex-1 py-3 px-4 rounded-lg border-2 text-sm font-bold transition-all ${selectedLanguage === "en" ? "border-[#FFCD11] bg-[#FFCD11]/10 text-[#FFCD11]" : "border-white/10 bg-white/5 text-gray-400 hover:border-white/20"}`}
+                    data-testid="button-lang-en"
+                  >
+                    English
+                  </button>
+                  <button
+                    onClick={() => setSelectedLanguage("ar")}
+                    className={`flex-1 py-3 px-4 rounded-lg border-2 text-sm font-bold transition-all ${selectedLanguage === "ar" ? "border-[#FFCD11] bg-[#FFCD11]/10 text-[#FFCD11]" : "border-white/10 bg-white/5 text-gray-400 hover:border-white/20"}`}
+                    data-testid="button-lang-ar"
+                  >
+                    العربية (Arabic)
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <Checkbox
+                  id="consent"
+                  checked={consentGiven}
+                  onCheckedChange={(c) => setConsentGiven(c as boolean)}
+                  data-testid="checkbox-consent"
+                  className="mt-0.5 border-[#FFCD11]/40 data-[state=checked]:bg-[#FFCD11] data-[state=checked]:border-[#FFCD11] data-[state=checked]:text-black"
+                />
+                <label htmlFor="consent" className="text-xs text-gray-400 leading-relaxed cursor-pointer text-left">
+                  {selectedLanguage === "ar"
+                    ? "أوافق على تسجيل محادثتي لإنشاء التقرير وأفهم أن إرشادات الذكاء الاصطناعي معلوماتية وليست بديلاً عن الفحص المعتمد."
+                    : "I consent to having my conversation transcribed for report generation and understand that AI guidance is informational, not a substitute for certified inspection."}
+                </label>
+              </div>
+
+              {!isAuthenticated ? (
+                <div className="space-y-3">
+                  <Button
+                    className="w-full h-14 text-lg font-black bg-[#FFCD11] text-black hover:bg-[#e6b800] rounded-lg shadow-lg shadow-[#FFCD11]/20"
+                    onClick={() => setLocation("/auth?redirect=/live-desk")}
+                    data-testid="button-register-to-start"
+                  >
+                    <User className="w-5 h-5 mr-2" />
+                    {selectedLanguage === "ar" ? "سجل الدخول للبدء" : "REGISTER / SIGN IN TO START"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full h-12 border-[#FFCD11]/40 text-[#FFCD11] hover:bg-[#FFCD11]/10"
+                    onClick={startSession}
+                    disabled={!consentGiven || isConnecting}
+                    data-testid="button-start-text-diagnosis"
+                  >
+                    {isConnecting ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <MessageCircle className="w-5 h-5 mr-2" />}
+                    Start text diagnosis
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  className="w-full h-14 text-lg font-black bg-[#FFCD11] text-black hover:bg-[#e6b800] rounded-lg shadow-lg shadow-[#FFCD11]/20"
+                  onClick={startSession}
+                  disabled={!consentGiven || isConnecting}
+                  data-testid="button-start-session"
+                >
+                  {isConnecting ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                      {selectedLanguage === "ar" ? "جاري الاتصال بالاستقبال..." : "CONNECTING TO ADMIN..."}
+                    </>
+                  ) : (
+                    <>
+                      <MessageCircle className="w-5 h-5 mr-2" />
+                      {selectedLanguage === "ar" ? `مرحباً ${customer?.firstName} — ابدأ الجلسة` : `Welcome ${customer?.firstName} — START SESSION`}
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
+
+            <div className="flex items-center justify-center gap-4 text-xs text-gray-500">
+              <div className="flex items-center gap-1.5">
+                <Shield className="w-3.5 h-3.5 text-[#FFCD11]/60" />
+                <span>Encrypted</span>
+              </div>
+              <span className="text-gray-700">|</span>
+              <div className="flex items-center gap-1.5">
+                <Shield className="w-3.5 h-3.5 text-[#FFCD11]/60" />
+                <span>Secure</span>
+              </div>
+              <span className="text-gray-700">|</span>
+              <div className="flex items-center gap-1.5">
+                <Zap className="w-3.5 h-3.5 text-[#FFCD11]/60" />
+                <span>AI-Powered</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="walk-in-section" className="relative py-16 sm:py-20 overflow-hidden" data-testid="walkin-section">
+          <div className="absolute inset-0 bg-gradient-to-b from-[#111111] to-[#0d0d0d]" />
+          <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6">
+            <div className="rounded-2xl sm:rounded-3xl border border-[#FFCD11]/10 bg-gradient-to-br from-[#FFCD11]/[0.04] to-transparent p-8 sm:p-12 text-center space-y-6">
+              <h3 className="text-2xl sm:text-3xl font-black text-white">
+                ALREADY KNOW WHAT YOU NEED?
+              </h3>
+              <p className="text-gray-400 text-sm max-w-md mx-auto">
+                Skip straight to a live session. No browsing required — our admin will handle the rest.
+              </p>
+              <Button
+                size="lg"
+                className="h-14 px-10 font-black bg-[#FFCD11] text-black hover:bg-[#e6b800] rounded-full shadow-[0_0_30px_rgba(255,205,17,0.15)]"
+                onClick={() => {
+                  if (!consentGiven) {
+                    document.getElementById("speak-admin-section")?.scrollIntoView({ behavior: "smooth" });
+                    toast({ title: "Please check the consent box first", variant: "destructive" });
+                    return;
+                  }
+                  startSession();
+                }}
+                disabled={isConnecting}
+                data-testid="button-quick-walkin"
+              >
+                {isConnecting ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                    CONNECTING...
+                  </>
+                ) : (
+                  <>
+                    <ArrowRight className="w-5 h-5 mr-2" />
+                    WALK IN NOW
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </section>
+
+        <footer className="relative border-t border-white/5 bg-[#0a0a0a] py-12 sm:py-16" data-testid="footer">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex flex-col items-center gap-6 text-center">
+              <img src={logoPath} alt="AMERICAN IRON" className="h-16 w-auto opacity-60" data-testid="img-logo-footer" />
+              <p className="text-xs text-gray-600 max-w-md">
+                AI-Powered Heavy Equipment Diagnostics. Revolutionary service for the people who build the world.
+              </p>
+              <div className="flex items-center gap-6 text-[10px] text-gray-600 uppercase tracking-wider">
+                <a href="/portal" className="hover:text-[#FFCD11] transition-colors">Customer Portal</a>
+                <span className="text-gray-800">|</span>
+                <a href="/admin" className="hover:text-[#FFCD11] transition-colors">Admin</a>
+                <span className="text-gray-800">|</span>
+                <span>americanironus.com</span>
+              </div>
+              <div className="text-[10px] text-gray-700">
+                &copy; {new Date().getFullYear()} AMERICAN IRON. All rights reserved.
+              </div>
+            </div>
+          </div>
+        </footer>
+      </div>
+    );
+  }
+
+  const avatarListening = !isTalking && !introPlaying && avatarReady && !micMuted && (isListening || isProcessing);
+
+  return (
+    <div className="h-screen w-screen bg-[#1a1a1a] flex flex-col relative overflow-hidden" data-testid="live-desk-active">
+      <title>Live Session | AMERICAN IRON</title>
+
+      <div
+        className="absolute inset-0 w-full h-full bg-cover bg-center bg-no-repeat opacity-[0.06]"
+        style={{ backgroundImage: `url(${shopBackgroundPath})` }}
+        data-testid="shop-background"
+      />
+
+      <div className="absolute inset-0 flex items-center justify-center z-[1]" style={{ paddingTop: "56px", paddingBottom: "160px" }}>
+        <div
+          className={`relative w-full max-w-3xl mx-4 rounded-2xl overflow-hidden shadow-2xl transition-all duration-500 ${avatarListening ? "ring-2 ring-[#FFCD11]/50 shadow-[0_0_40px_rgba(255,205,17,0.15)]" : "ring-1 ring-white/10"}`}
+          style={{ aspectRatio: "16/9" }}
+          data-testid="video-call-frame"
+        >
+          <div
+            ref={videoContainerRef}
+            className="absolute inset-0 w-full h-full"
+            data-testid="video-avatar-container"
+          />
+
+          {avatarReady && (
+            <div
+              className="absolute bottom-3 left-3 z-10 pointer-events-none"
+              data-testid="avatar-name-tag"
+            >
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-black/60 backdrop-blur-sm rounded-lg">
+                <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                <span className="text-white text-sm font-medium" data-testid="text-name-tag-name">
+                  {currentAgent === "admin"
+                    ? (selectedLanguage === "ar" ? "فاطمة" : "Sarah")
+                    : currentMechanic?.name || "Specialist"}
+                </span>
+                <span className="text-white/50 text-xs">
+                  {currentAgent === "admin"
+                    ? (selectedLanguage === "ar" ? "مسؤولة الاستقبال" : "Front Desk")
+                    : currentMechanic?.title || "Mechanic"}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {avatarListening && (
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-20 pointer-events-none" data-testid="listening-indicator">
+          <div className="flex items-center gap-2.5 px-5 py-2.5 bg-black/60 backdrop-blur-md rounded-full border border-[#FFCD11]/30">
+            <div className="flex items-end gap-[3px] h-4">
+              {[0.6, 0.9, 0.5, 1.0, 0.7].map((h, i) => (
+                <div
+                  key={`l-${i}`}
+                  className="w-[3px] bg-[#FFCD11] rounded-full waveform-bar origin-bottom"
+                  style={{
+                    height: "16px",
+                    animationDuration: `${0.5 + i * 0.1}s`,
+                    animationDelay: `${i * 0.1}s`,
+                  }}
+                />
+              ))}
+            </div>
+            <span className="text-[#FFCD11]/90 text-xs font-semibold tracking-wider uppercase">
+              {isProcessing
+                ? (selectedLanguage === "ar" ? "يفكر..." : "Thinking...")
+                : (selectedLanguage === "ar" ? "يستمع..." : "Listening...")}
+            </span>
+            <div className="flex items-end gap-[3px] h-4">
+              {[0.7, 1.0, 0.5, 0.9, 0.6].map((h, i) => (
+                <div
+                  key={`r-${i}`}
+                  className="w-[3px] bg-[#FFCD11] rounded-full waveform-bar origin-bottom"
+                  style={{
+                    height: "16px",
+                    animationDuration: `${0.5 + i * 0.1}s`,
+                    animationDelay: `${i * 0.1 + 0.05}s`,
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!avatarReady && (
+        <div className="absolute inset-0 flex items-center justify-center z-10">
+          <div className="text-center space-y-4 bg-[#222]/80 backdrop-blur-md rounded-2xl p-10 border border-white/10 shadow-2xl max-w-sm mx-4">
+            <div className="w-20 h-20 rounded-full bg-[#FFCD11]/10 border-2 border-[#FFCD11]/30 flex items-center justify-center mx-auto animate-pulse">
+              {currentAgent === "admin" ? (
+                <User className="w-10 h-10 text-[#FFCD11]/60" />
+              ) : (
+                currentMechanic ? <currentMechanic.icon className="w-10 h-10 text-[#FFCD11]/60" /> : <Wrench className="w-10 h-10 text-[#FFCD11]/60" />
+              )}
+            </div>
+            <div>
+              <p className="text-white text-lg font-medium">
+                {handoffInProgress
+                  ? `Connecting to ${currentMechanic?.name || "Specialist"}...`
+                  : "Connecting to Front Desk..."}
+              </p>
+              <p className="text-gray-400 text-sm mt-1">
+                {handoffInProgress
+                  ? currentMechanic?.title || "Diagnostic Specialist"
+                  : "Registration Admin"}
+              </p>
+            </div>
+            <Loader2 className="w-6 h-6 animate-spin text-[#FFCD11] mx-auto" />
+          </div>
+        </div>
+      )}
+
+      <div className="absolute top-0 left-0 right-0 z-20 pointer-events-none">
+        <div className="bg-[#1a1a1a] border-b border-white/10 p-3 px-4">
+          <div className="flex items-center justify-between pointer-events-auto">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-md bg-[#FFCD11]/15 backdrop-blur-sm flex items-center justify-center border border-[#FFCD11]/30">
+                <Wrench className="w-4 h-4 text-[#FFCD11]" />
+              </div>
+              <div>
+                <p className="text-white text-sm font-semibold">AMERICAN IRON</p>
+                <p className="text-white/60 text-xs" data-testid="text-current-agent">
+                  {currentAgent === "admin"
+                    ? (selectedLanguage === "ar" ? "فاطمة — الاستقبال" : "Sarah — Front Desk")
+                    : (currentMechanic?.name || "Specialist")}
+                </p>
+                <p className="text-[#FFCD11]/80 text-[10px] uppercase tracking-wider" data-testid="text-avatar-state">
+                  {isConnecting ? "connecting" : isTalking ? "speaking" : isProcessing ? "thinking" : isListening || avatarReady ? "listening" : "idle"}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2" data-testid="status-bar">
+              {avatarReady && (
+                <Badge variant="outline" className="bg-green-500/20 text-green-400 border-green-500/30 text-xs">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 mr-1.5 animate-pulse" />
+                  Live
+                </Badge>
+              )}
+              <Badge
+                variant={sessionData.tier === "pro" ? "default" : "secondary"}
+                className="text-xs"
+                data-testid="badge-tier"
+              >
+                {sessionData.tier === "pro" ? "Pro" : "Free"}
+              </Badge>
+              {isTalking && (
+                <div className="flex items-center gap-1 px-2 py-1 bg-white/10 rounded-md backdrop-blur-sm">
+                  <Volume2 className="w-3 h-3 text-white animate-pulse" />
+                  <span className="text-white/80 text-xs">Speaking</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {subtitleText && (
+        <div
+          className="absolute left-0 right-0 z-20 flex justify-center px-6"
+          style={{
+            pointerEvents: "none",
+            bottom: introPlaying ? "16px" : "90px",
+            transition: "bottom 0.3s ease",
+          }}
+        >
+          <div className="max-w-2xl w-full">
+            {introPlaying && (
+              <div className="flex items-center justify-end mb-3" style={{ pointerEvents: "auto" }}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-white/70 hover:text-white text-xs h-7 px-4 bg-black/50 backdrop-blur-md rounded-full border border-white/10 hover:border-[#FFCD11]/40 transition-all"
+                  data-testid="button-skip-intro"
+                  onClick={() => {
+                    setIntroPlaying(false);
+                    introPlayingRef.current = false;
+                    setShowTextInput(true);
+                    setSubtitleText(selectedLanguage === "ar" ? "كيف يمكنني مساعدتك اليوم؟" : "What can I help you with today?");
+                    if (speakEndedResolveRef.current) {
+                      speakEndedResolveRef.current();
+                      speakEndedResolveRef.current = null;
+                    }
+                  }}
+                >
+                  {selectedLanguage === "ar" ? "تخطي المقدمة" : "Skip Intro"} <ChevronRight className="w-3 h-3 ml-1" />
+                </Button>
+              </div>
+            )}
+            <div
+              className="rounded-lg px-5 py-3"
+              style={{
+                background: "linear-gradient(180deg, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.85) 100%)",
+                backdropFilter: "blur(12px)",
+                border: "1px solid rgba(255,255,255,0.08)",
+              }}
+            >
+              <p
+                className="text-white text-center leading-relaxed"
+                data-testid="text-subtitle"
+                dir={selectedLanguage === "ar" ? "rtl" : "ltr"}
+                style={{
+                  fontSize: "0.9375rem",
+                  fontWeight: 400,
+                  letterSpacing: "0.02em",
+                  lineHeight: 1.65,
+                  maxHeight: "4.95em",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  display: "-webkit-box",
+                  WebkitLineClamp: 3,
+                  WebkitBoxOrient: "vertical" as any,
+                }}
+              >
+                {subtitleText}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className={`absolute bottom-0 left-0 right-0 z-20 transition-opacity duration-500 ${introPlaying ? "opacity-0 pointer-events-none" : "opacity-100"}`}>
+        <div className="bg-[#1a1a1a] border-t border-white/10 pt-4 pb-5 px-4">
+          <div className="max-w-xl mx-auto space-y-3">
+            {showTextInput && (
+              <div className="flex items-center gap-2">
+                <Input
+                  placeholder={selectedLanguage === "ar" ? "اكتب رسالتك..." : "Type your message..."}
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendTextMessage()}
+                  disabled={isProcessing}
+                  dir={selectedLanguage === "ar" ? "rtl" : "ltr"}
+                  className="flex-1 bg-white/10 border-white/20 text-white placeholder:text-white/40 h-11"
+                  data-testid="input-message"
+                />
+                <Button
+                  size="icon"
+                  onClick={sendTextMessage}
+                  disabled={!inputText.trim() || isProcessing}
+                  className="h-11 w-11 shrink-0"
+                  data-testid="button-send"
+                >
+                  {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                </Button>
+              </div>
+            )}
+
+            <div className="flex items-center justify-center gap-3">
+              <Button
+                size="icon"
+                variant={micMuted ? "secondary" : "default"}
+                className={`h-14 w-14 rounded-full ${micMuted ? "bg-red-600/80 hover:bg-red-600 ring-2 ring-red-500/40" : isListening ? "bg-[#FFCD11] text-black ring-4 ring-[#FFCD11]/30 animate-pulse" : "bg-[#FFCD11]/70 text-black ring-2 ring-[#FFCD11]/20"}`}
+                onClick={toggleMicrophone}
+                disabled={!avatarReady}
+                data-testid="button-microphone"
+              >
+                {micMuted ? <MicOff className="w-6 h-6 text-white" /> : <Mic className="w-6 h-6" />}
+              </Button>
+
+              <Button
+                size="icon"
+                variant="secondary"
+                className="h-10 w-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/20"
+                onClick={() => setShowTextInput(!showTextInput)}
+                data-testid="button-toggle-keyboard"
+              >
+                <Keyboard className="w-4 h-4 text-white" />
+              </Button>
+
+              <Button
+                size="icon"
+                variant="secondary"
+                className="h-10 w-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/20"
+                onClick={() => setShowActions(!showActions)}
+                data-testid="button-actions"
+              >
+                <FileText className="w-4 h-4 text-white" />
+              </Button>
+
+              <Button
+                size="icon"
+                variant="destructive"
+                className="h-10 w-10 rounded-full"
+                onClick={() => {
+                  cleanupAvatarSession();
+                  setSessionData(null);
+                  sessionDataRef.current = null;
+                  setAvatarReady(false);
+                  setIsListening(false);
+                  setShowTextInput(false);
+                  setCurrentAgent("admin");
+                  setMechanicType(null);
+                  conversationRef.current = [];
+                  setTranscriptEntries([]);
+                }}
+                data-testid="button-end-session"
+              >
+                <Phone className="w-4 h-4 text-white rotate-[135deg]" />
+              </Button>
+            </div>
+
+            {micMuted ? (
+              <p className="text-center text-red-400/70 text-xs" data-testid="text-mic-muted">
+                {selectedLanguage === "ar" ? "الميكروفون مكتوم — اضغط لإلغاء الكتم" : "Mic muted — tap to unmute"}
+              </p>
+            ) : isListening ? (
+              <p className="text-center text-[#FFCD11]/70 text-xs" data-testid="text-listening-hint">
+                {selectedLanguage === "ar" ? "يستمع... تحدث بشكل طبيعي" : "Listening... speak naturally"}
+              </p>
+            ) : isTalking ? (
+              <p className="text-center text-white/50 text-xs" data-testid="text-avatar-speaking">
+                {selectedLanguage === "ar" ? "يتحدث..." : "Speaking..."}
+              </p>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      {transcriptEntries.length > 0 && (
+        <>
+          <button
+            onClick={() => setShowTranscript(!showTranscript)}
+            className="absolute z-30 flex items-center gap-1.5 px-3 py-2 rounded-l-lg border border-r-0 transition-all duration-300"
+            style={{
+              top: "70px",
+              right: showTranscript ? "min(420px, 85vw)" : "0px",
+              background: "linear-gradient(135deg, rgba(17,17,17,0.95) 0%, rgba(26,26,26,0.95) 100%)",
+              borderColor: "rgba(255,205,17,0.3)",
+              backdropFilter: "blur(12px)",
+            }}
+            data-testid="button-toggle-transcript"
+          >
+            <MessageCircle className="w-4 h-4 text-[#FFCD11]" />
+            <span className="text-white/80 text-xs font-medium hidden sm:inline">
+              {showTranscript
+                ? (selectedLanguage === "ar" ? "إخفاء" : "Hide")
+                : (selectedLanguage === "ar" ? "النص" : "Transcript")}
+            </span>
+            {!showTranscript && transcriptEntries.length > 0 && (
+              <span className="w-5 h-5 rounded-full bg-[#FFCD11] text-black text-[10px] font-bold flex items-center justify-center">
+                {transcriptEntries.length}
+              </span>
+            )}
+          </button>
+
+          <div
+            className="absolute top-0 right-0 z-25 h-full transition-transform duration-300 ease-in-out"
+            style={{
+              width: "min(420px, 85vw)",
+              transform: showTranscript ? "translateX(0)" : "translateX(100%)",
+            }}
+            data-testid="transcript-panel"
+          >
+            <div
+              className="h-full flex flex-col"
+              style={{
+                background: "linear-gradient(180deg, rgba(10,10,10,0.97) 0%, rgba(17,17,17,0.97) 100%)",
+                backdropFilter: "blur(16px)",
+                borderLeft: "2px solid rgba(255,205,17,0.2)",
+              }}
+            >
+              <div
+                className="flex items-center justify-between px-4 py-3 shrink-0"
+                style={{ borderBottom: "1px solid rgba(255,205,17,0.15)" }}
+              >
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-md bg-[#FFCD11]/15 flex items-center justify-center">
+                    <MessageCircle className="w-3.5 h-3.5 text-[#FFCD11]" />
+                  </div>
+                  <div>
+                    <p className="text-white text-sm font-semibold tracking-wide">
+                      {selectedLanguage === "ar" ? "سجل المحادثة" : "ANALYSIS LOG"}
+                    </p>
+                    <p className="text-white/40 text-[10px]">
+                      {transcriptEntries.length} {selectedLanguage === "ar" ? "رسائل" : "messages"}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowTranscript(false)}
+                  className="w-7 h-7 rounded-md bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors"
+                >
+                  <X className="w-3.5 h-3.5 text-white/60" />
+                </button>
+              </div>
+
+              <div
+                className="flex-1 overflow-y-auto px-3 py-3 space-y-3"
+                dir={selectedLanguage === "ar" ? "rtl" : "ltr"}
+                style={{
+                  scrollbarWidth: "thin",
+                  scrollbarColor: "rgba(255,205,17,0.3) transparent",
+                }}
+              >
+                {transcriptEntries.map((entry, i) => (
+                  <div
+                    key={i}
+                    className="group animate-in fade-in slide-in-from-bottom-2 duration-300"
+                    data-testid={`transcript-entry-${i}`}
+                  >
+                    {entry.role === "user" ? (
+                      <div className="flex gap-2 items-start">
+                        <div
+                          className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center mt-0.5"
+                          style={{ background: "rgba(59,130,246,0.15)", border: "1px solid rgba(59,130,246,0.3)" }}
+                        >
+                          <User className="w-3.5 h-3.5 text-blue-400" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-blue-400 text-xs font-semibold">{selectedLanguage === "ar" ? "أنت" : "You"}</span>
+                            <span className="text-white/20 text-[10px]">
+                              {entry.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                          </div>
+                          <div
+                            className="rounded-lg px-3 py-2.5 text-sm leading-relaxed"
+                            style={{
+                              background: "rgba(59,130,246,0.08)",
+                              border: "1px solid rgba(59,130,246,0.15)",
+                              color: "rgba(191,219,254,0.9)",
+                            }}
+                          >
+                            {entry.text}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2 items-start">
+                        <div
+                          className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center mt-0.5"
+                          style={{ background: "rgba(255,205,17,0.12)", border: "1px solid rgba(255,205,17,0.3)" }}
+                        >
+                          <Wrench className="w-3.5 h-3.5 text-[#FFCD11]" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-[#FFCD11] text-xs font-semibold">{entry.agent || "AI"}</span>
+                            <span className="text-white/20 text-[10px]">
+                              {entry.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                          </div>
+                          <div
+                            className="rounded-lg px-3 py-2.5 text-sm leading-relaxed"
+                            style={{
+                              background: "linear-gradient(135deg, rgba(255,205,17,0.06) 0%, rgba(255,205,17,0.02) 100%)",
+                              border: "1px solid rgba(255,205,17,0.12)",
+                              color: "rgba(255,255,255,0.88)",
+                            }}
+                          >
+                            {entry.text}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {isProcessing && (
+                  <div className="flex gap-2 items-start" data-testid="transcript-thinking">
+                    <div
+                      className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center mt-0.5"
+                      style={{ background: "rgba(255,205,17,0.12)", border: "1px solid rgba(255,205,17,0.3)" }}
+                    >
+                      <Loader2 className="w-3.5 h-3.5 text-[#FFCD11] animate-spin" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[#FFCD11]/60 text-xs font-semibold">
+                          {selectedLanguage === "ar" ? "يحلل..." : "Analyzing..."}
+                        </span>
+                      </div>
+                      <div className="flex gap-1 px-3 py-3">
+                        <span className="w-2 h-2 rounded-full bg-[#FFCD11]/40 animate-bounce" style={{ animationDelay: "0ms" }} />
+                        <span className="w-2 h-2 rounded-full bg-[#FFCD11]/40 animate-bounce" style={{ animationDelay: "150ms" }} />
+                        <span className="w-2 h-2 rounded-full bg-[#FFCD11]/40 animate-bounce" style={{ animationDelay: "300ms" }} />
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <div ref={transcriptEndRef} />
+              </div>
+
+              <div
+                className="shrink-0 px-3 py-2.5"
+                style={{ borderTop: "1px solid rgba(255,205,17,0.15)", background: "rgba(0,0,0,0.4)" }}
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <button
+                    onClick={downloadTranscript}
+                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all"
+                    style={{
+                      background: "rgba(255,205,17,0.1)",
+                      border: "1px solid rgba(255,205,17,0.25)",
+                      color: "#FFCD11",
+                    }}
+                    data-testid="button-download-transcript"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    {selectedLanguage === "ar" ? "تنزيل" : "Download"}
+                  </button>
+                  <button
+                    onClick={emailTranscript}
+                    disabled={isSendingTranscript || !authToken}
+                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all disabled:opacity-40"
+                    style={{
+                      background: "rgba(59,130,246,0.1)",
+                      border: "1px solid rgba(59,130,246,0.25)",
+                      color: "#93c5fd",
+                    }}
+                    data-testid="button-email-transcript"
+                  >
+                    {isSendingTranscript ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Send className="w-3.5 h-3.5" />
+                    )}
+                    {selectedLanguage === "ar" ? "إرسال بالبريد" : "Email Me"}
+                  </button>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                    <span className="text-white/40 text-[10px] uppercase tracking-wider">
+                      {selectedLanguage === "ar" ? "مباشر" : "Live Session"}
+                    </span>
+                  </div>
+                  <span className="text-white/30 text-[10px]">
+                    {currentAgent === "mechanic" && currentMechanic
+                      ? currentMechanic.name
+                      : (selectedLanguage === "ar" ? "فاطمة" : "Sarah")}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {showActions && (
+        <div className="absolute bottom-36 right-4 z-30 bg-card/95 backdrop-blur-sm rounded-xl border border-card-border shadow-xl p-3 w-56 space-y-2">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</span>
+            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setShowActions(false)}>
+              <X className="w-3 h-3" />
+            </Button>
+          </div>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/*,.pdf"
+            onChange={handleFileUpload}
+            className="hidden"
+            data-testid="input-file-upload"
+          />
+
+          <Button
+            variant="secondary"
+            size="sm"
+            className="w-full justify-start"
+            onClick={() => fileInputRef.current?.click()}
+            data-testid="button-upload"
+          >
+            <Upload className="w-3.5 h-3.5 mr-2" />
+            Upload Photos / PDFs
+          </Button>
+
+          <Button
+            variant="secondary"
+            size="sm"
+            className="w-full justify-start"
+            onClick={generateReport}
+            disabled={isGeneratingReport}
+            data-testid="button-generate-report"
+          >
+            {isGeneratingReport ? (
+              <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+            ) : (
+              <FileText className="w-3.5 h-3.5 mr-2" />
+            )}
+            Generate Report
+          </Button>
+
+          {report && (
+            <>
+              <Button variant="secondary" size="sm" className="w-full justify-start" onClick={() => setShowReport(true)} data-testid="button-view-report">
+                <Download className="w-3.5 h-3.5 mr-2" />
+                View Report
+              </Button>
+              <Button variant="secondary" size="sm" className="w-full justify-start" onClick={copyShareLink} data-testid="button-share">
+                <Share2 className="w-3.5 h-3.5 mr-2" />
+                Share Report
+              </Button>
+            </>
+          )}
+        </div>
+      )}
+
+      {showVerifyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" data-testid="modal-verify">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
+          <div className="relative z-10 w-full max-w-sm mx-4 bg-[#1a1a1a] border border-[#FFCD11]/30 rounded-2xl p-6 animate-in zoom-in-95 fade-in duration-300">
+            <div className="text-center mb-6">
+              <div className="w-14 h-14 mx-auto mb-3 rounded-full bg-[#FFCD11]/10 flex items-center justify-center">
+                <Shield className="w-7 h-7 text-[#FFCD11]" />
+              </div>
+              <h3 className="text-white text-lg font-semibold" data-testid="text-verify-title">
+                {selectedLanguage === "ar" ? "التحقق من الهوية" : "Verify Your Identity"}
+              </h3>
+              <p className="text-gray-400 text-sm mt-1" dir={selectedLanguage === "ar" ? "rtl" : "ltr"}>
+                {selectedLanguage === "ar"
+                  ? `تم إرسال رمز مكون من 4 أرقام إلى ${verifyType === "email" ? "بريدك الإلكتروني" : "هاتفك"}`
+                  : `A 4-digit code has been sent to your ${verifyType}`}
+              </p>
+              <p className="text-[#FFCD11] text-xs mt-1 font-mono" data-testid="text-verify-target">{verifyTarget}</p>
+            </div>
+
+            <div className="flex justify-center gap-2 mb-4">
+              {[0, 1, 2, 3].map(i => (
+                <input
+                  key={i}
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={1}
+                  data-testid={`input-verify-digit-${i}`}
+                  className="w-12 h-14 text-center text-2xl font-bold bg-[#111] border border-white/20 rounded-lg text-white focus:border-[#FFCD11] focus:ring-1 focus:ring-[#FFCD11] outline-none transition-all"
+                  value={verifyCode[i] || ""}
+                  onChange={e => {
+                    const val = e.target.value.replace(/\D/g, "");
+                    if (val) {
+                      const newCode = verifyCode.split("");
+                      newCode[i] = val;
+                      setVerifyCode(newCode.join(""));
+                      const next = e.target.nextElementSibling as HTMLInputElement;
+                      if (next) next.focus();
+                    }
+                  }}
+                  onKeyDown={e => {
+                    if (e.key === "Backspace" && !verifyCode[i]) {
+                      const prev = (e.target as HTMLElement).previousElementSibling as HTMLInputElement;
+                      if (prev) prev.focus();
+                    }
+                  }}
+                />
+              ))}
+            </div>
+
+            {verificationStatus === "verified" && (
+              <div className="text-center text-green-400 text-sm mb-3 flex items-center justify-center gap-1" data-testid="text-verify-success">
+                <CheckCircle2 className="w-4 h-4" /> {selectedLanguage === "ar" ? "تم التحقق بنجاح!" : "Verified!"}
+              </div>
+            )}
+            {verificationStatus === "failed" && (
+              <div className="text-center text-red-400 text-sm mb-3" data-testid="text-verify-failed">
+                {selectedLanguage === "ar" ? "رمز غير صحيح، حاول مرة أخرى" : "Invalid code, please try again"}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1 border-white/20 text-gray-300 hover:text-white"
+                data-testid="button-verify-skip"
+                onClick={() => {
+                  setShowVerifyModal(false);
+                  setVerifyCode("");
+                  setVerificationStatus(null);
+                }}
+              >
+                {selectedLanguage === "ar" ? "تخطي" : "Skip"}
+              </Button>
+              <Button
+                className="flex-1 bg-[#FFCD11] hover:bg-[#e6b800] text-black font-semibold"
+                data-testid="button-verify-submit"
+                disabled={verifyCode.length < 4}
+                onClick={async () => {
+                  try {
+                    const res = await fetch("/api/verify/check", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ target: verifyTarget, code: verifyCode }),
+                    });
+                    const data = await res.json();
+                    if (data.verified) {
+                      setVerificationStatus("verified");
+                      setTimeout(() => {
+                        setShowVerifyModal(false);
+                        setVerifyCode("");
+                        setVerificationStatus(null);
+                        const msg = selectedLanguage === "ar" ? "تم التحقق، شكراً" : "Verified, thank you";
+                        handleUserMessageRef.current(msg);
+                      }, 1500);
+                    } else {
+                      setVerificationStatus("failed");
+                      setVerifyCode("");
+                    }
+                  } catch {
+                    setVerificationStatus("failed");
+                  }
+                }}
+              >
+                {selectedLanguage === "ar" ? "تحقق" : "Verify"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showReport && report && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" data-testid="modal-report">
+          <div className="absolute inset-0 bg-black/90 backdrop-blur-md animate-in fade-in duration-500" onClick={() => setShowReport(false)} />
+
+          <div className="relative z-10 w-full max-w-4xl mx-4 max-h-[90vh] flex flex-col animate-in zoom-in-95 fade-in duration-500">
+            <div className="relative overflow-hidden rounded-2xl border border-[#FFCD11]/20 bg-gradient-to-b from-[#1a1a1a] to-[#111111] shadow-2xl shadow-[#FFCD11]/5">
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-[#FFCD11] to-transparent" />
+
+              <div className="p-6 pb-4 border-b border-white/10">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-xl bg-[#FFCD11]/15 flex items-center justify-center border border-[#FFCD11]/30">
+                      <FileText className="w-6 h-6 text-[#FFCD11]" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold text-white tracking-tight">
+                        {report.reportType === "pro" ? "Pro Diagnostic Report" : "Quick Advice Report"}
+                      </h2>
+                      <p className="text-sm text-white/50 mt-0.5">
+                        AMERICAN IRON | {sessionData.equipmentType || "Equipment"} {sessionData.make ? `- ${sessionData.make}` : ""} {sessionData.model || ""}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-10 w-10 rounded-full text-white/50 hover:text-white hover:bg-white/10"
+                    onClick={() => setShowReport(false)}
+                    data-testid="button-close-report"
+                  >
+                    <X className="w-5 h-5" />
+                  </Button>
+                </div>
+
+                <div className="flex items-center gap-2 mt-4 flex-wrap">
+                  <Button
+                    size="sm"
+                    className="bg-[#FFCD11] text-black hover:bg-[#FFCD11]/90 font-medium"
+                    onClick={() => {
+                      const printContent = document.getElementById("report-print-area");
+                      if (printContent) {
+                        const win = window.open("", "_blank");
+                        if (win) {
+                          const reportTitle = report.reportType === "pro" ? "Pro Diagnostic Report" : "Quick Advice Report";
+                          const equipInfo = `${sessionData.equipmentType || ""} ${sessionData.make || ""} ${sessionData.model || ""}`.trim();
+                          win.document.write(`<html><head><title>AMERICAN IRON - ${reportTitle}</title>
+                            <style>
+                            *{box-sizing:border-box;margin:0;padding:0}
+                            body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;padding:0;color:#1a1a1a;background:#fff;line-height:1.6}
+                            .print-wrapper{max-width:800px;margin:0 auto;padding:40px}
+                            .print-header{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:20px;border-bottom:3px solid #FFCD11;margin-bottom:30px}
+                            .print-header h1{font-size:22px;font-weight:700;color:#111;letter-spacing:0.5px}
+                            .print-header .subtitle{font-size:12px;color:#666;margin-top:4px}
+                            .print-header .logo{font-weight:800;font-size:16px;color:#111;letter-spacing:3px;text-align:right}
+                            .print-header .logo-sub{font-size:9px;color:#666;letter-spacing:1px;text-align:right}
+                            .report-body{font-size:13px}
+                            .report-body>div{margin-bottom:20px;page-break-inside:avoid}
+                            .report-body h4,.report-body [class*="tracking"]{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:#111;border-left:3px solid #FFCD11;padding-left:10px;margin-bottom:10px}
+                            .report-body p{margin:4px 0;line-height:1.7;color:#333}
+                            .report-body [class*="rounded"]{border:1px solid #e5e5e5;border-radius:8px;padding:12px;margin:6px 0;background:#fafafa}
+                            .report-body [class*="bg-red"],[class*="bg-orange"]{background:#fff8f0;border-color:#ffcba4}
+                            .report-body [class*="grid"]{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+                            .report-body [class*="font-mono"]{font-family:'Courier New',monospace;font-size:12px}
+                            .report-body [class*="text-white"]{color:#333 !important}
+                            .report-body [class*="text-red"]{color:#c53030 !important}
+                            .report-body [class*="text-orange"]{color:#c05621 !important}
+                            .report-body [class*="text-green"]{color:#276749 !important}
+                            .report-body [class*="text-blue"]{color:#2b6cb0 !important}
+                            .report-body [class*="text-yellow"],[class*="text-\\[\\#FFCD11\\]"]{color:#111 !important}
+                            .report-body svg{display:none}
+                            .report-body span[class*="rounded-full"]{display:inline-block;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600;border:1px solid #ddd;background:#f5f5f5;color:#333}
+                            .report-body [style*="backgroundColor"]{background:#f8f8f8 !important;border:1px solid #e0e0e0 !important}
+                            .print-footer{margin-top:30px;padding-top:16px;border-top:2px solid #FFCD11;font-size:10px;color:#999;text-align:center}
+                            @media print{body{padding:0}.print-wrapper{padding:20px}.report-body>div{page-break-inside:avoid}}
+                            </style></head>
+                            <body><div class='print-wrapper'>
+                            <div class='print-header'>
+                              <div><h1>${reportTitle}</h1><div class='subtitle'>${equipInfo ? `Equipment: ${equipInfo}` : ""}${report.content?.generatedDate ? ` | ${report.content.generatedDate}` : ""}${report.content?.reportId ? ` | ${report.content.reportId}` : ""}</div></div>
+                              <div><div class='logo'>AMERICAN IRON</div><div class='logo-sub'>LIVE AI ENGINEER DESK</div></div>
+                            </div>
+                            <div class='report-body'>${printContent.innerHTML}</div>
+                            <div class='print-footer'>Generated by AMERICAN IRON Live AI Engineer Desk | This report is AI-generated guidance only. Not a substitute for certified inspection.</div>
+                            </div></body></html>`);
+                          win.document.close();
+                          setTimeout(() => win.print(), 300);
+                        }
+                      }
+                    }}
+                    data-testid="button-print-report"
+                  >
+                    <Download className="w-3.5 h-3.5 mr-1.5" />
+                    Print / Save PDF
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="bg-white/10 text-white hover:bg-white/20 border-0"
+                    onClick={() => {
+                      const subject = encodeURIComponent(`AMERICAN IRON - ${report.reportType === "pro" ? "Pro Diagnostic" : "Quick Advice"} Report`);
+                      const shareUrl = report.shareToken ? `${window.location.origin}/?shared=${report.shareToken}` : "";
+                      const body = encodeURIComponent(
+                        `Here is your diagnostic report from AMERICAN IRON:\n\n` +
+                        `Equipment: ${sessionData.equipmentType || "N/A"} ${sessionData.make || ""} ${sessionData.model || ""}\n` +
+                        (report.content?.problemSummary ? `Problem: ${report.content.problemSummary}\n\n` : "\n") +
+                        (shareUrl ? `View full report: ${shareUrl}\n\n` : "") +
+                        `---\nGenerated by AMERICAN IRON Live AI Engineer Desk`
+                      );
+                      window.open(`mailto:?subject=${subject}&body=${body}`, "_self");
+                    }}
+                    data-testid="button-email-report"
+                  >
+                    <Send className="w-3.5 h-3.5 mr-1.5" />
+                    Email Report
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="bg-white/10 text-white hover:bg-white/20 border-0"
+                    onClick={copyShareLink}
+                    data-testid="button-share-report"
+                  >
+                    <Share2 className="w-3.5 h-3.5 mr-1.5" />
+                    Copy Link
+                  </Button>
+                </div>
+              </div>
+
+              <div className="overflow-y-auto max-h-[calc(90vh-220px)] p-6" id="report-print-area">
+                {report.content && <CinematicReportContent content={report.content} />}
+                {report.svgDiagram && (
+                  <div className="mt-6">
+                    <h4 className="text-sm font-bold text-[#FFCD11] uppercase tracking-wider mb-3">Technical Diagram</h4>
+                    <div className="bg-white/5 rounded-xl border border-white/10 p-4 overflow-x-auto"
+                      dangerouslySetInnerHTML={{ __html: report.svgDiagram }} />
+                  </div>
+                )}
+              </div>
+
+              <div className="p-4 border-t border-white/10 flex items-center justify-center gap-2 text-xs text-white/30">
+                <Shield className="w-3.5 h-3.5" />
+                <span>AI guidance is informational only. Not a substitute for certified inspection.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CinematicReportContent({ content }: { content: any }) {
+  const confidenceBadge = (level: string) => {
+    const l = (level || "").toLowerCase();
+    return l === "high" ? "bg-red-500/20 text-red-400 border-red-500/30" :
+           l === "medium" ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/30" :
+           "bg-blue-500/20 text-blue-400 border-blue-500/30";
+  };
+
+  const SectionHeader = ({ icon, title, color = "#FFCD11" }: { icon: any; title: string; color?: string }) => (
+    <div className="flex items-center gap-2.5 mb-4">
+      <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${color}15`, border: `1px solid ${color}30` }}>
+        {icon}
+      </div>
+      <h4 className="text-xs font-bold uppercase tracking-[0.15em]" style={{ color }}>{title}</h4>
+    </div>
+  );
+
+  return (
+    <div className="space-y-6 text-sm report-content">
+      {(content.generatedDate || content.reportId || content.equipment || content.customerInfo || content.customerName) && (
+        <div className="bg-[#FFCD11]/5 rounded-xl border border-[#FFCD11]/20 p-5">
+          <div className="grid grid-cols-2 gap-4 text-xs">
+            {content.generatedDate && (
+              <div><span className="text-white/40 uppercase tracking-wider">Date</span><p className="text-white/80 mt-0.5 font-medium">{content.generatedDate}</p></div>
+            )}
+            {content.reportId && (
+              <div><span className="text-white/40 uppercase tracking-wider">Report ID</span><p className="text-white/80 mt-0.5 font-mono">{content.reportId}</p></div>
+            )}
+            {(content.customerName || content.customerInfo?.name) && (
+              <div><span className="text-white/40 uppercase tracking-wider">Customer</span><p className="text-white/80 mt-0.5 font-medium">{content.customerName || content.customerInfo?.name}</p></div>
+            )}
+            {(content.company || content.customerInfo?.company) && (
+              <div><span className="text-white/40 uppercase tracking-wider">Company</span><p className="text-white/80 mt-0.5">{content.company || content.customerInfo?.company}</p></div>
+            )}
+            {typeof content.equipment === "string" ? (
+              <div className="col-span-2"><span className="text-white/40 uppercase tracking-wider">Equipment</span><p className="text-white/80 mt-0.5 font-medium">{content.equipment}</p></div>
+            ) : content.equipment && (
+              <>
+                <div><span className="text-white/40 uppercase tracking-wider">Equipment</span><p className="text-white/80 mt-0.5 font-medium">{content.equipment.make} {content.equipment.model} {content.equipment.year}</p></div>
+                {content.equipment.serialNumber && <div><span className="text-white/40 uppercase tracking-wider">Serial Number</span><p className="text-white/80 mt-0.5 font-mono">{content.equipment.serialNumber}</p></div>}
+                {content.equipment.smuHours && <div><span className="text-white/40 uppercase tracking-wider">SMU/Hours</span><p className="text-white/80 mt-0.5">{content.equipment.smuHours}</p></div>}
+              </>
+            )}
+            {content.serialNumber && typeof content.equipment === "string" && (
+              <div><span className="text-white/40 uppercase tracking-wider">Serial Number</span><p className="text-white/80 mt-0.5 font-mono">{content.serialNumber}</p></div>
+            )}
+            {content.smuHours && typeof content.equipment === "string" && (
+              <div><span className="text-white/40 uppercase tracking-wider">SMU/Hours</span><p className="text-white/80 mt-0.5">{content.smuHours}</p></div>
+            )}
+            {content.urgencyLevel && (
+              <div className="col-span-2">
+                <span className="text-white/40 uppercase tracking-wider text-xs">Urgency Level</span>
+                <div className="flex items-center gap-4 mt-2">
+                  <div className="w-16 h-16">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RadialBarChart cx="50%" cy="50%" innerRadius="60%" outerRadius="100%" startAngle={180} endAngle={0}
+                        data={[{
+                          value: content.urgencyLevel.toLowerCase() === "critical" ? 100 :
+                                 content.urgencyLevel.toLowerCase() === "high" ? 75 :
+                                 content.urgencyLevel.toLowerCase() === "medium" ? 50 : 25,
+                          fill: content.urgencyLevel.toLowerCase() === "critical" ? "#ef4444" :
+                                content.urgencyLevel.toLowerCase() === "high" ? "#f97316" :
+                                content.urgencyLevel.toLowerCase() === "medium" ? "#eab308" : "#22c55e"
+                        }]}>
+                        <RadialBar dataKey="value" cornerRadius={4} background={{ fill: "rgba(255,255,255,0.05)" }} />
+                      </RadialBarChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div>
+                    <span className={`inline-block text-sm font-bold px-3 py-1.5 rounded-full border ${
+                      content.urgencyLevel.toLowerCase() === "critical" ? "bg-red-500/20 text-red-400 border-red-500/30" :
+                      content.urgencyLevel.toLowerCase() === "high" ? "bg-orange-500/20 text-orange-400 border-orange-500/30" :
+                      content.urgencyLevel.toLowerCase() === "medium" ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/30" :
+                      "bg-green-500/20 text-green-400 border-green-500/30"
+                    }`}>{content.urgencyLevel}</span>
+                    <p className="text-white/30 text-[10px] mt-1">
+                      {content.urgencyLevel.toLowerCase() === "critical" ? "Immediate action required" :
+                       content.urgencyLevel.toLowerCase() === "high" ? "Address as soon as possible" :
+                       content.urgencyLevel.toLowerCase() === "medium" ? "Schedule for repair" : "Monitor and plan"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {content.problemSummary && (
+        <div className="bg-white/5 rounded-xl border border-white/10 p-5">
+          <SectionHeader icon={<Search className="w-4 h-4 text-[#FFCD11]" />} title="Problem Summary" />
+          <p className="text-white/80 leading-relaxed text-base">{content.problemSummary}</p>
+        </div>
+      )}
+
+      {content.immediateActions && Array.isArray(content.immediateActions) && content.immediateActions.length > 0 && (
+        <div className="bg-orange-500/10 rounded-xl border border-orange-500/20 p-5">
+          <SectionHeader icon={<Zap className="w-4 h-4 text-orange-400" />} title="Immediate Actions Required" color="#fb923c" />
+          <div className="space-y-2">
+            {(content.immediateActions as string[]).map((action: string, i: number) => (
+              <div key={i} className="flex items-start gap-3 text-orange-200/80">
+                <ArrowRight className="w-4 h-4 shrink-0 mt-0.5 text-orange-400" />
+                <span>{action}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {content.likelyCauses && Array.isArray(content.likelyCauses) && (
+        <div>
+          <SectionHeader icon={<Search className="w-4 h-4 text-[#FFCD11]" />} title="Likely Causes" />
+          {content.likelyCauses.length >= 2 && (
+            <div className="flex justify-center mb-4">
+              <div className="w-36 h-36">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={(content.likelyCauses as any[]).map((cause: any, i: number) => ({
+                      name: cause.cause?.substring(0, 15) || `#${i+1}`,
+                      value: cause.confidence?.toLowerCase() === "high" ? 45 : cause.confidence?.toLowerCase() === "medium" ? 30 : 15,
+                      fill: cause.confidence?.toLowerCase() === "high" ? "#ef4444" : cause.confidence?.toLowerCase() === "medium" ? "#eab308" : "#3b82f6"
+                    }))} cx="50%" cy="50%" innerRadius={30} outerRadius={55} paddingAngle={3} dataKey="value" stroke="none">
+                      {(content.likelyCauses as any[]).map((cause: any, i: number) => (
+                        <Cell key={i} fill={cause.confidence?.toLowerCase() === "high" ? "#ef4444" : cause.confidence?.toLowerCase() === "medium" ? "#eab308" : "#3b82f6"} fillOpacity={0.6} />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+          <div className="space-y-2">
+            {(content.likelyCauses as any[]).map((cause: any, i: number) => (
+              <div key={i} className="bg-white/5 rounded-lg border border-white/10 p-4">
+                <div className="flex items-center gap-3 mb-1">
+                  <span className="text-white/30 font-mono text-xs">#{cause.rank || i + 1}</span>
+                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${confidenceBadge(cause.confidence)}`}>{cause.confidence || "Medium"}</span>
+                  <span className="text-white/90 font-medium">{cause.cause}</span>
+                </div>
+                {cause.explanation && <p className="text-white/50 text-xs leading-relaxed mt-2 pl-1">{cause.explanation}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {content.rootCauseMatrix && Array.isArray(content.rootCauseMatrix) && (
+        <div>
+          <SectionHeader icon={<Cog className="w-4 h-4 text-[#FFCD11]" />} title="Root Cause Analysis" />
+          {content.rootCauseMatrix.length >= 2 && (
+            <div className="bg-white/5 rounded-xl border border-white/10 p-4 mb-4">
+              <p className="text-[10px] text-white/30 uppercase tracking-wider mb-2 font-medium">Probability Distribution</p>
+              <ResponsiveContainer width="100%" height={content.rootCauseMatrix.length * 38 + 10}>
+                <BarChart data={(content.rootCauseMatrix as any[]).map((item: any, i: number) => ({
+                  name: (item.cause || `Cause ${i+1}`).length > 25 ? (item.cause || `Cause ${i+1}`).substring(0, 22) + "..." : (item.cause || `Cause ${i+1}`),
+                  value: item.probability?.toLowerCase() === "high" ? 85 : item.probability?.toLowerCase() === "medium" ? 55 : 25,
+                  color: item.probability?.toLowerCase() === "high" ? "#ef4444" : item.probability?.toLowerCase() === "medium" ? "#eab308" : "#3b82f6"
+                }))} layout="vertical" margin={{ top: 0, right: 30, left: 0, bottom: 0 }}>
+                  <XAxis type="number" domain={[0, 100]} hide />
+                  <YAxis type="category" dataKey="name" width={120} tick={{ fill: "rgba(255,255,255,0.6)", fontSize: 10 }} axisLine={false} tickLine={false} />
+                  <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={14}>
+                    {(content.rootCauseMatrix as any[]).map((_: any, i: number) => {
+                      const prob = (content.rootCauseMatrix as any[])[i]?.probability?.toLowerCase();
+                      return <Cell key={i} fill={prob === "high" ? "#ef4444" : prob === "medium" ? "#eab308" : "#3b82f6"} fillOpacity={0.7} />;
+                    })}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+          <div className="space-y-3">
+            {(content.rootCauseMatrix as any[]).map((item: any, i: number) => (
+              <div key={i} className="bg-white/5 rounded-xl border border-white/10 p-4">
+                <div className="flex items-center gap-3 mb-2">
+                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${confidenceBadge(item.probability)}`}>{item.probability}</span>
+                  <span className="font-semibold text-white">{item.cause}</span>
+                  {item.estimatedRepairDifficulty && <span className="text-xs text-white/40 ml-auto">{item.estimatedRepairDifficulty}</span>}
+                </div>
+                {item.evidence && <p className="text-white/50 text-xs leading-relaxed pl-1 mb-1"><span className="text-white/30">Evidence:</span> {item.evidence}</p>}
+                {item.testMethod && <p className="text-white/50 text-xs leading-relaxed pl-1"><span className="text-white/30">Test Method:</span> {item.testMethod}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {content.safeChecks && Array.isArray(content.safeChecks) && (
+        <div>
+          <SectionHeader icon={<CheckCircle2 className="w-4 h-4 text-green-400" />} title="Safe Checks" color="#4ade80" />
+          <div className="bg-white/5 rounded-xl border border-white/10 p-4 space-y-3">
+            {(content.safeChecks as string[]).map((check: string, i: number) => (
+              <div key={i} className="flex items-start gap-3 text-white/70">
+                <span className="w-6 h-6 rounded-full bg-green-500/15 text-green-400 flex items-center justify-center text-xs font-bold shrink-0">{i + 1}</span>
+                <span className="pt-0.5">{check}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {content.diagnosticTree && Array.isArray(content.diagnosticTree) && (
+        <div>
+          <SectionHeader icon={<ArrowRight className="w-4 h-4 text-[#FFCD11]" />} title="Diagnostic Steps" />
+          <div className="relative">
+            <div className="absolute left-[19px] top-4 bottom-4 w-0.5 bg-gradient-to-b from-[#FFCD11]/40 via-[#FFCD11]/20 to-transparent" />
+            <div className="space-y-1">
+              {(content.diagnosticTree as any[]).map((step: any, i: number) => (
+                <div key={i} className="relative pl-12">
+                  <div className="absolute left-0 top-3">
+                    <div className="w-10 h-10 rounded-full bg-[#111] border-2 border-[#FFCD11]/40 flex items-center justify-center">
+                      <span className="text-[#FFCD11] text-xs font-bold">{step.step || i + 1}</span>
+                    </div>
+                  </div>
+                  <div className="bg-white/5 rounded-lg border border-white/10 p-4 ml-2">
+                    <p className="text-white/90 font-medium text-sm">{step.action}</p>
+                    {step.expectedResult && (
+                      <div className="mt-2 flex items-start gap-2">
+                        <CheckCircle2 className="w-3 h-3 shrink-0 mt-0.5 text-green-400/60" />
+                        <p className="text-green-400/60 text-xs">{step.expectedResult}</p>
+                      </div>
+                    )}
+                    {step.ifFail && (
+                      <div className="mt-1.5 flex items-start gap-2">
+                        <X className="w-3 h-3 shrink-0 mt-0.5 text-red-400/60" />
+                        <p className="text-red-400/60 text-xs">{step.ifFail}</p>
+                      </div>
+                    )}
+                    {step.toolRequired && (
+                      <div className="mt-1.5 flex items-start gap-2">
+                        <Wrench className="w-3 h-3 shrink-0 mt-0.5 text-blue-400/60" />
+                        <p className="text-blue-400/60 text-xs">{step.toolRequired}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {content.toolsRequired && Array.isArray(content.toolsRequired) && content.toolsRequired.length > 0 && (
+        <div>
+          <SectionHeader icon={<Wrench className="w-4 h-4 text-[#FFCD11]" />} title="Tools Required" />
+          <div className="bg-white/5 rounded-xl border border-white/10 overflow-hidden">
+            {(content.toolsRequired as any[]).map((tool: any, i: number) => (
+              <div key={i} className={`px-4 py-3 ${i > 0 ? "border-t border-white/5" : ""}`}>
+                {typeof tool === "string" ? (
+                  <span className="text-white/80">{tool}</span>
+                ) : (
+                  <div>
+                    <span className="text-white/90 font-medium">{tool.tool}</span>
+                    {tool.purpose && <span className="text-white/40 text-xs ml-2">— {tool.purpose}</span>}
+                    {tool.specification && <p className="text-white/30 text-xs mt-0.5">{tool.specification}</p>}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {content.safetyChecklist && Array.isArray(content.safetyChecklist) && (
+        <div>
+          <SectionHeader icon={<Shield className="w-4 h-4 text-orange-400" />} title="Safety Checklist" color="#fb923c" />
+          <div className="bg-orange-500/5 rounded-xl border border-orange-500/15 p-4 space-y-2">
+            {(content.safetyChecklist as any[]).map((item: any, i: number) => (
+              <div key={i} className="flex items-start gap-3 text-white/70">
+                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-orange-400" />
+                <div>
+                  <span>{typeof item === "string" ? item : item.item}</span>
+                  {item.priority && <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${item.priority === "Critical" ? "bg-red-500/20 text-red-400" : "bg-white/10 text-white/40"}`}>{item.priority}</span>}
+                  {item.details && <p className="text-white/40 text-xs mt-0.5">{item.details}</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {content.laborEstimate && (
+        <div className="bg-white/5 rounded-xl border border-white/10 p-5">
+          <SectionHeader icon={<User className="w-4 h-4 text-[#FFCD11]" />} title="Labor Estimate" />
+          <div className="grid grid-cols-2 gap-4 text-xs">
+            <div className="bg-white/5 rounded-lg p-4 text-center relative overflow-hidden">
+              <p className="text-white/40 uppercase tracking-wider mb-1">Estimated Hours</p>
+              <p className="text-2xl font-bold text-[#FFCD11]">{content.laborEstimate.minHours} - {content.laborEstimate.maxHours}</p>
+              <div className="mt-2 h-1.5 bg-white/5 rounded-full overflow-hidden">
+                <div className="h-full rounded-full bg-gradient-to-r from-[#FFCD11]/40 to-[#FFCD11]" style={{
+                  width: `${Math.min(100, ((content.laborEstimate.maxHours || 8) / 40) * 100)}%`
+                }} />
+              </div>
+              <p className="text-white/20 text-[9px] mt-1">of typical 40hr work week</p>
+            </div>
+            {content.laborEstimate.skillLevel && (
+              <div className="bg-white/5 rounded-lg p-4 text-center">
+                <p className="text-white/40 uppercase tracking-wider mb-1">Skill Level</p>
+                <div className="flex justify-center gap-1 mt-2">
+                  {[1,2,3,4,5].map(level => {
+                    const skillVal = content.laborEstimate.skillLevel?.toLowerCase().includes("advanced") ? 5 :
+                      content.laborEstimate.skillLevel?.toLowerCase().includes("intermediate") ? 3 :
+                      content.laborEstimate.skillLevel?.toLowerCase().includes("expert") ? 5 :
+                      content.laborEstimate.skillLevel?.toLowerCase().includes("journeyman") ? 4 : 2;
+                    return <div key={level} className={`w-3 h-6 rounded-sm ${level <= skillVal ? "bg-[#FFCD11]" : "bg-white/10"}`} />;
+                  })}
+                </div>
+                <p className="text-white/80 text-xs font-medium mt-2">{content.laborEstimate.skillLevel}</p>
+              </div>
+            )}
+          </div>
+          {content.laborEstimate.note && <p className="text-white/40 text-xs italic mt-3">{content.laborEstimate.note}</p>}
+        </div>
+      )}
+
+      {content.partsList && Array.isArray(content.partsList) && content.partsList.length > 0 && (
+        <div>
+          <SectionHeader icon={<Package className="w-4 h-4 text-[#FFCD11]" />} title="Parts List" />
+          <div className="bg-white/5 rounded-xl border border-white/10 overflow-hidden">
+            <div className="grid grid-cols-[1fr_auto_auto] gap-2 px-4 py-2 bg-white/5 text-xs text-white/40 uppercase tracking-wider font-medium">
+              <span>Part Name</span>
+              <span>Part Number</span>
+              <span>Qty</span>
+            </div>
+            {(content.partsList as any[]).map((part: any, i: number) => (
+              <div key={i} className={`grid grid-cols-[1fr_auto_auto] gap-2 items-center px-4 py-3 ${i > 0 ? "border-t border-white/5" : ""}`}>
+                <div>
+                  <span className="text-white/80">{part.partName}</span>
+                  {part.notes && <p className="text-white/30 text-xs mt-0.5">{part.notes}</p>}
+                  {part.alternatives && Array.isArray(part.alternatives) && part.alternatives.length > 0 && part.alternatives[0] && (
+                    <p className="text-blue-400/50 text-xs mt-0.5">Alt: {part.alternatives.join(", ")}</p>
+                  )}
+                </div>
+                {part.partNumber ? <span className="text-white/40 font-mono text-xs bg-white/5 px-2 py-1 rounded">{part.partNumber}</span> : <span />}
+                <span className="text-white/60 text-xs text-center">{part.quantity || 1}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {content.procedureSteps && Array.isArray(content.procedureSteps) && content.procedureSteps.length > 0 && (
+        <div>
+          <SectionHeader icon={<Cog className="w-4 h-4 text-[#FFCD11]" />} title="Repair Procedure" />
+          <div className="space-y-2">
+            {(content.procedureSteps as any[]).map((step: any, i: number) => (
+              <div key={i} className="bg-white/5 rounded-lg border border-white/10 p-4">
+                <div className="flex items-start gap-3">
+                  <span className="w-7 h-7 rounded-full bg-white/10 text-white/70 flex items-center justify-center text-xs font-bold shrink-0">{step.step}</span>
+                  <div className="flex-1">
+                    <p className="text-white/80">{step.description}</p>
+                    {step.safetyNote && <p className="text-orange-400/70 text-xs mt-1.5 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> {step.safetyNote}</p>}
+                    {step.estimatedTime && <p className="text-white/30 text-xs mt-1">{step.estimatedTime}</p>}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {content.calibrationSteps && Array.isArray(content.calibrationSteps) && content.calibrationSteps.length > 0 && (
+        <div>
+          <SectionHeader icon={<Cpu className="w-4 h-4 text-[#FFCD11]" />} title="Calibration Steps" />
+          <div className="bg-white/5 rounded-xl border border-white/10 overflow-hidden">
+            {(content.calibrationSteps as any[]).map((step: any, i: number) => (
+              <div key={i} className={`px-4 py-3 ${i > 0 ? "border-t border-white/5" : ""}`}>
+                <div className="flex items-center gap-2">
+                  <span className="text-white/30 font-mono text-xs">{step.step || i + 1}.</span>
+                  <span className="text-white/80">{step.parameter}</span>
+                </div>
+                {step.specification && <p className="text-white/50 text-xs mt-1 pl-6">Spec: {step.specification}</p>}
+                {step.method && <p className="text-white/40 text-xs mt-0.5 pl-6">Method: {step.method}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {content.preventiveMaintenance && Array.isArray(content.preventiveMaintenance) && content.preventiveMaintenance.length > 0 && (
+        <div>
+          <SectionHeader icon={<Star className="w-4 h-4 text-[#FFCD11]" />} title="Preventive Maintenance" />
+          <div className="bg-white/5 rounded-xl border border-white/10 p-4 space-y-2">
+            {(content.preventiveMaintenance as string[]).map((item: string, i: number) => (
+              <div key={i} className="flex items-start gap-3 text-white/70">
+                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-[#FFCD11]" />
+                <span>{item}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {content.safetyWarnings && Array.isArray(content.safetyWarnings) && (
+        <div className="bg-red-500/10 rounded-xl border border-red-500/20 p-5">
+          <SectionHeader icon={<AlertTriangle className="w-4 h-4 text-red-400" />} title="Safety Warnings" color="#f87171" />
+          <ul className="space-y-2 text-sm text-red-300/80">
+            {(content.safetyWarnings as string[]).map((w: string, i: number) => (
+              <li key={i} className="flex items-start gap-2">
+                <span className="text-red-400 mt-1 text-xs">&#9679;</span>
+                <span>{w}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {content.whenToCallTech && (
+        <div className="bg-white/5 rounded-xl border border-white/10 p-5">
+          <SectionHeader icon={<Phone className="w-4 h-4 text-[#FFCD11]" />} title="When to Call a Technician" />
+          <p className="text-white/70 leading-relaxed">{content.whenToCallTech}</p>
+        </div>
+      )}
+
+      {content.recommendations && (
+        <div className="bg-[#FFCD11]/5 rounded-xl border border-[#FFCD11]/20 p-5">
+          <SectionHeader icon={<Star className="w-4 h-4 text-[#FFCD11]" />} title="Recommendations" />
+          <p className="text-white/80 leading-relaxed">{content.recommendations}</p>
+        </div>
+      )}
+
+      {content.additionalNotes && (
+        <div className="bg-white/5 rounded-xl border border-white/10 p-5">
+          <SectionHeader icon={<FileText className="w-4 h-4 text-[#FFCD11]" />} title="Additional Notes" />
+          <p className="text-white/70 leading-relaxed">{content.additionalNotes}</p>
+        </div>
+      )}
+
+      {content.disclaimer && (
+        <div className="border-t border-white/10 pt-4 mt-6">
+          <p className="text-xs text-white/30 italic leading-relaxed">
+            {content.disclaimer}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReportContent({ content }: { content: any }) {
+  return (
+    <div className="space-y-4 text-sm">
+      {(content.generatedDate || content.equipment || content.customerName) && (
+        <div className="bg-muted/30 rounded-lg border p-4">
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            {content.generatedDate && <div><span className="text-muted-foreground">Date:</span> <span className="font-medium">{content.generatedDate}</span></div>}
+            {content.customerName && <div><span className="text-muted-foreground">Customer:</span> <span className="font-medium">{content.customerName}</span></div>}
+            {typeof content.equipment === "string" && <div className="col-span-2"><span className="text-muted-foreground">Equipment:</span> <span className="font-medium">{content.equipment}</span></div>}
+          </div>
+        </div>
+      )}
+      {content.problemSummary && (
+        <div>
+          <h4 className="font-semibold mb-1">Problem Summary</h4>
+          <p className="text-muted-foreground leading-relaxed">{content.problemSummary}</p>
+        </div>
+      )}
+      {content.likelyCauses && (
+        <div>
+          <h4 className="font-semibold mb-2">Likely Causes</h4>
+          <div className="space-y-2">
+            {(content.likelyCauses as any[]).map((cause: any, i: number) => (
+              <div key={i} className="bg-card/50 border rounded-md p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <Badge variant="secondary" className="text-xs">{cause.confidence || "Medium"}</Badge>
+                  <span className="font-medium">{cause.cause}</span>
+                </div>
+                {cause.explanation && <p className="text-xs text-muted-foreground mt-1">{cause.explanation}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {content.rootCauseMatrix && (
+        <div>
+          <h4 className="font-semibold mb-2">Root Cause Analysis</h4>
+          <div className="space-y-2">
+            {(content.rootCauseMatrix as any[]).map((item: any, i: number) => (
+              <div key={i} className="bg-card/50 border rounded-md p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <Badge variant="secondary" className="text-xs">{item.probability}</Badge>
+                  <span className="font-medium text-sm">{item.cause}</span>
+                </div>
+                {item.evidence && <p className="text-xs text-muted-foreground">{item.evidence}</p>}
+                {item.testMethod && <p className="text-xs text-muted-foreground mt-0.5">Test: {item.testMethod}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {content.safeChecks && (
+        <div>
+          <h4 className="font-semibold mb-2">Safe Checks</h4>
+          <ul className="space-y-1.5">
+            {(content.safeChecks as string[]).map((check: string, i: number) => (
+              <li key={i} className="flex items-start gap-2 text-muted-foreground">
+                <ChevronRight className="w-3 h-3 shrink-0 mt-1 text-primary" />
+                {check}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {content.diagnosticTree && (
+        <div>
+          <h4 className="font-semibold mb-2">Diagnostic Steps</h4>
+          <div className="space-y-1.5">
+            {(content.diagnosticTree as any[]).map((step: any, i: number) => (
+              <div key={i} className="flex items-start gap-2 text-muted-foreground text-xs bg-card/50 border rounded-md p-2.5">
+                <span className="font-mono text-primary font-semibold">{step.step}.</span>
+                <div>
+                  <p>{step.action}</p>
+                  {step.expectedResult && <p className="opacity-75 mt-0.5">Expected: {step.expectedResult}</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {content.partsList && (
+        <div>
+          <h4 className="font-semibold mb-2">Parts List</h4>
+          <div className="space-y-1">
+            {(content.partsList as any[]).map((part: any, i: number) => (
+              <div key={i} className="flex items-center justify-between text-xs bg-card/50 border rounded-md px-3 py-2">
+                <span>{part.partName}</span>
+                {part.partNumber && <span className="text-muted-foreground font-mono">{part.partNumber}</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {content.safetyWarnings && (
+        <div className="bg-destructive/5 border border-destructive/20 rounded-md p-4">
+          <h4 className="font-semibold mb-2 flex items-center gap-1.5">
+            <AlertTriangle className="w-3.5 h-3.5 text-destructive" />
+            Safety Warnings
+          </h4>
+          <ul className="space-y-1.5 text-xs text-muted-foreground">
+            {(content.safetyWarnings as string[]).map((w: string, i: number) => (
+              <li key={i}>&#9679; {w}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {content.whenToCallTech && (
+        <div>
+          <h4 className="font-semibold mb-1">When to Call a Technician</h4>
+          <p className="text-muted-foreground leading-relaxed">{content.whenToCallTech}</p>
+        </div>
+      )}
+      {content.recommendations && (
+        <div>
+          <h4 className="font-semibold mb-1">Recommendations</h4>
+          <p className="text-muted-foreground leading-relaxed">{content.recommendations}</p>
+        </div>
+      )}
+      {content.disclaimer && (
+        <p className="text-xs text-muted-foreground italic border-t pt-3 mt-3 leading-relaxed">
+          {content.disclaimer}
+        </p>
+      )}
+    </div>
+  );
+}

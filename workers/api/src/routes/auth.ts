@@ -1,6 +1,6 @@
 import { Hono, type Context } from "hono";
 import type { Env, Variables } from "../env";
-import { hashPassword, verifyPassword } from "../lib/password";
+import { hashPassword } from "../lib/password";
 import { jsonError, ErrorCode } from "../lib/errors";
 import { log } from "../lib/log";
 import {
@@ -11,6 +11,16 @@ import {
   publicCustomer,
   selectOne,
 } from "../lib/d1-helpers";
+import { sendTransactionalEmail, sha256Hex, sixDigitCode } from "../lib/email";
+import {
+  authenticateCustomer,
+  createClerkUser,
+  customerResponse,
+  findCustomerByEmail,
+} from "../lib/clerk-identity";
+import { getClerkClient } from "../lib/clerk-auth";
+import { ensureOperationalSchema } from "../lib/ensure-schema";
+import { checkAndIncrement, WINDOW_MINUTE_MS } from "../lib/ratelimit";
 
 export const authRoutes = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -41,55 +51,49 @@ async function sendPasswordResetEmail(
   token: string,
 ) {
   const resetUrl = `${passwordResetBaseUrl(c)}/reset-password?token=${encodeURIComponent(token)}`;
-  const html = `<p>Use this link to reset your FixMyIron password:</p><p><a href="${resetUrl}">${resetUrl}</a></p><p>This link expires in 1 hour.</p>`;
-  const text = `Use this link to reset your FixMyIron password:\n\n${resetUrl}\n\nThis link expires in 1 hour.`;
-  const from = c.env.RESEND_FROM_EMAIL || "FixMyIron <noreply@mail.fixmyiron.com>";
-
-  if (c.env.RESEND_API_KEY) {
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${c.env.RESEND_API_KEY}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        from,
-        to: email,
-        subject: "Reset your FixMyIron password",
-        html,
-        text,
-      }),
-    });
-    if (!response.ok) {
-      log.error("resend_email_send_failed", { status: response.status });
-      return false;
-    }
-    return true;
-  }
-
-  if (c.env.EMAIL) {
-    try {
-      await c.env.EMAIL.send({
-        from,
-        to: email,
-        subject: "Reset your FixMyIron password",
-        html,
-        text,
-      });
-      return true;
-    } catch (err) {
-      log.error("cloudflare_email_send_failed", {
-        err: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
-
-  return false;
+  return sendTransactionalEmail(c, {
+    to: email,
+    subject: "Reset your FixMyIron password",
+    html: `<p>Use this link to reset your FixMyIron password:</p><p><a href="${resetUrl}">${resetUrl}</a></p><p>This link expires in 1 hour.</p>`,
+    text: `Use this link to reset your FixMyIron password:\n\n${resetUrl}\n\nThis link expires in 1 hour.`,
+  });
 }
 
-// POST /api/auth/register - create a customer account using the production schema.
+async function issueEmailVerification(
+  c: Context<{ Bindings: Env; Variables: Variables }>,
+  customerId: number,
+  email: string,
+) {
+  const code = sixDigitCode();
+  const codeHash = await sha256Hex(`${customerId}:${email}:${code}`);
+  const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+  await c.env.DB.prepare(
+    "INSERT INTO email_verification_codes (customer_id, email, code_hash, expires_at) VALUES (?1, ?2, ?3, ?4)",
+  )
+    .bind(customerId, email, codeHash, expiresAt)
+    .run();
+  await sendTransactionalEmail(c, {
+    to: email,
+    subject: "Your FixMyIron verification code",
+    html: `<p>Your FixMyIron verification code is <strong>${code}</strong>.</p><p>This code expires in 30 minutes.</p>`,
+    text: `Your FixMyIron verification code is ${code}. It expires in 30 minutes.`,
+  });
+}
+
+// POST /api/auth/register - native FixMyIron form; Clerk identity behind it.
 authRoutes.post("/register", async (c) => {
   try {
+    await ensureOperationalSchema(c.env.DB);
+    const ip = c.req.header("cf-connecting-ip") || "anon";
+    const rl = await checkAndIncrement({
+      env: c.env,
+      userId: ip,
+      scope: "auth-register",
+      max: 8,
+      windowMs: WINDOW_MINUTE_MS * 10,
+    });
+    if (!rl.ok) return jsonError(c, 429, ErrorCode.RateLimited, "Too many registration attempts. Try again shortly.");
+
     const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
     const email = String(body.email ?? "").trim().toLowerCase();
     const password = String(body.password ?? "");
@@ -111,6 +115,32 @@ authRoutes.post("/register", async (c) => {
       return c.json({ error: "An account with this email already exists" }, 409);
     }
 
+    const clerk = await createClerkUser(c.env, { email, password, firstName, lastName });
+    if ("error" in clerk && clerk.code === "email_exists") {
+      return c.json({ error: clerk.error }, 409);
+    }
+
+    // Determine the Clerk linkage. Three outcomes:
+    //   - { clerkUserId } : Clerk user created, linkage healthy.
+    //   - { skipped }     : Clerk not configured — expected local-only mode.
+    //   - { error }       : a REAL Clerk failure (not email_exists). We still
+    //                       create the local customer (graceful degrade with the
+    //                       local password), but flag the Clerk<->customer drift
+    //                       so it is observable and repairable, rather than
+    //                       silently swallowing it.
+    let clerkUserId: string | null = null;
+    let clerkDrift = false;
+    if ("clerkUserId" in clerk) {
+      clerkUserId = clerk.clerkUserId;
+    } else if ("error" in clerk) {
+      clerkDrift = true;
+      log.error("clerk_link_drift_on_register", {
+        email,
+        err: clerk.error,
+        note: "customer created without clerk_user_id; will re-attempt link on next login",
+      });
+    }
+
     const customerId = await insertRow(c.env.DB, "customers", {
       email,
       password_hash: await hashPassword(password),
@@ -119,8 +149,13 @@ authRoutes.post("/register", async (c) => {
       company: nullIfBlank(body.company),
       phone: nullIfBlank(body.phone),
       role: "user",
-      status: "active",
+      status: "pending_verification",
+      clerk_user_id: clerkUserId,
     });
+
+    if (clerkDrift) {
+      log.warn("customer_created_with_clerk_drift", { customerId, email });
+    }
 
     if (body.equipmentType) {
       try {
@@ -166,18 +201,34 @@ authRoutes.post("/register", async (c) => {
       "SELECT * FROM customers WHERE id = ?1",
       customerId,
     );
-    const authToken = await createAuthSession(c.env.DB, customerId);
+    await issueEmailVerification(c, customerId, email);
     const safe = publicCustomer(customer ?? {});
-    return c.json({ ...safe, authToken, token: authToken, user: safe });
+    return c.json({
+      ...safe,
+      user: safe,
+      requiresVerification: true,
+      message: "Check your email for a 6-digit verification code.",
+    }, 201);
   } catch (e) {
     log.error("auth_register_error", { error: String(e) });
-    return c.json({ error: "Registration failed", detail: String(e) }, 500);
+    return c.json({ error: "Registration failed" }, 500);
   }
 });
 
-// POST /api/auth/login - authenticate against migrated bcrypt customer hashes.
+// POST /api/auth/login - Clerk password check with local hash fallback.
 authRoutes.post("/login", async (c) => {
   try {
+    await ensureOperationalSchema(c.env.DB);
+    const ip = c.req.header("cf-connecting-ip") || "anon";
+    const rl = await checkAndIncrement({
+      env: c.env,
+      userId: ip,
+      scope: "auth-login",
+      max: 20,
+      windowMs: WINDOW_MINUTE_MS * 10,
+    });
+    if (!rl.ok) return jsonError(c, 429, ErrorCode.RateLimited, "Too many sign-in attempts. Try again shortly.");
+
     const { email, password } = await c.req.json().catch(() => ({}));
     const emailLc = String(email ?? "").trim().toLowerCase();
     const passwordText = String(password ?? "");
@@ -185,23 +236,18 @@ authRoutes.post("/login", async (c) => {
       return c.json({ error: "Email and password are required" }, 400);
     }
 
-    const customer = await customerByEmail(c.env.DB, emailLc);
-    const valid =
-      customer &&
-      typeof customer.password_hash === "string" &&
-      (await verifyPassword(passwordText, customer.password_hash));
-    if (!customer || !valid) {
-      return c.json({ error: "Invalid email or password" }, 401);
+    const result = await authenticateCustomer(c.env, emailLc, passwordText);
+    if ("error" in result) {
+      return c.json(
+        { error: result.error, needsVerification: result.needsVerification === true },
+        result.status as 401 | 403,
+      );
     }
-
-    const customerId = Number(customer.id);
-    const authToken = await createAuthSession(c.env.DB, customerId);
-    const safe = publicCustomer(customer);
-    log.info("customer_logged_in", { customerId });
-    return c.json({ ...safe, authToken, token: authToken, user: safe });
+    log.info("customer_logged_in", { customerId: Number(result.customer.id) });
+    return c.json(customerResponse(result.customer, result.token));
   } catch (e) {
     log.error("auth_login_error", { error: String(e) });
-    return c.json({ error: "Login failed", detail: String(e) }, 500);
+    return c.json({ error: "Login failed" }, 500);
   }
 });
 
@@ -280,6 +326,21 @@ authRoutes.post("/password-reset/confirm", async (c) => {
     .prepare("UPDATE customers SET password_hash = ?1 WHERE id = ?2")
     .bind(await hashPassword(passwordText), row.customer_id)
     .run();
+  const clerkRow = await selectOne<{ clerk_user_id: string | null }>(
+    c.env.DB,
+    "SELECT clerk_user_id FROM customers WHERE id = ?1",
+    row.customer_id,
+  );
+  if (clerkRow?.clerk_user_id) {
+    try {
+      const clerk = getClerkClient(c.env);
+      await clerk.users.updateUser(clerkRow.clerk_user_id, { password: passwordText });
+    } catch (err) {
+      log.error("clerk_password_update_failed", {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
   await c.env.DB
     .prepare("UPDATE password_reset_tokens SET used_at = ?1 WHERE token = ?2")
     .bind(new Date().toISOString(), resetToken)
@@ -290,3 +351,64 @@ authRoutes.post("/password-reset/confirm", async (c) => {
     .run();
   return c.json({ ok: true, message: "Password updated. Please sign in with your new password." });
 });
+
+authRoutes.post("/verify-email", async (c) => {
+  await ensureOperationalSchema(c.env.DB);
+  const body = (await c.req.json().catch(() => ({}))) as { email?: string; code?: string };
+  const email = String(body.email ?? "").trim().toLowerCase();
+  const code = String(body.code ?? "").trim();
+  if (!email || !/^\d{6}$/.test(code)) {
+    return c.json({ error: "Email and a 6-digit verification code are required" }, 400);
+  }
+  const customer = await findCustomerByEmail(c.env.DB, email);
+  if (!customer) {
+    return c.json({ error: "Invalid verification code" }, 400);
+  }
+  const customerId = Number(customer.id);
+  const codeHash = await sha256Hex(`${customerId}:${email}:${code}`);
+  const row = await selectOne<{ id: number; expires_at: string; used_at: string | null }>(
+    c.env.DB,
+    `SELECT id, expires_at, used_at FROM email_verification_codes
+      WHERE customer_id = ?1 AND email = ?2 AND code_hash = ?3
+      ORDER BY id DESC LIMIT 1`,
+    customerId,
+    email,
+    codeHash,
+  );
+  if (!row || row.used_at || new Date(row.expires_at).getTime() <= Date.now()) {
+    return c.json({ error: "Invalid or expired verification code" }, 400);
+  }
+  await c.env.DB.prepare(
+    "UPDATE email_verification_codes SET used_at = datetime('now') WHERE id = ?1",
+  )
+    .bind(row.id)
+    .run();
+  await c.env.DB.prepare(
+    `UPDATE customers
+        SET status = 'active', email_verified_at = datetime('now'), updated_at = datetime('now')
+      WHERE id = ?1`,
+  )
+    .bind(customerId)
+    .run();
+  const fresh = await selectOne<Record<string, unknown>>(
+    c.env.DB,
+    "SELECT * FROM customers WHERE id = ?1",
+    customerId,
+  );
+  const token = await createAuthSession(c.env.DB, customerId);
+  return c.json(customerResponse(fresh ?? customer, token));
+});
+
+authRoutes.post("/resend-verification", async (c) => {
+  await ensureOperationalSchema(c.env.DB);
+  const body = (await c.req.json().catch(() => ({}))) as { email?: string };
+  const email = String(body.email ?? "").trim().toLowerCase();
+  const neutral = { ok: true, message: "If an account needs verification, a new code has been sent." };
+  if (!email) return c.json(neutral);
+  const customer = await findCustomerByEmail(c.env.DB, email);
+  if (customer && String(customer.status) === "pending_verification") {
+    await issueEmailVerification(c, Number(customer.id), email);
+  }
+  return c.json(neutral);
+});
+

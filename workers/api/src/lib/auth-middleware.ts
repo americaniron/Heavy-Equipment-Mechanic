@@ -1,8 +1,9 @@
 import type { MiddlewareHandler } from "hono";
 import type { Env, Variables } from "../env";
-import { verifyClerkJwt } from "./clerk-auth";
+import { getClerkClient, verifyClerkJwt } from "./clerk-auth";
 import { jsonError, ErrorCode } from "./errors";
 import { getCustomerByAuthToken } from "./d1-helpers";
+import { syncClerkUserToCustomer } from "./clerk-identity";
 
 /**
  * Attaches `userId` to the Hono context if the request carries a valid
@@ -44,7 +45,29 @@ export const clerkAuth: MiddlewareHandler<{
     }
 
     const result = await verifyClerkJwt(auth, c.env);
-    if (result) c.set("userId", result.userId);
+    if (result) {
+      try {
+        const clerk = getClerkClient(c.env);
+        const user = await clerk.users.getUser(result.userId);
+        const email =
+          user.primaryEmailAddress?.emailAddress ??
+          user.emailAddresses[0]?.emailAddress;
+        if (email) {
+          const customer = await syncClerkUserToCustomer(c.env, {
+            clerkUserId: result.userId,
+            email,
+            firstName: user.firstName ?? undefined,
+            lastName: user.lastName ?? undefined,
+          });
+          const customerId = Number(customer.id);
+          c.set("customerId", customerId);
+          c.set("userId", String(customerId));
+          c.set("userEmail", email);
+        }
+      } catch {
+        c.set("userId", result.userId);
+      }
+    }
   }
   await next();
 };
