@@ -307,13 +307,125 @@ liveSessionRoutes.post("/:id/report", async (c) => {
   }
 });
 
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25 MB per file
+const MAX_FILES_PER_REQUEST = 10;
+
+function sanitizeFilename(name: string): string {
+  const base = name.split(/[\\/]/).pop() ?? "file";
+  const cleaned = base.replace(/[^a-zA-Z0-9._-]/g, "_").replace(/_{2,}/g, "_");
+  return cleaned.slice(0, 120) || "file";
+}
+
 liveSessionRoutes.post("/:id/upload", async (c) => {
-  return jsonError(
-    c,
-    503,
-    ErrorCode.Upstream,
-    "Session file upload is not enabled until the production R2 binding is confirmed writable.",
+  await ensureOperationalSchema(c.env.DB);
+
+  const customer = await getCustomerByAuthToken(c.env.DB, tokenFrom(c));
+  const access = sessionAccess(c);
+  const session = await loadOwnedSession(
+    c.env.DB,
+    c.req.param("id"),
+    access,
+    customer ? Number(customer.id) : undefined,
   );
+  if (!session) return jsonError(c, 404, ErrorCode.NotFound, "Session not found");
+
+  // R2 is optional in the binding surface. Prefer ASSETS, fall back to
+  // PORTAL_ASSETS (same bucket in prod). If neither is bound the feature
+  // is genuinely unavailable — surface a clear 503 instead of 500ing.
+  const bucket = c.env.ASSETS ?? c.env.PORTAL_ASSETS;
+  if (!bucket) {
+    return jsonError(
+      c,
+      503,
+      ErrorCode.Upstream,
+      "File storage is not configured on this environment.",
+      "No R2 bucket is bound (ASSETS/PORTAL_ASSETS).",
+    );
+  }
+
+  const contentType = c.req.header("content-type") ?? "";
+  if (!contentType.toLowerCase().includes("multipart/form-data")) {
+    return jsonError(
+      c,
+      400,
+      ErrorCode.BadRequest,
+      "Upload must be multipart/form-data.",
+    );
+  }
+
+  let form: FormData;
+  try {
+    form = await c.req.formData();
+  } catch {
+    return jsonError(c, 400, ErrorCode.BadRequest, "Malformed multipart body.");
+  }
+
+  // Frontend appends every file under the field name "files"; also accept
+  // a singular "file" for robustness.
+  const entries = [...form.getAll("files"), ...form.getAll("file")];
+  const files = entries.filter((v): v is File => v instanceof File && v.size >= 0);
+  if (files.length === 0) {
+    return jsonError(c, 400, ErrorCode.BadRequest, "No files were provided.");
+  }
+  if (files.length > MAX_FILES_PER_REQUEST) {
+    return jsonError(
+      c,
+      400,
+      ErrorCode.BadRequest,
+      `Too many files (max ${MAX_FILES_PER_REQUEST} per request).`,
+    );
+  }
+
+  const sessionId = Number(session.id);
+  const stored: Array<{
+    id: number;
+    sessionId: number;
+    fileName: string;
+    fileType: string;
+    filePath: string;
+    size: number;
+  }> = [];
+
+  for (const file of files) {
+    if (file.size > MAX_UPLOAD_BYTES) {
+      return jsonError(
+        c,
+        400,
+        ErrorCode.BadRequest,
+        `File "${file.name}" exceeds the ${MAX_UPLOAD_BYTES / (1024 * 1024)}MB limit.`,
+      );
+    }
+    const safeName = sanitizeFilename(file.name || "upload");
+    const fileType = file.type || "application/octet-stream";
+    const key = `sessions/${sessionId}/${crypto.randomUUID()}-${safeName}`;
+    const bytes = await file.arrayBuffer();
+
+    await bucket.put(key, bytes, {
+      httpMetadata: { contentType: fileType },
+      customMetadata: {
+        sessionId: String(sessionId),
+        originalName: safeName,
+      },
+    });
+
+    const id = await insertRow(c.env.DB, "session_files", {
+      session_id: sessionId,
+      file_name: safeName,
+      file_type: fileType,
+      file_path: key,
+    });
+
+    stored.push({
+      id,
+      sessionId,
+      fileName: safeName,
+      fileType,
+      filePath: key,
+      size: bytes.byteLength,
+    });
+  }
+
+  return c.json({ files: stored, count: stored.length }, 201);
 });
 
 liveSessionRoutes.post("/:id/email-transcript", async (c) => {

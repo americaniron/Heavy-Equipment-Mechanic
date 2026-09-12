@@ -43,13 +43,17 @@ id = "367342e6ab684242be922dc69e425917"
 name = "EMAIL"
 
 # R2 — PDFs, audio, uploaded photos.
-# DISABLED for staging: the current OAuth token lacks the r2 scope.
-# Re-enable after `wrangler login` with R2 included, or use an API token
-# with `Workers R2 Storage Edit` permission. Foundation slice does not
-# touch R2; the binding will be wired when product surfaces need it.
-# [[r2_buckets]]
-# binding = "ASSETS"
-# bucket_name = "fixmyiron-assets-staging"
+# Bound so the live-session upload path (POST /api/sessions/:id/upload) can
+# write objects. Under `wrangler dev` this is a fully local R2 simulation
+# (no real r2 OAuth scope required); prod binds the same names in
+# wrangler.prod.toml against bucket `fixmyiron-assets-prod`.
+[[r2_buckets]]
+binding = "ASSETS"
+bucket_name = "fixmyiron-assets-staging"
+
+[[r2_buckets]]
+binding = "PORTAL_ASSETS"
+bucket_name = "fixmyiron-assets-staging"
 
 # Queue — async jobs (enrichment, email, fault-code refresh)
 [[queues.producers]]
