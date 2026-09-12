@@ -258,6 +258,54 @@ test.describe("local homepage non-avatar workflows", () => {
     }));
     expect(sizes.document).toBeLessThanOrEqual(sizes.viewport + 1);
   });
+
+  test("shared reports sanitize untrusted SVG diagrams", async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as Window & { __reportSvgExecuted?: boolean }).__reportSvgExecuted = false;
+    });
+    await page.route("**/api/shared/security-test", (route) => route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        report: {
+          id: 7,
+          reportType: "quick",
+          content: null,
+          shareToken: "security-test",
+          svgDiagram: `
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" onload="window.__reportSvgExecuted = true">
+              <script>window.__reportSvgExecuted = true</script>
+              <style>circle { fill: red; }</style>
+              <foreignObject><iframe srcdoc="<script>parent.__reportSvgExecuted = true</script>"></iframe></foreignObject>
+              <a href="javascript:window.__reportSvgExecuted = true"><rect width="5" height="5" /></a>
+              <circle id="safe-shape" cx="10" cy="10" r="5" fill="#ffcd11" />
+            </svg>
+          `,
+        },
+        session: {},
+      }),
+    }));
+
+    await page.goto("/?shared=security-test");
+    const diagram = page.getByTestId("shared-report-diagram");
+    await expect(diagram.locator("svg")).toBeVisible();
+    await expect(diagram.locator("#safe-shape")).toHaveCount(1);
+    const securityAudit = await diagram.evaluate((element) => {
+      const nodes = [element, ...element.querySelectorAll("*")];
+      return {
+        dangerousTags: element.querySelectorAll("script, style, foreignObject, iframe, object, embed").length,
+        dangerousAttributes: nodes.flatMap((node) => Array.from(node.attributes)).filter((attribute) =>
+          /^on/i.test(attribute.name) || attribute.name === "href" || attribute.name === "xlink:href"
+        ).length,
+        executed: (window as Window & { __reportSvgExecuted?: boolean }).__reportSvgExecuted,
+      };
+    });
+    expect(securityAudit).toEqual({
+      dangerousTags: 0,
+      dangerousAttributes: 0,
+      executed: false,
+    });
+  });
 });
 
 test.describe("local portal workflows", () => {

@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
+import DOMPurify from "dompurify";
 import {
   Room,
   RoomEvent,
@@ -58,6 +59,14 @@ interface ReportData {
   content: any;
   svgDiagram: string | null;
   shareToken: string | null;
+}
+
+function sanitizeReportSvg(svg: string): string {
+  return DOMPurify.sanitize(svg, {
+    USE_PROFILES: { svg: true, svgFilters: true },
+    FORBID_TAGS: ["script", "style", "foreignObject"],
+    FORBID_ATTR: ["href", "xlink:href"],
+  });
 }
 
 const MECHANIC_INFO: Record<string, Record<string, { name: string; title: string; icon: any }>> = {
@@ -1218,8 +1227,8 @@ export default function LiveDesk() {
             {sr.svgDiagram && (
               <div>
                 <h4 className="text-sm font-semibold mb-2">Technical Diagram</h4>
-                <div className="bg-card rounded-md border border-card-border p-2 overflow-x-auto"
-                  dangerouslySetInnerHTML={{ __html: sr.svgDiagram }} />
+                <div className="bg-card rounded-md border border-card-border p-2 overflow-x-auto" data-testid="shared-report-diagram"
+                  dangerouslySetInnerHTML={{ __html: sanitizeReportSvg(sr.svgDiagram) }} />
               </div>
             )}
           </div>
@@ -2912,8 +2921,8 @@ export default function LiveDesk() {
                 {report.svgDiagram && (
                   <div className="mt-6">
                     <h4 className="text-sm font-bold text-[#FFCD11] uppercase tracking-wider mb-3">Technical Diagram</h4>
-                    <div className="bg-white/5 rounded-xl border border-white/10 p-4 overflow-x-auto"
-                      dangerouslySetInnerHTML={{ __html: report.svgDiagram }} />
+                    <div className="bg-white/5 rounded-xl border border-white/10 p-4 overflow-x-auto" data-testid="report-diagram"
+                      dangerouslySetInnerHTML={{ __html: sanitizeReportSvg(report.svgDiagram) }} />
                   </div>
                 )}
               </div>
