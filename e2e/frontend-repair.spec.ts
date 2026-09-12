@@ -205,6 +205,8 @@ test.describe("local homepage non-avatar workflows", () => {
     await expect(portal).toHaveAttribute("href", "/portal");
     await about.click();
     await expect(page.getByTestId("about-video-modal")).toBeVisible();
+    await expect(page.getByRole("dialog", { name: /About American Iron/i })).toBeVisible();
+    await expect(page.getByTestId("button-close-about-video")).toBeFocused();
     await page.getByTestId("button-close-about-video").click();
     await expect(page.getByTestId("about-video-modal")).toHaveCount(0);
 
@@ -226,6 +228,14 @@ test.describe("local portal workflows", () => {
 
   test("all portal sections navigate without horizontal overflow", async ({ page, request }) => {
     await startAuthenticatedPage(page, request);
+    const menuButton = page.getByTestId("button-open-sidebar");
+    if (await menuButton.isVisible()) {
+      await menuButton.click();
+      await expect(page.getByTestId("button-close-sidebar")).toBeFocused();
+      await page.keyboard.press("Escape");
+      await expect(page.getByTestId("sidebar")).not.toBeVisible();
+      await expect(menuButton).toBeFocused();
+    }
     const sections: Array<[string, string]> = [
       ["dashboard", "Dashboard"],
       ["equipment", "My Equipment"],

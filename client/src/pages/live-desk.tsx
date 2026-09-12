@@ -1512,7 +1512,20 @@ export default function LiveDesk() {
         <meta property="og:description" content="Real-time AI-powered heavy equipment diagnostics with live video avatars." />
 
         {showAboutVideo && (
-          <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-start justify-center overflow-y-auto p-4" data-testid="about-video-modal">
+          <div
+            className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-start justify-center overflow-y-auto p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="about-dialog-title"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                setShowAboutVideo(false);
+                stopAboutNarration();
+                aboutVideoRef.current?.pause();
+              }
+            }}
+            data-testid="about-video-modal"
+          >
             <div className="my-auto w-full max-w-4xl py-2">
               <div className="mb-3 flex items-center justify-end gap-4">
                 <button
@@ -1526,6 +1539,8 @@ export default function LiveDesk() {
                 <button
                   onClick={() => { setShowAboutVideo(false); stopAboutNarration(); if (aboutVideoRef.current) aboutVideoRef.current.pause(); }}
                   className="text-white/70 hover:text-white transition-colors flex items-center gap-1.5 text-sm"
+                  autoFocus
+                  aria-label="Close About American Iron"
                   data-testid="button-close-about-video"
                 >
                   Close <X className="w-5 h-5" />
@@ -1551,7 +1566,7 @@ export default function LiveDesk() {
                 )}
               </div>
               <div className="mt-6 text-center space-y-3">
-                <h3 className="text-xl font-black text-white">ABOUT AMERICAN IRON</h3>
+                <h3 id="about-dialog-title" className="text-xl font-black text-white">ABOUT AMERICAN IRON</h3>
                 <p className="text-gray-300 text-sm max-w-2xl mx-auto leading-relaxed">
                   AMERICAN IRON is a full-service AI-powered diagnostic facility specializing in heavy equipment, power generation, marine engines, hydraulic systems, and electrical controls. Our virtual shop floor brings decades of real-world mechanical expertise directly to you through face-to-face AI video consultations — no appointment needed.
                 </p>

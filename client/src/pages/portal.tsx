@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation, useRoute } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
@@ -3041,6 +3041,7 @@ export default function PortalPage() {
   const initialSection = params?.section || querySection || "dashboard";
   const [activeSection, setActiveSection] = useState<SectionId>(isSectionId(initialSection) ? initialSection : "dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const sidebarRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     const next = params?.section || querySection || "dashboard";
@@ -3053,6 +3054,23 @@ export default function PortalPage() {
       setLocation(`/login?redirect=${encodeURIComponent(requestedPath)}`);
     }
   }, [authLoading, authToken, isAuthenticated, location, sessionError, setLocation]);
+
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const frame = window.requestAnimationFrame(() => {
+      sidebarRef.current?.querySelector<HTMLElement>("button")?.focus();
+    });
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSidebarOpen(false);
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener("keydown", closeOnEscape);
+      previouslyFocused?.focus();
+    };
+  }, [sidebarOpen]);
 
   if (authLoading) {
     return (
@@ -3126,6 +3144,7 @@ export default function PortalPage() {
       )}
 
       <aside
+        ref={sidebarRef}
         id="portal-navigation"
         className={`fixed lg:sticky top-0 left-0 z-50 h-screen w-64 bg-[#1a1a1a] border-r border-[#333] flex flex-col transition-transform duration-200 ${
           sidebarOpen ? "visible translate-x-0" : "invisible -translate-x-full lg:visible lg:translate-x-0"
