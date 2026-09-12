@@ -119,7 +119,7 @@ for (const file of [...sourceFiles(pageRoot), path.join(root, "App.tsx")]) {
 
 const routes = fs
   .readFileSync(path.join(root, "App.tsx"), "utf8")
-  .matchAll(/<Route(?:\s+path="([^"]+)")?/g);
+  .matchAll(/<Route\b(?:\s+path="([^"]+)")?/g);
 const routePaths = [...routes].map((match) => match[1] ?? "(not-found)");
 const counts = inventory.reduce((result, item) => {
   result[item.element] = (result[item.element] ?? 0) + 1;

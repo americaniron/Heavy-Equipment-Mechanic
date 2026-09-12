@@ -104,6 +104,10 @@ const sectionTitles: Record<SectionId, string> = {
   "ai-escalation": "Escalation to Human Expert",
 };
 
+function isSectionId(value: string): value is SectionId {
+  return Object.prototype.hasOwnProperty.call(sectionTitles, value);
+}
+
 function useAuthFetch(url: string, authToken: string | null, enabled = true) {
   return useQuery({
     queryKey: [url],
@@ -2953,15 +2957,13 @@ export default function PortalPage() {
   const [location, setLocation] = useLocation();
   const [, params] = useRoute("/portal/:section");
   const querySection = new URLSearchParams(window.location.search).get("section");
-  const initialSection = (params?.section || querySection || "dashboard") as SectionId;
-  const [activeSection, setActiveSection] = useState<SectionId>(
-    initialSection in sectionTitles ? initialSection : "dashboard",
-  );
+  const initialSection = params?.section || querySection || "dashboard";
+  const [activeSection, setActiveSection] = useState<SectionId>(isSectionId(initialSection) ? initialSection : "dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
-    const next = (params?.section || querySection || "dashboard") as SectionId;
-    if (next in sectionTitles) setActiveSection(next);
+    const next = params?.section || querySection || "dashboard";
+    setActiveSection(isSectionId(next) ? next : "dashboard");
   }, [location, params?.section, querySection]);
 
   useEffect(() => {
@@ -3021,8 +3023,9 @@ export default function PortalPage() {
       )}
 
       <aside
+        id="portal-navigation"
         className={`fixed lg:sticky top-0 left-0 z-50 h-screen w-64 bg-[#1a1a1a] border-r border-[#333] flex flex-col transition-transform duration-200 ${
-          sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+          sidebarOpen ? "visible translate-x-0" : "invisible -translate-x-full lg:visible lg:translate-x-0"
         }`}
         aria-label="Portal navigation"
         data-testid="sidebar"
@@ -3032,7 +3035,7 @@ export default function PortalPage() {
             <img src={logoImg} alt="AMERICAN IRON" className="h-8" data-testid="img-sidebar-logo" />
             <span className="text-[#FFCD11] font-bold text-sm">AMERICAN IRON</span>
           </div>
-          <Button size="icon" variant="ghost" className="lg:hidden text-gray-400" onClick={() => setSidebarOpen(false)} data-testid="button-close-sidebar">
+          <Button size="icon" variant="ghost" className="lg:hidden text-gray-400" aria-label="Close portal navigation" onClick={() => setSidebarOpen(false)} data-testid="button-close-sidebar">
             <X className="h-5 w-5" />
           </Button>
         </div>
@@ -3097,7 +3100,16 @@ export default function PortalPage() {
         <header className="sticky top-0 z-30 bg-[#111111] border-b border-[#333] px-4 py-3">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-3">
-              <Button size="icon" variant="ghost" className="lg:hidden text-gray-400" onClick={() => setSidebarOpen(true)} data-testid="button-open-sidebar">
+              <Button
+                size="icon"
+                variant="ghost"
+                className="lg:hidden text-gray-400"
+                aria-label="Open portal navigation"
+                aria-controls="portal-navigation"
+                aria-expanded={sidebarOpen}
+                onClick={() => setSidebarOpen(true)}
+                data-testid="button-open-sidebar"
+              >
                 <Menu className="h-5 w-5" />
               </Button>
               <div>

@@ -13,7 +13,13 @@ export default defineConfig({
   },
   projects: [
     { name: "desktop", use: { ...devices["Desktop Chrome"] } },
-    { name: "tablet", use: { ...devices["iPad (gen 7) landscape"] } },
+    {
+      name: "tablet",
+      use: {
+        ...devices["iPad (gen 7) landscape"],
+        browserName: "chromium",
+      },
+    },
     { name: "mobile", use: { ...devices["Pixel 7"] } },
   ],
 });

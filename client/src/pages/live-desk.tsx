@@ -1512,9 +1512,9 @@ export default function LiveDesk() {
         <meta property="og:description" content="Real-time AI-powered heavy equipment diagnostics with live video avatars." />
 
         {showAboutVideo && (
-          <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4" data-testid="about-video-modal">
-            <div className="relative w-full max-w-4xl">
-              <div className="absolute -top-12 right-0 flex items-center gap-4">
+          <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-start justify-center overflow-y-auto p-4" data-testid="about-video-modal">
+            <div className="my-auto w-full max-w-4xl py-2">
+              <div className="mb-3 flex items-center justify-end gap-4">
                 <button
                   onClick={() => { if (aboutNarrating) stopAboutNarration(); else startAboutNarration(); }}
                   className="text-white/70 hover:text-white transition-colors flex items-center gap-1.5 text-sm"

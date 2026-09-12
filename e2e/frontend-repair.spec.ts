@@ -34,6 +34,10 @@ async function openPortalSection(page: Page, id: string, title: string) {
   await expect(page.getByTestId("text-section-title")).toHaveText(title);
 }
 
+function notification(page: Page, text: string | RegExp) {
+  return page.getByRole("region", { name: /Notifications/ }).getByText(text).first();
+}
+
 test.describe("local native authentication repair", () => {
   test.skip(!isLocal, "Requires the local Vite SPA and API");
 
@@ -62,7 +66,7 @@ test.describe("local native authentication repair", () => {
     await page.getByTestId("input-email").fill(demo.email);
     await page.getByTestId("input-password").fill("WrongPassword123");
     await page.getByTestId("button-submit-auth").click();
-    await expect(page.getByText(/invalid email or password/i)).toBeVisible();
+    await expect(notification(page, /invalid email or password/i)).toBeVisible();
 
     await page.getByTestId("link-forgot-password").click();
     await page.getByTestId("input-forgot-email").fill(demo.email);
@@ -72,9 +76,9 @@ test.describe("local native authentication repair", () => {
     await page.goto(`/verify-email?email=${encodeURIComponent(demo.email)}`);
     await page.getByTestId("input-verify-code").fill("000000");
     await page.getByTestId("button-verify-submit").click();
-    await expect(page.getByText(/invalid or expired verification code/i)).toBeVisible();
+    await expect(notification(page, /invalid or expired verification code/i)).toBeVisible();
     await page.getByTestId("button-resend-code").click();
-    await expect(page.getByText(/if an account needs verification/i)).toBeVisible();
+    await expect(notification(page, /if an account needs verification/i)).toBeVisible();
 
     await page.goto("/reset-password");
     await expect(page.getByTestId("text-reset-token-missing")).toBeVisible();
@@ -282,7 +286,7 @@ test.describe("local portal workflows", () => {
     });
     await expect(page.getByTestId("input-part-desc-0")).toHaveValue("Filter, engine oil");
     await page.getByTestId("button-submit-quote").click();
-    await expect(page.getByText(/quote request submitted/i)).toBeVisible();
+    await expect(notification(page, /quote request submitted/i)).toBeVisible();
     await expect(page.locator('[data-testid^="quote-card-"]').first()).toBeVisible();
 
     await openPortalSection(page, "parts", "Parts Lookup");
@@ -292,7 +296,7 @@ test.describe("local portal workflows", () => {
 
     await openPortalSection(page, "admin", "Account Settings");
     await page.getByTestId("button-save-profile").click();
-    await expect(page.getByText("Profile updated")).toBeVisible();
+    await expect(notification(page, "Profile updated")).toBeVisible();
 
     await openPortalSection(page, "equipment", "My Equipment");
     card = page.locator('[data-testid^="card-equipment-"]').filter({ hasText: editedMachine });
@@ -427,7 +431,7 @@ test.describe("local portal workflows", () => {
 
     await page.goto("/portal/billing");
     await page.getByTestId("button-upgrade-pro").click();
-    await expect(page.getByText(/untrusted redirect/i)).toBeVisible();
+    await expect(notification(page, /untrusted redirect/i)).toBeVisible();
     await expect(page).toHaveURL(/\/portal\/billing$/);
   });
 });
