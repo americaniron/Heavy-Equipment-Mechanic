@@ -5,7 +5,16 @@ import {
   type APIRequestContext,
 } from "@playwright/test";
 
+const isLocal =
+  (process.env.E2E_BASE_URL || "").includes("127.0.0.1") ||
+  process.env.E2E_LOCAL === "1";
+const localRateLimitHeaders = isLocal
+  ? { "cf-connecting-ip": `playwright-anonymous-${Date.now()}-${process.pid}` }
+  : {};
+
 test.describe("production anonymous SPA", () => {
+  test.use({ extraHTTPHeaders: localRateLimitHeaders });
+
   test("homepage is the native FixMyIron live desk", async ({ page }) => {
     const response = await page.goto("/");
     expect(response?.ok()).toBeTruthy();

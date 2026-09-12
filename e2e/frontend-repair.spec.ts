@@ -3,6 +3,11 @@ import { expect, test, type APIRequestContext, type Page } from "@playwright/tes
 const isLocal =
   (process.env.E2E_BASE_URL || "").includes("127.0.0.1") ||
   process.env.E2E_LOCAL === "1";
+const localRateLimitHeaders = isLocal
+  ? { "cf-connecting-ip": `playwright-frontend-${Date.now()}-${process.pid}` }
+  : {};
+
+test.use({ extraHTTPHeaders: localRateLimitHeaders });
 
 const demo = {
   email: "demo@fixmyiron.test",

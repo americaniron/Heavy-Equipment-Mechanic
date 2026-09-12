@@ -1,11 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const baseURL = process.env.E2E_BASE_URL || "https://www.fixmyiron.com";
-const invocationId = `${Date.now()}-${process.pid}`;
-const rateLimitIdentity = (project: string) =>
-  baseURL.includes("127.0.0.1") || process.env.E2E_LOCAL === "1"
-    ? { "cf-connecting-ip": `playwright-${project}-${invocationId}` }
-    : {};
 
 export default defineConfig({
   testDir: "./e2e",
@@ -21,7 +16,6 @@ export default defineConfig({
       name: "desktop",
       use: {
         ...devices["Desktop Chrome"],
-        extraHTTPHeaders: rateLimitIdentity("desktop"),
       },
     },
     {
@@ -29,14 +23,12 @@ export default defineConfig({
       use: {
         ...devices["iPad (gen 7) landscape"],
         browserName: "chromium",
-        extraHTTPHeaders: rateLimitIdentity("tablet"),
       },
     },
     {
       name: "mobile",
       use: {
         ...devices["Pixel 7"],
-        extraHTTPHeaders: rateLimitIdentity("mobile"),
       },
     },
   ],
