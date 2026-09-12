@@ -4,6 +4,15 @@ import { selectOne, type DbRow } from "./d1-helpers";
 
 const STRIPE_API = "https://api.stripe.com/v1";
 
+/**
+ * Pin every REST call to a fixed, supported Stripe API version so response
+ * shapes stay deterministic regardless of the account's Workbench default
+ * (which an owner could bump at any time). Without this header Stripe uses
+ * the account default, which risks silent breakage of our parsing.
+ * https://docs.stripe.com/api/versioning
+ */
+const STRIPE_API_VERSION = "2025-06-30.basil";
+
 export function stripeMode(env: Env): "test" | "live" | "unset" {
   const key = env.STRIPE_SECRET_KEY ?? "";
   if (key.startsWith("sk_live") || key.startsWith("rk_live")) return "live";
@@ -52,6 +61,7 @@ async function stripeForm(
   }
   const headers: Record<string, string> = {
     authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
+    "stripe-version": STRIPE_API_VERSION,
   };
   let url = `${STRIPE_API}${path}`;
   let body: string | undefined;
@@ -147,7 +157,6 @@ export async function createCheckoutSession(
     "subscription_data[metadata][app_customer_id]": String(args.customer.id),
     "metadata[app_customer_id]": String(args.customer.id),
     "metadata[target_tier]": args.targetTier,
-    integration_identifier: `fmi-checkout-${crypto.randomUUID().slice(0, 8)}`,
   });
   const url = typeof created.json.url === "string" ? created.json.url : null;
   const id = typeof created.json.id === "string" ? created.json.id : null;
