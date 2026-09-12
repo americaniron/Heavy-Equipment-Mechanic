@@ -120,6 +120,27 @@ authRoutes.post("/register", async (c) => {
       return c.json({ error: clerk.error }, 409);
     }
 
+    // Determine the Clerk linkage. Three outcomes:
+    //   - { clerkUserId } : Clerk user created, linkage healthy.
+    //   - { skipped }     : Clerk not configured — expected local-only mode.
+    //   - { error }       : a REAL Clerk failure (not email_exists). We still
+    //                       create the local customer (graceful degrade with the
+    //                       local password), but flag the Clerk<->customer drift
+    //                       so it is observable and repairable, rather than
+    //                       silently swallowing it.
+    let clerkUserId: string | null = null;
+    let clerkDrift = false;
+    if ("clerkUserId" in clerk) {
+      clerkUserId = clerk.clerkUserId;
+    } else if ("error" in clerk) {
+      clerkDrift = true;
+      log.error("clerk_link_drift_on_register", {
+        email,
+        err: clerk.error,
+        note: "customer created without clerk_user_id; will re-attempt link on next login",
+      });
+    }
+
     const customerId = await insertRow(c.env.DB, "customers", {
       email,
       password_hash: await hashPassword(password),
@@ -129,8 +150,12 @@ authRoutes.post("/register", async (c) => {
       phone: nullIfBlank(body.phone),
       role: "user",
       status: "pending_verification",
-      clerk_user_id: "clerkUserId" in clerk ? clerk.clerkUserId : null,
+      clerk_user_id: clerkUserId,
     });
+
+    if (clerkDrift) {
+      log.warn("customer_created_with_clerk_drift", { customerId, email });
+    }
 
     if (body.equipmentType) {
       try {
