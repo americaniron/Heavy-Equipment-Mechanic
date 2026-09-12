@@ -483,30 +483,6 @@ export default function LiveDesk() {
     };
   }, [cleanupAvatarSession]);
 
-  const speakWithBrowser = useCallback((text: string) => {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 1.0;
-      utterance.pitch = 1.0;
-      utterance.onstart = () => setIsTalking(true);
-      utterance.onend = () => {
-        setIsTalking(false);
-        setTimeout(() => setSubtitleText(""), 2000);
-        if (speakEndedResolveRef.current) {
-          speakEndedResolveRef.current();
-          speakEndedResolveRef.current = null;
-        }
-      };
-      const voices = window.speechSynthesis.getVoices();
-      const langPrefix = selectedLanguage === "ar" ? "ar" : "en";
-      const preferred = voices.find(v => v.name.includes("Google") && v.lang.startsWith(langPrefix)) || voices.find(v => v.lang.startsWith(langPrefix));
-      if (preferred) utterance.voice = preferred;
-      if (selectedLanguage === "ar") utterance.lang = "ar";
-      window.speechSynthesis.speak(utterance);
-    }
-  }, [selectedLanguage]);
-
   const waitForSpeakEnd = useCallback((timeoutMs: number = 30000): Promise<void> => {
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
@@ -712,7 +688,30 @@ export default function LiveDesk() {
       liveAvatarActiveRef.current = false;
     });
 
+    // Browser autoplay policies can block the OpenAI Realtime (GPT) audio track
+    // even after it is attached, leaving the avatar visibly talking but silent.
+    // LiveKit notifies us via AudioPlaybackStatusChanged; resume playback from a
+    // user gesture. Ref: https://docs.livekit.io/home/client/tracks/subscribe/#Handling-autoplay
+    room.on(RoomEvent.AudioPlaybackStatusChanged, () => {
+      if (room.canPlaybackAudio) return;
+      console.warn("[Avatar] GPT audio playback blocked by browser autoplay — will resume on next interaction");
+      const resume = () => {
+        room.startAudio().catch(() => {});
+        document.removeEventListener("pointerdown", resume);
+        document.removeEventListener("keydown", resume);
+      };
+      document.addEventListener("pointerdown", resume, { once: true });
+      document.addEventListener("keydown", resume, { once: true });
+    });
+
+    if (!data.livekitUrl || !data.livekitClientToken) {
+      throw new Error("LiveAvatar did not return LiveKit connection details");
+    }
+
     await room.connect(data.livekitUrl, data.livekitClientToken);
+    // startSession() is invoked from a user click, so this gesture-bound call
+    // unlocks playback of the OpenAI Realtime (GPT) voice track.
+    await room.startAudio().catch(() => {});
     await room.localParticipant.setMicrophoneEnabled(true);
     roomRef.current = room;
     liveAvatarActiveRef.current = true;
@@ -801,20 +800,34 @@ export default function LiveDesk() {
           }).catch(() => {});
         }, 3000);
       } catch (avatarErr: any) {
-        console.error("Avatar connection failed, using text mode:", avatarErr);
-        toast({ title: "Video avatar unavailable", description: "Continuing in text mode with voice.", variant: "default" });
+        // The live GPT-voice avatar could not start. Per product requirement the
+        // avatar's voice MUST be the OpenAI Realtime (GPT) track — we deliberately
+        // do NOT fall back to a robotic browser SpeechSynthesis voice (that was the
+        // "computer voice" bug). Instead we surface the precise reason and drop to a
+        // silent text/subtitle mode so the receptionist/mechanic UX still works.
+        const rawMessage = String(avatarErr?.message || avatarErr || "");
+        const statusMatch = rawMessage.match(/^\s*(\d{3})\b/);
+        const status = statusMatch ? Number(statusMatch[1]) : 0;
+        console.error("[Avatar] session failed to start — falling back to text mode. status:", status, "detail:", rawMessage);
 
-        setIntroPlaying(true);
-        introPlayingRef.current = true;
-        setSubtitleText(introText);
-        speakWithBrowser(introText);
-        await waitForSpeakEnd(90000);
-
-        if (introPlayingRef.current) {
-          setIntroPlaying(false);
-          introPlayingRef.current = false;
-          setShowTextInput(true);
+        let title = "Live avatar unavailable";
+        let description = "The live GPT voice avatar could not start. Continuing in text mode.";
+        if (status === 401) {
+          title = "Sign in required";
+          description = "Sign in with a Pro account to use the live GPT voice avatar. Continuing in text mode.";
+        } else if (status === 403) {
+          title = "Pro plan required";
+          description = "The live GPT voice avatar requires a Pro subscription. Continuing in text mode.";
+        } else if (status === 502 || status === 503) {
+          title = "Avatar service unavailable";
+          description = "The LiveAvatar service could not start (credential may be invalid/expired). Continuing in text mode.";
         }
+        toast({ title, description, variant: "default" });
+
+        setIntroPlaying(false);
+        introPlayingRef.current = false;
+        setSubtitleText(introText);
+        setShowTextInput(true);
         conversationRef.current.push({ role: "assistant", content: introText });
         setTranscriptEntries(prev => [...prev, { role: "assistant", text: introText, timestamp: new Date(), agent: selectedLanguage === "ar" ? "فاطمة" : "Sarah" }]);
         startVoiceCapture();
