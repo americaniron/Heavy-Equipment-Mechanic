@@ -23,6 +23,7 @@ import {
 import { diagnosticSession } from "../lib/diagnostic-session-client";
 import { log } from "../lib/log";
 import { insertRow } from "../lib/d1-helpers";
+import { renderDiagnosisPdf } from "../lib/diagnosis-pdf";
 
 export const diagnosisRoutes = new Hono<{
   Bindings: Env;
@@ -500,14 +501,112 @@ diagnosisRoutes.post("/:id/messages", async (c) => {
 
 // -------------------------------------------------------- GET /:id/pdf --
 
-diagnosisRoutes.get("/:id/pdf", (c) => {
-  // PDF export is DEFERRED in this build — see DEPLOY_NOTES.md.
-  // Returning 503 with hint instead of fabricating a stub PDF.
-  return jsonError(
-    c,
-    503,
-    ErrorCode.Internal,
-    "PDF export is temporarily unavailable.",
-    "PDF export ships in a follow-up release.",
+/**
+ * Normalize a diagnostic_results row into the playbook shape the PDF needs.
+ * Supports both the discrete-column layout written by POST /scenario
+ * (possible_causes, tests_in_order, …) and a single `playbook_json` blob.
+ */
+function playbookFromResult(result: Record<string, unknown> | null): {
+  possible_causes: unknown[];
+  tests_in_order: unknown[];
+  expected_readings: Record<string, string>;
+  parts_likely_needed: unknown[];
+  safety_warnings: string[];
+} {
+  const empty = {
+    possible_causes: [] as unknown[],
+    tests_in_order: [] as unknown[],
+    expected_readings: {} as Record<string, string>,
+    parts_likely_needed: [] as unknown[],
+    safety_warnings: [] as string[],
+  };
+  if (!result) return empty;
+  const base =
+    result.playbook_json != null
+      ? (safeJson(result.playbook_json, {}) as Record<string, unknown>)
+      : {};
+  const pick = (column: string, fallback: unknown) =>
+    result[column] != null ? safeJson(result[column], fallback) : base[column] ?? fallback;
+  return {
+    possible_causes: pick("possible_causes", []) as unknown[],
+    tests_in_order: pick("tests_in_order", []) as unknown[],
+    expected_readings: pick("expected_readings", {}) as Record<string, string>,
+    parts_likely_needed: pick("parts_likely_needed", []) as unknown[],
+    safety_warnings: pick("safety_warnings", []) as string[],
+  };
+}
+
+diagnosisRoutes.get("/:id/pdf", async (c) => {
+  const userId = c.get("userId") as string;
+  const params = SessionIdParam.safeParse({ id: c.req.param("id") });
+  if (!params.success) {
+    return jsonError(c, 400, ErrorCode.BadRequest, "Invalid session id");
+  }
+
+  // Ownership: a user may only export their OWN diagnosis. The D1 row is
+  // the canonical owner check (customer_id === signed-in user).
+  const session = await c.env.DB.prepare(
+    "SELECT * FROM diagnostic_sessions WHERE id = ?1 AND customer_id = ?2",
+  )
+    .bind(Number(params.data.id), Number(userId))
+    .first<Record<string, unknown>>();
+  if (!session) {
+    return jsonError(c, 404, ErrorCode.NotFound, "Session not found");
+  }
+
+  const result = await c.env.DB.prepare(
+    "SELECT * FROM diagnostic_results WHERE session_id = ?1",
+  )
+    .bind(Number(params.data.id))
+    .first<Record<string, unknown>>();
+
+  const playbook = playbookFromResult(result);
+
+  let pdfBytes: Uint8Array;
+  try {
+    pdfBytes = await renderDiagnosisPdf({
+      sessionId: params.data.id,
+      machineMake: (session.machine_make as string | null) ?? null,
+      machineModel: (session.machine_model as string | null) ?? null,
+      machineYear: (session.machine_year as string | null) ?? null,
+      machineHours: (session.machine_hours as string | null) ?? null,
+      symptoms: (session.symptoms as string | null) ?? null,
+      faultCodes: (safeJson(session.fault_codes_input, []) as unknown[]).map(String),
+      recentService: (safeJson(session.recent_service, []) as unknown[]).map(String),
+      operatorNotes: (session.operator_notes as string | null) ?? null,
+      modelUsed: (session.model_used as string | null) ?? null,
+      generatedAt:
+        (result?.generated_at as string | null) ??
+        (session.started_at as string | null) ??
+        null,
+      possibleCauses: playbook.possible_causes as never,
+      testsInOrder: playbook.tests_in_order as never,
+      expectedReadings: playbook.expected_readings,
+      partsLikelyNeeded: playbook.parts_likely_needed as never,
+      safetyWarnings: (playbook.safety_warnings ?? []).map(String),
+    });
+  } catch (e) {
+    log.error("diagnosis_pdf_render_failed", {
+      requestId: c.get("requestId"),
+      userId,
+      sessionId: params.data.id,
+      err: e instanceof Error ? e.message : String(e),
+    });
+    return jsonError(
+      c,
+      500,
+      ErrorCode.Internal,
+      "Could not render the diagnosis PDF.",
+    );
+  }
+
+  const body = pdfBytes.slice().buffer;
+  c.header("Content-Type", "application/pdf");
+  c.header(
+    "Content-Disposition",
+    `attachment; filename="fixmyiron-diagnosis-${params.data.id}.pdf"`,
   );
+  c.header("Content-Length", String(pdfBytes.byteLength));
+  c.header("Cache-Control", "no-store");
+  return c.body(body);
 });

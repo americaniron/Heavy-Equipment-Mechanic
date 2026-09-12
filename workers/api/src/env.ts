@@ -22,6 +22,15 @@ export interface Env {
   JOBS: Queue<JobMessage>;
   DIAGNOSTIC_SESSION: DurableObjectNamespace;
 
+  /**
+   * R2 buckets for uploaded artifacts (session photos/PDFs, portal assets).
+   * Bound in wrangler.prod.toml (bucket `fixmyiron-assets-prod`) and in
+   * staging/local `wrangler dev` for the upload path. Optional so the Worker
+   * still boots in environments where the binding is not yet wired.
+   */
+  ASSETS?: R2Bucket;
+  PORTAL_ASSETS?: R2Bucket;
+
   APP_ENV: string;
   PADDLE_ENVIRONMENT: "sandbox" | "production";
   CLERK_ACCOUNT_PORTAL_URL: string;
