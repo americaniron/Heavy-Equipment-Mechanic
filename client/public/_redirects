@@ -1,4 +1,1 @@
-/api/*  https://api.fixmyiron.com/api/:splat  200
-/health  https://api.fixmyiron.com/health  200
-/healthz  https://api.fixmyiron.com/healthz  200
 /*    /index.html   200
