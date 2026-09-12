@@ -5,11 +5,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { apiErrorMessage, apiFetch } from "@/lib/api";
 
 export default function ResetPassword() {
   const params = new URLSearchParams(window.location.search);
   const token = params.get("token") || "";
   const [password, setPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
   const [pending, setPending] = useState(false);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -20,15 +22,19 @@ export default function ResetPassword() {
       toast({ title: "Password must be at least 8 characters", variant: "destructive" });
       return;
     }
+    if (password !== confirmation) {
+      toast({ title: "Passwords do not match", variant: "destructive" });
+      return;
+    }
     setPending(true);
     try {
-      const res = await fetch("/api/auth/password-reset/confirm", {
+      const res = await apiFetch("/api/auth/password-reset/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, password }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Reset failed");
+      if (!res.ok) throw new Error(await apiErrorMessage(res, "Reset failed"));
+      const data = await res.json() as { message?: string };
       toast({ title: data.message || "Password updated" });
       setLocation("/login");
     } catch (err: unknown) {
@@ -46,11 +52,18 @@ export default function ResetPassword() {
           <CardDescription className="text-gray-400">This link expires one hour after it was issued.</CardDescription>
         </CardHeader>
         <CardContent>
+          {!token && (
+            <div className="mb-4 rounded border border-red-800 bg-red-950/40 p-3 text-sm text-red-300" role="alert" data-testid="text-reset-token-missing">
+              This reset link is missing its token. Request a new password reset email.
+            </div>
+          )}
           <form onSubmit={submit} className="space-y-4">
             <div>
-              <Label className="text-gray-300">New password</Label>
+              <Label htmlFor="reset-password" className="text-gray-300">New password</Label>
               <Input
+                id="reset-password"
                 type="password"
+                autoComplete="new-password"
                 required
                 minLength={8}
                 value={password}
@@ -59,8 +72,25 @@ export default function ResetPassword() {
                 data-testid="input-reset-password"
               />
             </div>
+            <div>
+              <Label htmlFor="reset-password-confirmation" className="text-gray-300">Confirm new password</Label>
+              <Input
+                id="reset-password-confirmation"
+                type="password"
+                autoComplete="new-password"
+                required
+                minLength={8}
+                value={confirmation}
+                onChange={(e) => setConfirmation(e.target.value)}
+                className="bg-[#222] border-[#444] text-white mt-1"
+                data-testid="input-reset-password-confirmation"
+              />
+            </div>
             <Button className="w-full bg-[#FFCD11] text-black" disabled={pending || !token} data-testid="button-reset-submit">
               {pending ? "Updating…" : "Update password"}
+            </Button>
+            <Button type="button" variant="ghost" className="w-full text-gray-300" onClick={() => setLocation(token ? "/login" : "/forgot-password")}>
+              {token ? "Back to sign in" : "Request a new reset link"}
             </Button>
           </form>
         </CardContent>

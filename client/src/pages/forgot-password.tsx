@@ -5,26 +5,35 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { apiErrorMessage, apiFetch } from "@/lib/api";
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState("");
   const [pending, setPending] = useState(false);
+  const [confirmation, setConfirmation] = useState("");
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setPending(true);
+    setConfirmation("");
     try {
-      const res = await fetch("/api/auth/password-reset/request", {
+      const res = await apiFetch("/api/auth/password-reset/request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
       });
-      const data = await res.json();
-      toast({ title: data.message || "If an account exists, a reset link has been sent." });
-    } catch {
-      toast({ title: "Could not send reset email", variant: "destructive" });
+      if (!res.ok) throw new Error(await apiErrorMessage(res, "Could not send reset email"));
+      const data = await res.json() as { message?: string };
+      const message = data.message || "If an account exists, a reset link has been sent.";
+      setConfirmation(message);
+      toast({ title: message });
+    } catch (error) {
+      toast({
+        title: error instanceof Error ? error.message : "Could not send reset email",
+        variant: "destructive",
+      });
     } finally {
       setPending(false);
     }
@@ -42,9 +51,11 @@ export default function ForgotPassword() {
         <CardContent>
           <form onSubmit={submit} className="space-y-4">
             <div>
-              <Label className="text-gray-300">Email</Label>
+              <Label htmlFor="forgot-email" className="text-gray-300">Email</Label>
               <Input
+                id="forgot-email"
                 type="email"
+                autoComplete="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -52,6 +63,11 @@ export default function ForgotPassword() {
                 data-testid="input-forgot-email"
               />
             </div>
+            {confirmation && (
+              <p className="text-sm text-green-400" role="status" data-testid="text-reset-confirmation">
+                {confirmation}
+              </p>
+            )}
             <Button className="w-full bg-[#FFCD11] text-black" disabled={pending} data-testid="button-send-reset">
               {pending ? "Sending…" : "Send reset link"}
             </Button>
