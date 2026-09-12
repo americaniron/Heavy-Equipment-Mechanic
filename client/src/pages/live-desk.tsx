@@ -1599,6 +1599,11 @@ export default function LiveDesk() {
                 START NOW
               </Button>
             </div>
+            <div className="flex md:hidden items-center gap-3 text-[10px] text-gray-300 uppercase tracking-wide font-semibold">
+              <button type="button" onClick={() => setShowAboutVideo(true)} className="hover:text-[#FFCD11]" data-testid="mobile-link-about">About</button>
+              <button type="button" onClick={() => setActiveView("services")} className="hover:text-[#FFCD11]" data-testid="mobile-link-services">Services</button>
+              <a href="/portal" className="text-[#FFCD11]" data-testid="mobile-link-portal">Portal</a>
+            </div>
           </div>
         </nav>
 
