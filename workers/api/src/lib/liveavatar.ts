@@ -4,6 +4,21 @@ import { log } from "./log";
 const LIVEAVATAR_API = "https://api.liveavatar.com";
 const SANDBOX_AVATAR_ID = "dd73ea75-1218-4ef3-92ce-606d5f7fbc0a";
 
+/**
+ * OpenAI Realtime model used inside LiveAvatar's `openai_realtime_config`.
+ *
+ * `gpt-realtime` was deprecated on 2026-07-20 and shuts down 2027-01-20; the
+ * vendor's recommended replacement is the GA model `gpt-realtime-2.1`.
+ * Ref: https://developers.openai.com/api/docs/deprecations
+ * Overridable at runtime via the OPENAI_REALTIME_MODEL env var (optional).
+ */
+export const OPENAI_REALTIME_MODEL = "gpt-realtime-2.1";
+
+function realtimeModel(env: Env): string {
+  const override = (env as { OPENAI_REALTIME_MODEL?: string }).OPENAI_REALTIME_MODEL;
+  return override && override.trim() ? override.trim() : OPENAI_REALTIME_MODEL;
+}
+
 type AvatarConfig = {
   avatarId: string;
   name: string;
@@ -142,7 +157,7 @@ export async function createLiteOpenAiSession(
       secret_id: secretId,
       context_id: avatar.contextId,
       voice: "cedar",
-      model: "gpt-realtime",
+      model: realtimeModel(env),
       temperature: 0.8,
     },
   };
