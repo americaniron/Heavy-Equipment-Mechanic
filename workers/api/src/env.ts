@@ -19,7 +19,6 @@ export interface Env {
       text: string;
     }) => Promise<unknown>;
   };
-  JOBS: Queue<JobMessage>;
   DIAGNOSTIC_SESSION: DurableObjectNamespace;
 
   /**
@@ -69,11 +68,6 @@ export interface Env {
   PADDLE_PRICE_PRO?: string;
   PADDLE_PRICE_SHOP?: string;
 }
-
-export type JobMessage =
-  | { kind: "fault_code_refresh"; code: string }
-  | { kind: "enrichment"; user_id: string }
-  | { kind: "email"; to: string; template: string; data: Record<string, unknown> };
 
 export type Tier = "free" | "pro" | "shop";
 export type SubscriptionStatus =

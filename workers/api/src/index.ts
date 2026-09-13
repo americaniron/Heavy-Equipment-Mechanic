@@ -88,12 +88,22 @@ app.route("/api/sessions", liveSessionRoutes);
 app.route("/api/transcribe", transcribeRoutes);
 app.get("/api/shared/:token", async (c) => {
   const token = c.req.param("token");
-  const row = await selectOne(
+  if (!/^[A-Za-z0-9_-]{20,128}$/.test(token)) {
+    return jsonError(c, 404, ErrorCode.NotFound, "Shared report not found");
+  }
+  const row = await selectOne<{
+    id: number;
+    report_type: string;
+    content: string;
+    svg_diagram: string | null;
+    created_at: string;
+  }>(
     c.env.DB,
-    "SELECT * FROM session_reports WHERE share_token = ?1 LIMIT 1",
+    "SELECT id, report_type, content, svg_diagram, created_at FROM session_reports WHERE share_token = ?1 LIMIT 1",
     token,
   );
   if (!row) return jsonError(c, 404, ErrorCode.NotFound, "Shared report not found");
+  c.header("cache-control", "private, no-store");
   return c.json(row);
 });
 
@@ -127,33 +137,4 @@ app.onError((err, c) => {
   return jsonError(c, 500, ErrorCode.Internal, "Internal error");
 });
 
-/**
- * Cron handler. Configured in wrangler.toml [triggers].crons.
- *
- * For now this is a heartbeat that enqueues a fault_code_refresh job
- * onto the JOBS queue. A future Worker (or this Worker via a queue
- * consumer binding) can pick up the job and re-seed fault_codes from
- * an updated J1939 source. The seed-fault-codes.py script is the
- * authoritative source today; the cron just makes the schedule explicit.
- */
-async function scheduled(
-  controller: ScheduledController,
-  env: Env,
-  ctx: ExecutionContext,
-): Promise<void> {
-  const cron = controller.cron;
-  log.info("cron_fired", { cron, scheduledTime: controller.scheduledTime });
-  ctx.waitUntil(
-    env.JOBS.send({ kind: "fault_code_refresh", code: "*" }).catch((e) =>
-      log.error("cron_enqueue_failed", {
-        cron,
-        err: e instanceof Error ? e.message : String(e),
-      }),
-    ),
-  );
-}
-
-export default {
-  fetch: app.fetch.bind(app),
-  scheduled,
-};
+export default app;

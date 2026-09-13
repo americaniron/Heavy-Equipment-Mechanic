@@ -55,11 +55,6 @@ bucket_name = "fixmyiron-assets-staging"
 binding = "PORTAL_ASSETS"
 bucket_name = "fixmyiron-assets-staging"
 
-# Queue — async jobs (enrichment, email, fault-code refresh)
-[[queues.producers]]
-binding = "JOBS"
-queue = "fixmyiron-jobs-staging"
-
 # Durable Object — per-customer diagnostic sessions
 [[durable_objects.bindings]]
 name = "DIAGNOSTIC_SESSION"
@@ -73,11 +68,5 @@ new_sqlite_classes = ["DiagnosticSession"]
 [observability]
 enabled = true
 
-# Cron triggers — currently DISABLED because the Cloudflare account has
-# already hit the 5-cron-trigger account-wide cap. The scheduled()
-# handler in src/index.ts and the JOBS queue-producer binding stay
-# wired so re-enabling is a one-line change once the quota is bumped
-# (or another cron is freed up). When re-enabled, the cron is:
-#   weekly Sunday 06:00 UTC, enqueues a fault_code_refresh job.
-# [triggers]
-# crons = ["0 6 * * SUN"]
+# Cron triggers are disabled on this account (5-cron cap). Re-enable only
+# after freeing a slot and restoring a scheduled handler in src/index.ts.
