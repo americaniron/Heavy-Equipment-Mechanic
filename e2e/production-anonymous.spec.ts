@@ -1,6 +1,20 @@
-import { test, expect } from "@playwright/test";
+import {
+  test,
+  expect,
+  request as playwrightRequest,
+  type APIRequestContext,
+} from "@playwright/test";
+
+const isLocal =
+  (process.env.E2E_BASE_URL || "").includes("127.0.0.1") ||
+  process.env.E2E_LOCAL === "1";
+const localRateLimitHeaders = isLocal
+  ? { "cf-connecting-ip": `playwright-anonymous-${Date.now()}-${process.pid}` }
+  : {};
 
 test.describe("production anonymous SPA", () => {
+  test.use({ extraHTTPHeaders: localRateLimitHeaders });
+
   test("homepage is the native FixMyIron live desk", async ({ page }) => {
     const response = await page.goto("/");
     expect(response?.ok()).toBeTruthy();
@@ -48,8 +62,20 @@ test.describe("production anonymous SPA", () => {
 });
 
 test.describe("production API", () => {
-  test("health is reachable", async ({ request }) => {
-    const res = await request.get("https://api.fixmyiron.com/health");
+  let productionApi: APIRequestContext;
+
+  test.beforeAll(async () => {
+    // Local projects carry a synthetic Cloudflare identity to isolate D1 rate
+    // limits. Never forward that local-only header to the production API.
+    productionApi = await playwrightRequest.newContext();
+  });
+
+  test.afterAll(async () => {
+    await productionApi.dispose();
+  });
+
+  test("health is reachable", async () => {
+    const res = await productionApi.get("https://api.fixmyiron.com/health");
     expect(res.ok()).toBeTruthy();
     const body = await res.json();
     expect(body.ok).toBe(true);
@@ -57,23 +83,23 @@ test.describe("production API", () => {
     expect(body.billing).toBe("stripe");
   });
 
-  test("Paddle webhook path is gone", async ({ request }) => {
-    const res = await request.post("https://api.fixmyiron.com/api/webhooks/paddle", {
+  test("Paddle webhook path is gone", async () => {
+    const res = await productionApi.post("https://api.fixmyiron.com/api/webhooks/paddle", {
       data: {},
     });
     expect(res.status()).toBe(410);
   });
 
-  test("feature APIs are not Caterpillar-gated", async ({ request }) => {
-    const res = await request.get("https://api.fixmyiron.com/api/fault-codes/search?q=100");
+  test("feature APIs are not Caterpillar-gated", async () => {
+    const res = await productionApi.get("https://api.fixmyiron.com/api/fault-codes/search?q=100");
     const body = await res.json();
     const code = body?.error?.code ?? body?.code;
     expect(code).not.toBe("OFFICIAL_SOURCE_REQUIRED");
     expect(res.status()).not.toBe(503);
   });
 
-  test("anonymous text diagnosis can create a session", async ({ request }) => {
-    const res = await request.post("https://api.fixmyiron.com/api/sessions", {
+  test("anonymous text diagnosis can create a session", async () => {
+    const res = await productionApi.post("https://api.fixmyiron.com/api/sessions", {
       data: { consentGiven: true, language: "en" },
     });
     expect(res.status()).toBe(200);

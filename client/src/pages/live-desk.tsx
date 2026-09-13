@@ -9,10 +9,17 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
 import {
+  assertAvatarSessionPayload,
+  avatarHttpStatus,
+  avatarStartFailureToast,
+} from "@/lib/avatar-session";
+import DOMPurify from "dompurify";
+import {
   Room,
   RoomEvent,
   Track,
   VideoPresets,
+  type RemoteTrack,
   type RemoteTrackPublication,
   type RemoteParticipant,
 } from "livekit-client";
@@ -58,6 +65,14 @@ interface ReportData {
   content: any;
   svgDiagram: string | null;
   shareToken: string | null;
+}
+
+function sanitizeReportSvg(svg: string): string {
+  return DOMPurify.sanitize(svg, {
+    USE_PROFILES: { svg: true, svgFilters: true },
+    FORBID_TAGS: ["script", "style", "foreignObject"],
+    FORBID_ATTR: ["href", "xlink:href"],
+  });
 }
 
 const MECHANIC_INFO: Record<string, Record<string, { name: string; title: string; icon: any }>> = {
@@ -156,6 +171,7 @@ export default function LiveDesk() {
   const avatarSessionIdRef = useRef<string | null>(null);
   const avatarProviderRef = useRef<"heygen" | null>(null);
   const liveAvatarActiveRef = useRef(false);
+  const liveAvatarTextHintShownRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const conversationRef = useRef<Array<{ role: string; content: string }>>([]);
   const pendingHandoffRef = useRef<any>(null);
@@ -471,6 +487,7 @@ export default function LiveDesk() {
     avatarSessionIdRef.current = null;
     avatarProviderRef.current = null;
     liveAvatarActiveRef.current = false;
+    liveAvatarTextHintShownRef.current = false;
   }, []);
 
   useEffect(() => {
@@ -482,30 +499,6 @@ export default function LiveDesk() {
       window.removeEventListener("beforeunload", onLeave);
     };
   }, [cleanupAvatarSession]);
-
-  const speakWithBrowser = useCallback((text: string) => {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 1.0;
-      utterance.pitch = 1.0;
-      utterance.onstart = () => setIsTalking(true);
-      utterance.onend = () => {
-        setIsTalking(false);
-        setTimeout(() => setSubtitleText(""), 2000);
-        if (speakEndedResolveRef.current) {
-          speakEndedResolveRef.current();
-          speakEndedResolveRef.current = null;
-        }
-      };
-      const voices = window.speechSynthesis.getVoices();
-      const langPrefix = selectedLanguage === "ar" ? "ar" : "en";
-      const preferred = voices.find(v => v.name.includes("Google") && v.lang.startsWith(langPrefix)) || voices.find(v => v.lang.startsWith(langPrefix));
-      if (preferred) utterance.voice = preferred;
-      if (selectedLanguage === "ar") utterance.lang = "ar";
-      window.speechSynthesis.speak(utterance);
-    }
-  }, [selectedLanguage]);
 
   const waitForSpeakEnd = useCallback((timeoutMs: number = 30000): Promise<void> => {
     return new Promise((resolve) => {
@@ -602,9 +595,55 @@ export default function LiveDesk() {
     }).catch(() => {});
   };
 
+  const attachAvatarRemoteTrack = useCallback((track: RemoteTrack, participant: RemoteParticipant) => {
+    console.log("Track subscribed:", track.kind, "from:", participant.identity, "sid:", track.sid);
+
+    if (track.kind === Track.Kind.Video) {
+      const container = videoContainerRef.current;
+      if (container) {
+        const existingVideos = container.querySelectorAll("video");
+        existingVideos.forEach(v => v.remove());
+
+        const videoElement = track.attach();
+        videoElement.style.width = "100%";
+        videoElement.style.height = "100%";
+        videoElement.style.objectFit = "cover";
+        videoElement.style.position = "absolute";
+        videoElement.style.top = "0";
+        videoElement.style.left = "0";
+        videoElement.style.zIndex = "1";
+        videoElement.setAttribute("data-testid", "video-avatar");
+        videoElement.setAttribute("autoplay", "true");
+        videoElement.setAttribute("playsinline", "true");
+        container.appendChild(videoElement);
+        console.log("[Avatar] Video track attached to container");
+      }
+      setAvatarReady(true);
+      return;
+    }
+
+    if (track.kind === Track.Kind.Audio) {
+      const audioElement = track.attach();
+      audioElement.style.display = "none";
+      document.body.appendChild(audioElement);
+      console.log("[Avatar] OpenAI Realtime (GPT) audio track attached");
+    }
+  }, []);
+
+  const attachExistingAvatarTracks = useCallback((room: Room) => {
+    room.remoteParticipants.forEach((participant) => {
+      participant.trackPublications.forEach((publication) => {
+        if (publication.track) {
+          attachAvatarRemoteTrack(publication.track, participant);
+        }
+      });
+    });
+  }, [attachAvatarRemoteTrack]);
+
   const connectAvatar = async (agentType: string = "admin", language: string = "en"): Promise<Room | null> => {
     const res = await apiRequest("POST", "/api/avatar/session", { agentType, language });
     const data = await res.json();
+    assertAvatarSessionPayload(data);
 
     avatarProviderRef.current = "heygen";
     avatarSessionTokenRef.current = data.sessionToken;
@@ -618,38 +657,8 @@ export default function LiveDesk() {
       },
     });
 
-    room.on(RoomEvent.TrackSubscribed, (track, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
-      console.log("Track subscribed:", track.kind, "from:", participant.identity, "sid:", track.sid);
-
-      if (track.kind === Track.Kind.Video) {
-        const container = videoContainerRef.current;
-        if (container) {
-          const existingVideos = container.querySelectorAll("video");
-          existingVideos.forEach(v => v.remove());
-
-          const videoElement = track.attach();
-          videoElement.style.width = "100%";
-          videoElement.style.height = "100%";
-          videoElement.style.objectFit = "cover";
-          videoElement.style.position = "absolute";
-          videoElement.style.top = "0";
-          videoElement.style.left = "0";
-          videoElement.style.zIndex = "1";
-          videoElement.setAttribute("data-testid", "video-avatar");
-          videoElement.setAttribute("autoplay", "true");
-          videoElement.setAttribute("playsinline", "true");
-          container.appendChild(videoElement);
-          console.log("Video track attached to container");
-        }
-        setAvatarReady(true);
-      }
-
-      if (track.kind === Track.Kind.Audio) {
-        const audioElement = track.attach();
-        audioElement.style.display = "none";
-        document.body.appendChild(audioElement);
-        console.log("Audio track attached");
-      }
+    room.on(RoomEvent.TrackSubscribed, (track, _publication: RemoteTrackPublication, participant: RemoteParticipant) => {
+      attachAvatarRemoteTrack(track, participant);
     });
 
     room.on(RoomEvent.TrackUnsubscribed, (track) => {
@@ -659,6 +668,11 @@ export default function LiveDesk() {
 
     room.on(RoomEvent.ParticipantConnected, (participant) => {
       console.log("Participant connected:", participant.identity);
+      participant.trackPublications.forEach((publication) => {
+        if (publication.track) {
+          attachAvatarRemoteTrack(publication.track, participant);
+        }
+      });
     });
 
     room.on(RoomEvent.Connected, () => {
@@ -712,11 +726,34 @@ export default function LiveDesk() {
       liveAvatarActiveRef.current = false;
     });
 
-    await room.connect(data.livekitUrl, data.livekitClientToken);
+    // Browser autoplay policies can block the OpenAI Realtime (GPT) audio track
+    // even after it is attached, leaving the avatar visibly talking but silent.
+    // LiveKit notifies us via AudioPlaybackStatusChanged; resume playback from a
+    // user gesture. Ref: https://docs.livekit.io/home/client/tracks/subscribe/#Handling-autoplay
+    room.on(RoomEvent.AudioPlaybackStatusChanged, () => {
+      if (room.canPlaybackAudio) return;
+      console.warn("[Avatar] GPT audio playback blocked by browser autoplay — will resume on next interaction");
+      const resume = () => {
+        room.startAudio().catch(() => {});
+        document.removeEventListener("pointerdown", resume);
+        document.removeEventListener("keydown", resume);
+      };
+      document.addEventListener("pointerdown", resume, { once: true });
+      document.addEventListener("keydown", resume, { once: true });
+    });
+
+    await room.connect(data.livekitUrl!, data.livekitClientToken!);
+    attachExistingAvatarTracks(room);
+    // startSession() is invoked from a user click, so this gesture-bound call
+    // unlocks playback of the OpenAI Realtime (GPT) voice track.
+    await room.startAudio().catch(() => {});
     await room.localParticipant.setMicrophoneEnabled(true);
     roomRef.current = room;
     liveAvatarActiveRef.current = true;
-    console.log("[Avatar] Connected via LiveAvatar LiveKit + OpenAI Realtime mic publish");
+    console.log("[Avatar] Connected via LiveAvatar LiveKit + OpenAI Realtime mic publish", {
+      sessionId: data.sessionId,
+      remoteParticipants: room.remoteParticipants.size,
+    });
 
     return room;
   };
@@ -800,21 +837,26 @@ export default function LiveDesk() {
             }),
           }).catch(() => {});
         }, 3000);
-      } catch (avatarErr: any) {
-        console.error("Avatar connection failed, using text mode:", avatarErr);
-        toast({ title: "Video avatar unavailable", description: "Continuing in text mode with voice.", variant: "default" });
+      } catch (avatarErr: unknown) {
+        // The live GPT-voice avatar could not start. Per product requirement the
+        // avatar's voice MUST be the OpenAI Realtime (GPT) track — we deliberately
+        // do NOT fall back to a robotic browser SpeechSynthesis voice (that was the
+        // "computer voice" bug). Instead we surface the precise reason and drop to a
+        // silent text/subtitle mode so the receptionist/mechanic UX still works.
+        const status = avatarHttpStatus(avatarErr);
+        const rawMessage = String(avatarErr instanceof Error ? avatarErr.message : avatarErr);
+        console.error("[Avatar] session failed to start — falling back to text mode.", {
+          status,
+          detail: rawMessage,
+        });
 
-        setIntroPlaying(true);
-        introPlayingRef.current = true;
+        const { title, description } = avatarStartFailureToast(status);
+        toast({ title, description, variant: "default" });
+
+        setIntroPlaying(false);
+        introPlayingRef.current = false;
         setSubtitleText(introText);
-        speakWithBrowser(introText);
-        await waitForSpeakEnd(90000);
-
-        if (introPlayingRef.current) {
-          setIntroPlaying(false);
-          introPlayingRef.current = false;
-          setShowTextInput(true);
-        }
+        setShowTextInput(true);
         conversationRef.current.push({ role: "assistant", content: introText });
         setTranscriptEntries(prev => [...prev, { role: "assistant", text: introText, timestamp: new Date(), agent: selectedLanguage === "ar" ? "فاطمة" : "Sarah" }]);
         startVoiceCapture();
@@ -853,11 +895,30 @@ export default function LiveDesk() {
     if (!currentSession || isProcessingRef.current || !userMsg.trim()) return;
 
     resetIdleTimer();
+
+    // OpenAI Realtime owns the live conversation over LiveKit; do not run the
+    // Anthropic text pipeline in parallel (that caused duplicate brains/audio).
+    if (liveAvatarActiveRef.current && roomRef.current) {
+      const trimmed = userMsg.trim();
+      conversationRef.current.push({ role: "user", content: trimmed });
+      setTranscriptEntries(prev => [...prev, { role: "user", text: trimmed, timestamp: new Date(), agent: "You" }]);
+      await persistSessionLine(trimmed, "user");
+      if (!liveAvatarTextHintShownRef.current) {
+        liveAvatarTextHintShownRef.current = true;
+        toast({
+          title: selectedLanguage === "ar" ? "الصوت مباشر" : "Live voice session",
+          description:
+            selectedLanguage === "ar"
+              ? "تحدث عبر الميكروفون — الردود الصوتية تأتي من GPT Realtime."
+              : "Speak through your microphone — voice replies come from GPT Realtime.",
+          variant: "default",
+        });
+      }
+      return;
+    }
+
     isRecordingRef.current = false;
     cleanupAudioNodes();
-    if (liveAvatarActiveRef.current && roomRef.current) {
-      roomRef.current.localParticipant.setMicrophoneEnabled(false).catch(() => {});
-    }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
       try { mediaRecorderRef.current.stop(); } catch {}
     }
@@ -1008,10 +1069,17 @@ export default function LiveDesk() {
         if (!liveAvatarActiveRef.current) startVoiceCapture();
         resetIdleTimer();
       }, 3000);
-    } catch (err) {
-      console.error("Handoff error:", err);
+    } catch (err: unknown) {
+      const status = avatarHttpStatus(err);
+      const rawMessage = String(err instanceof Error ? err.message : err);
+      console.error("[Avatar] handoff reconnect failed", { status, detail: rawMessage });
       setHandoffInProgress(false);
-      toast({ title: "Transfer failed", variant: "destructive" });
+      const { title, description } = avatarStartFailureToast(status);
+      toast({
+        title: status ? title : "Transfer failed",
+        description: status ? description : "Could not connect to the specialist avatar.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -1205,8 +1273,8 @@ export default function LiveDesk() {
             {sr.svgDiagram && (
               <div>
                 <h4 className="text-sm font-semibold mb-2">Technical Diagram</h4>
-                <div className="bg-card rounded-md border border-card-border p-2 overflow-x-auto"
-                  dangerouslySetInnerHTML={{ __html: sr.svgDiagram }} />
+                <div className="bg-card rounded-md border border-card-border p-2 overflow-x-auto" data-testid="shared-report-diagram"
+                  dangerouslySetInnerHTML={{ __html: sanitizeReportSvg(sr.svgDiagram) }} />
               </div>
             )}
           </div>
@@ -1499,9 +1567,22 @@ export default function LiveDesk() {
         <meta property="og:description" content="Real-time AI-powered heavy equipment diagnostics with live video avatars." />
 
         {showAboutVideo && (
-          <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4" data-testid="about-video-modal">
-            <div className="relative w-full max-w-4xl">
-              <div className="absolute -top-12 right-0 flex items-center gap-4">
+          <div
+            className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-start justify-center overflow-y-auto p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="about-dialog-title"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                setShowAboutVideo(false);
+                stopAboutNarration();
+                aboutVideoRef.current?.pause();
+              }
+            }}
+            data-testid="about-video-modal"
+          >
+            <div className="my-auto w-full max-w-4xl py-2">
+              <div className="mb-3 flex items-center justify-end gap-4">
                 <button
                   onClick={() => { if (aboutNarrating) stopAboutNarration(); else startAboutNarration(); }}
                   className="text-white/70 hover:text-white transition-colors flex items-center gap-1.5 text-sm"
@@ -1513,6 +1594,8 @@ export default function LiveDesk() {
                 <button
                   onClick={() => { setShowAboutVideo(false); stopAboutNarration(); if (aboutVideoRef.current) aboutVideoRef.current.pause(); }}
                   className="text-white/70 hover:text-white transition-colors flex items-center gap-1.5 text-sm"
+                  autoFocus
+                  aria-label="Close About American Iron"
                   data-testid="button-close-about-video"
                 >
                   Close <X className="w-5 h-5" />
@@ -1538,7 +1621,7 @@ export default function LiveDesk() {
                 )}
               </div>
               <div className="mt-6 text-center space-y-3">
-                <h3 className="text-xl font-black text-white">ABOUT AMERICAN IRON</h3>
+                <h3 id="about-dialog-title" className="text-xl font-black text-white">ABOUT AMERICAN IRON</h3>
                 <p className="text-gray-300 text-sm max-w-2xl mx-auto leading-relaxed">
                   AMERICAN IRON is a full-service AI-powered diagnostic facility specializing in heavy equipment, power generation, marine engines, hydraulic systems, and electrical controls. Our virtual shop floor brings decades of real-world mechanical expertise directly to you through face-to-face AI video consultations — no appointment needed.
                 </p>
@@ -1585,6 +1668,11 @@ export default function LiveDesk() {
               >
                 START NOW
               </Button>
+            </div>
+            <div className="flex md:hidden items-center gap-3 text-[10px] text-gray-300 uppercase tracking-wide font-semibold">
+              <button type="button" onClick={() => setShowAboutVideo(true)} className="hover:text-[#FFCD11]" data-testid="mobile-link-about">About</button>
+              <button type="button" onClick={() => setActiveView("services")} className="hover:text-[#FFCD11]" data-testid="mobile-link-services">Services</button>
+              <a href="/portal" className="text-[#FFCD11]" data-testid="mobile-link-portal">Portal</a>
             </div>
           </div>
         </nav>
@@ -2879,8 +2967,8 @@ export default function LiveDesk() {
                 {report.svgDiagram && (
                   <div className="mt-6">
                     <h4 className="text-sm font-bold text-[#FFCD11] uppercase tracking-wider mb-3">Technical Diagram</h4>
-                    <div className="bg-white/5 rounded-xl border border-white/10 p-4 overflow-x-auto"
-                      dangerouslySetInnerHTML={{ __html: report.svgDiagram }} />
+                    <div className="bg-white/5 rounded-xl border border-white/10 p-4 overflow-x-auto" data-testid="report-diagram"
+                      dangerouslySetInnerHTML={{ __html: sanitizeReportSvg(report.svgDiagram) }} />
                   </div>
                 )}
               </div>

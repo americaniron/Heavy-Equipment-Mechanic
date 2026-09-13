@@ -5,6 +5,7 @@ import { jsonError, ErrorCode } from "../lib/errors";
 import { log } from "../lib/log";
 import {
   createAuthSession,
+  deleteAuthSession,
   getCustomerByAuthToken,
   insertRow,
   nullIfBlank,
@@ -18,7 +19,7 @@ import {
   customerResponse,
   findCustomerByEmail,
 } from "../lib/clerk-identity";
-import { getClerkClient } from "../lib/clerk-auth";
+import { getClerkClient, verifyClerkJwt } from "../lib/clerk-auth";
 import { ensureOperationalSchema } from "../lib/ensure-schema";
 import { checkAndIncrement, WINDOW_MINUTE_MS } from "../lib/ratelimit";
 
@@ -264,7 +265,20 @@ authRoutes.get("/me", async (c) => {
 authRoutes.post("/logout", async (c) => {
   const token = tokenFromRequest(c);
   if (token) {
-    await c.env.DB.prepare("DELETE FROM auth_sessions WHERE token = ?1").bind(token).run();
+    await deleteAuthSession(c.env.DB, token);
+  }
+  const auth = c.req.header("authorization");
+  if (auth?.startsWith("Bearer ") && c.env.CLERK_SECRET_KEY) {
+    const verified = await verifyClerkJwt(auth, c.env);
+    if (verified?.sessionId) {
+      try {
+        await getClerkClient(c.env).sessions.revokeSession(verified.sessionId);
+      } catch (err) {
+        log.warn("clerk_logout_revoke_failed", {
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
   }
   return c.json({ success: true });
 });
@@ -280,16 +294,17 @@ authRoutes.post("/password-reset/request", async (c) => {
 
   const customer = await customerByEmail(c.env.DB, emailLc);
   if (customer) {
-    const token = crypto.randomUUID() + crypto.randomUUID().replace(/-/g, "");
+    const rawToken = crypto.randomUUID() + crypto.randomUUID().replace(/-/g, "");
+    const tokenHash = await sha256Hex(`password-reset:${rawToken}`);
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
     await c.env.DB
       .prepare(
         "INSERT INTO password_reset_tokens (token, customer_id, expires_at) VALUES (?1, ?2, ?3)",
       )
-      .bind(token, Number(customer.id), expiresAt)
+      .bind(tokenHash, Number(customer.id), expiresAt)
       .run();
     try {
-      const emailed = await sendPasswordResetEmail(c, emailLc, token);
+      const emailed = await sendPasswordResetEmail(c, emailLc, rawToken);
       if (!emailed) {
         log.error("password_reset_email_not_delivered", {
           customerId: Number(customer.id),
@@ -313,10 +328,11 @@ authRoutes.post("/password-reset/confirm", async (c) => {
     return c.json({ error: "Token and a valid new password are required" }, 400);
   }
 
+  const tokenHash = await sha256Hex(`password-reset:${resetToken}`);
   const row = await selectOne<{ customer_id: number; expires_at: string; used_at: string | null }>(
     c.env.DB,
     "SELECT customer_id, expires_at, used_at FROM password_reset_tokens WHERE token = ?1",
-    resetToken,
+    tokenHash,
   );
   if (!row || row.used_at || new Date(row.expires_at).getTime() <= Date.now()) {
     return c.json({ error: "This reset link is invalid or has expired. Request a new one." }, 400);

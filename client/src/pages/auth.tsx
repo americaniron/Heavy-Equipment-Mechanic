@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { safeInternalPath } from "@/lib/api";
 import { Building2, Mail, Lock, User, Phone, ArrowLeft, Wrench, ChevronRight, ChevronLeft, AlertTriangle } from "lucide-react";
 const logoImg = "/media/logo.png";
 
@@ -46,7 +47,9 @@ export default function AuthPage() {
   const { toast } = useToast();
 
   const params = new URLSearchParams(window.location.search);
-  const redirectTo = params.get("redirect") || "/portal";
+  const redirectTo = safeInternalPath(params.get("redirect"), "/portal");
+  const authPath = (path: "/login" | "/register") =>
+    redirectTo === "/portal" ? path : `${path}?redirect=${encodeURIComponent(redirectTo)}`;
 
   useEffect(() => {
     setMode(location.startsWith("/register") ? "register" : "login");
@@ -70,7 +73,7 @@ export default function AuthPage() {
         } catch (err: any) {
           if (err?.needsVerification) {
             toast({ title: "Verify your email", description: err.message });
-            setLocation(`/verify-email?email=${encodeURIComponent(email)}`);
+            setLocation(`/verify-email?email=${encodeURIComponent(email)}&redirect=${encodeURIComponent(redirectTo)}`);
             return;
           }
           throw err;
@@ -113,7 +116,7 @@ export default function AuthPage() {
           });
           if (created?.requiresVerification) {
             toast({ title: "Check your email", description: "Enter the 6-digit FixMyIron verification code." });
-            setLocation(`/verify-email?email=${encodeURIComponent(email)}`);
+            setLocation(`/verify-email?email=${encodeURIComponent(email)}&redirect=${encodeURIComponent(redirectTo)}`);
             return;
           }
           toast({ title: "Account created! Welcome to AMERICAN IRON." });
@@ -146,7 +149,7 @@ export default function AuthPage() {
               <Button
                 variant={mode === "login" ? "default" : "outline"}
                 className={mode === "login" ? "flex-1 bg-[#FFCD11] text-black hover:bg-[#e6b800]" : "flex-1 border-[#444] text-gray-300"}
-                onClick={() => { setMode("login"); setRegStep(1); setLocation("/login"); }}
+                onClick={() => { setMode("login"); setRegStep(1); setLocation(authPath("/login")); }}
                 data-testid="button-login-tab"
               >
                 Sign In
@@ -154,7 +157,7 @@ export default function AuthPage() {
               <Button
                 variant={mode === "register" ? "default" : "outline"}
                 className={mode === "register" ? "flex-1 bg-[#FFCD11] text-black hover:bg-[#e6b800]" : "flex-1 border-[#444] text-gray-300"}
-                onClick={() => { setMode("register"); setRegStep(1); setLocation("/register"); }}
+                onClick={() => { setMode("register"); setRegStep(1); setLocation(authPath("/register")); }}
                 data-testid="button-register-tab"
               >
                 Create Account
@@ -184,10 +187,12 @@ export default function AuthPage() {
                 <>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <Label className="text-gray-300 text-sm">First Name *</Label>
+                      <Label htmlFor="register-first-name" className="text-gray-300 text-sm">First Name *</Label>
                       <div className="relative mt-1">
                         <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
                         <Input
+                          id="register-first-name"
+                          autoComplete="given-name"
                           value={firstName}
                           onChange={e => setFirstName(e.target.value)}
                           className="pl-9 bg-[#222] border-[#444] text-white"
@@ -198,10 +203,12 @@ export default function AuthPage() {
                       </div>
                     </div>
                     <div>
-                      <Label className="text-gray-300 text-sm">Last Name *</Label>
+                      <Label htmlFor="register-last-name" className="text-gray-300 text-sm">Last Name *</Label>
                       <div className="relative mt-1">
                         <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
                         <Input
+                          id="register-last-name"
+                          autoComplete="family-name"
                           value={lastName}
                           onChange={e => setLastName(e.target.value)}
                           className="pl-9 bg-[#222] border-[#444] text-white"
@@ -213,10 +220,12 @@ export default function AuthPage() {
                     </div>
                   </div>
                   <div>
-                    <Label className="text-gray-300 text-sm">Company</Label>
+                    <Label htmlFor="register-company" className="text-gray-300 text-sm">Company</Label>
                     <div className="relative mt-1">
                       <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
                       <Input
+                        id="register-company"
+                        autoComplete="organization"
                         value={company}
                         onChange={e => setCompany(e.target.value)}
                         className="pl-9 bg-[#222] border-[#444] text-white"
@@ -226,10 +235,13 @@ export default function AuthPage() {
                     </div>
                   </div>
                   <div>
-                    <Label className="text-gray-300 text-sm">Phone</Label>
+                    <Label htmlFor="register-phone" className="text-gray-300 text-sm">Phone</Label>
                     <div className="relative mt-1">
                       <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
                       <Input
+                        id="register-phone"
+                        type="tel"
+                        autoComplete="tel"
                         value={phone}
                         onChange={e => setPhone(e.target.value)}
                         className="pl-9 bg-[#222] border-[#444] text-white"
@@ -250,6 +262,7 @@ export default function AuthPage() {
                       <Input
                         id="login-email"
                         type="email"
+                        autoComplete="email"
                         value={email}
                         onChange={e => setEmail(e.target.value)}
                         className="pl-9 bg-[#222] border-[#444] text-white"
@@ -266,6 +279,7 @@ export default function AuthPage() {
                       <Input
                         id="login-password"
                         type="password"
+                        autoComplete={mode === "login" ? "current-password" : "new-password"}
                         value={password}
                         onChange={e => setPassword(e.target.value)}
                         className="pl-9 bg-[#222] border-[#444] text-white"
@@ -292,9 +306,9 @@ export default function AuthPage() {
               {mode === "register" && regStep === 2 && (
                 <>
                   <div>
-                    <Label className="text-gray-300 text-sm">Equipment Type *</Label>
+                    <Label htmlFor="register-equipment-type" className="text-gray-300 text-sm">Equipment Type *</Label>
                     <Select value={equipType} onValueChange={setEquipType}>
-                      <SelectTrigger className="bg-[#222] border-[#444] text-white mt-1" data-testid="select-equip-type">
+                      <SelectTrigger id="register-equipment-type" className="bg-[#222] border-[#444] text-white mt-1" data-testid="select-equip-type">
                         <SelectValue placeholder="Select equipment type" />
                       </SelectTrigger>
                       <SelectContent className="bg-[#222] border-[#444]">
@@ -306,51 +320,51 @@ export default function AuthPage() {
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <Label className="text-gray-300 text-sm">Make</Label>
-                      <Input value={equipMake} onChange={e => setEquipMake(e.target.value)}
+                      <Label htmlFor="register-equipment-make" className="text-gray-300 text-sm">Make</Label>
+                      <Input id="register-equipment-make" value={equipMake} onChange={e => setEquipMake(e.target.value)}
                         className="bg-[#222] border-[#444] text-white mt-1" placeholder="e.g. Caterpillar" data-testid="input-equip-make" />
                     </div>
                     <div>
-                      <Label className="text-gray-300 text-sm">Model</Label>
-                      <Input value={equipModel} onChange={e => setEquipModel(e.target.value)}
+                      <Label htmlFor="register-equipment-model" className="text-gray-300 text-sm">Model</Label>
+                      <Input id="register-equipment-model" value={equipModel} onChange={e => setEquipModel(e.target.value)}
                         className="bg-[#222] border-[#444] text-white mt-1" placeholder="e.g. 320F" data-testid="input-equip-model" />
                     </div>
                   </div>
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
-                      <Label className="text-gray-300 text-sm">Year</Label>
-                      <Input value={equipYear} onChange={e => setEquipYear(e.target.value)}
+                      <Label htmlFor="register-equipment-year" className="text-gray-300 text-sm">Year</Label>
+                      <Input id="register-equipment-year" type="number" min={1950} max={2100} value={equipYear} onChange={e => setEquipYear(e.target.value)}
                         className="bg-[#222] border-[#444] text-white mt-1" placeholder="2020" data-testid="input-equip-year" />
                     </div>
                     <div>
-                      <Label className="text-gray-300 text-sm">Serial #</Label>
-                      <Input value={equipSerial} onChange={e => setEquipSerial(e.target.value)}
+                      <Label htmlFor="register-equipment-serial" className="text-gray-300 text-sm">Serial #</Label>
+                      <Input id="register-equipment-serial" value={equipSerial} onChange={e => setEquipSerial(e.target.value)}
                         className="bg-[#222] border-[#444] text-white mt-1" placeholder="Serial" data-testid="input-equip-serial" />
                     </div>
                     <div>
-                      <Label className="text-gray-300 text-sm">SMU/Hours</Label>
-                      <Input value={equipSmuHours} onChange={e => setEquipSmuHours(e.target.value)}
+                      <Label htmlFor="register-equipment-hours" className="text-gray-300 text-sm">SMU/Hours</Label>
+                      <Input id="register-equipment-hours" type="number" min={0} value={equipSmuHours} onChange={e => setEquipSmuHours(e.target.value)}
                         className="bg-[#222] border-[#444] text-white mt-1" placeholder="Hours" data-testid="input-equip-smu" />
                     </div>
                   </div>
                   <div>
-                    <Label className="text-gray-300 text-sm">Equipment Location</Label>
-                    <Input value={equipLocation} onChange={e => setEquipLocation(e.target.value)}
+                    <Label htmlFor="register-equipment-location" className="text-gray-300 text-sm">Equipment Location</Label>
+                    <Input id="register-equipment-location" value={equipLocation} onChange={e => setEquipLocation(e.target.value)}
                       className="bg-[#222] border-[#444] text-white mt-1" placeholder="City, State or Job Site" data-testid="input-equip-location" />
                   </div>
                   <div>
-                    <Label className="text-gray-300 text-sm flex items-center gap-1">
+                    <Label htmlFor="register-problem-summary" className="text-gray-300 text-sm flex items-center gap-1">
                       <AlertTriangle className="h-3.5 w-3.5 text-[#FFCD11]" />
                       Problem Description *
                     </Label>
-                    <Textarea value={problemSummary} onChange={e => setProblemSummary(e.target.value)}
+                    <Textarea id="register-problem-summary" value={problemSummary} onChange={e => setProblemSummary(e.target.value)}
                       className="bg-[#222] border-[#444] text-white mt-1 min-h-[80px]"
                       placeholder="Describe the issue you're experiencing with your equipment..."
                       required data-testid="input-problem-summary" />
                   </div>
                   <div>
-                    <Label className="text-gray-300 text-sm">Fault Codes (if any)</Label>
-                    <Input value={faultCodes} onChange={e => setFaultCodes(e.target.value)}
+                    <Label htmlFor="register-fault-codes" className="text-gray-300 text-sm">Fault Codes (if any)</Label>
+                    <Input id="register-fault-codes" value={faultCodes} onChange={e => setFaultCodes(e.target.value)}
                       className="bg-[#222] border-[#444] text-white mt-1" placeholder="e.g. P0300, E361" data-testid="input-fault-codes" />
                   </div>
                 </>

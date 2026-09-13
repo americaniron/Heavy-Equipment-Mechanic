@@ -17,6 +17,7 @@
     "dev:api": "npm run dev --workspace=workers/api",
     "dev:spa": "npm run dev --workspace=@fixmyiron/spa",
     "build:spa": "npm run build --workspace=@fixmyiron/spa",
+    "audit:spa-interactions": "node scripts/audit-client-interactions.mjs",
     "test:e2e": "playwright test",
     "migrate:local": "wrangler d1 migrations apply fixmyiron-staging --local --config workers/api/wrangler.toml",
     "migrate:remote": "wrangler d1 migrations apply fixmyiron-staging --remote --config workers/api/wrangler.toml"

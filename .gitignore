@@ -38,6 +38,8 @@ playwright-report/
 # Cloudflare
 .mf/
 .open-next/
+.wrangler/
+.wrangler-local/
 wrangler.toml.local
 worker-configuration.d.ts
 

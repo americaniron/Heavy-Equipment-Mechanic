@@ -2,6 +2,11 @@ import { Hono, type Context } from "hono";
 import type { Env, Variables } from "../env";
 import { requireAuth } from "../lib/auth-middleware";
 import { createCheckoutSession, createCustomerPortalSession } from "../lib/stripe-billing";
+import {
+  deleteOwnedEquipment,
+  insertEquipmentCompat,
+  updateOwnedEquipment,
+} from "../lib/legacy-schema";
 import { effectiveTier } from "../lib/tier";
 import { normalizeFaultCode } from "../lib/fault-normalize";
 import {
@@ -32,6 +37,55 @@ function customerId(c: { get: (key: "customerId" | "userId") => unknown }): numb
 function parseId(value: string): number | null {
   const id = Number(value);
   return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+type ResourceId = number | string;
+
+function parseResourceId(value: unknown): ResourceId | null {
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) && value > 0 ? value : null;
+  }
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (
+    /^\d+$/.test(trimmed) &&
+    Number.isSafeInteger(Number(trimmed)) &&
+    Number(trimmed) > 0
+  ) {
+    return trimmed;
+  }
+  return /^\d{10,}$/.test(trimmed) ? trimmed : null;
+}
+
+function billingReturnOrigin(c: PortalContext): string {
+  const allowed = (c.env.WEB_ORIGIN || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .flatMap((value) => {
+      try {
+        return [new URL(value).origin];
+      } catch {
+        return [];
+      }
+    });
+  const requestOrigin = c.req.header("origin");
+  if (requestOrigin) {
+    try {
+      const normalized = new URL(requestOrigin).origin;
+      if (allowed.includes(normalized)) return normalized;
+    } catch {
+      // Ignore malformed Origin and use server configuration.
+    }
+  }
+  if (c.env.PUBLIC_BASE_URL) {
+    try {
+      return new URL(c.env.PUBLIC_BASE_URL).origin;
+    } catch {
+      // Fall through.
+    }
+  }
+  return allowed[0] ?? "https://www.fixmyiron.com";
 }
 
 function pick(body: DbRow, fields: string[], aliases: Record<string, string> = {}): DbRow {
@@ -132,29 +186,36 @@ portalRoutes.get("/equipment", async (c) => c.json(await listForCustomer(c.env.D
 portalRoutes.post("/equipment", async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as DbRow;
   if (!body.name) return c.json({ error: "Name is required" }, 400);
-  return c.json(await createForCustomer(c.env.DB, "equipment", customerId(c), pick(body, equipmentFields)));
+  const id = await insertEquipmentCompat(
+    c.env.DB,
+    customerId(c),
+    { ...pick(body, equipmentFields), status: body.status ?? "active" },
+  );
+  return c.json(camelizeRow(await getById<DbRow>(c.env.DB, "equipment", id)));
 });
 
 async function updateEquipment(c: PortalContext) {
-  const id = parseId(String(c.req.param("id")));
+  const id = parseResourceId(c.req.param("id"));
   if (!id) return c.json({ error: "Invalid equipment id" }, 400);
   const body = (await c.req.json().catch(() => ({}))) as DbRow;
-  const updated = await updateOwned(c.env.DB, "equipment", id, customerId(c), pick(body, equipmentFields));
+  const updated = await updateOwnedEquipment(
+    c.env.DB,
+    id,
+    customerId(c),
+    pick(body, equipmentFields),
+  );
   if (!updated) return c.json({ error: "Equipment not found" }, 404);
-  return c.json(updated);
+  return c.json(camelizeRow(await getById<DbRow>(c.env.DB, "equipment", id)));
 }
 
 portalRoutes.patch("/equipment/:id", updateEquipment);
 portalRoutes.put("/equipment/:id", updateEquipment);
 
 portalRoutes.delete("/equipment/:id", async (c) => {
-  const id = parseId(String(c.req.param("id")));
+  const id = parseResourceId(c.req.param("id"));
   if (!id) return c.json({ error: "Invalid equipment id" }, 400);
-  const result = await c.env.DB
-    .prepare("DELETE FROM equipment WHERE id = ?1 AND customer_id = ?2")
-    .bind(id, customerId(c))
-    .run();
-  if (!result.meta.changes) return c.json({ error: "Equipment not found" }, 404);
+  const deleted = await deleteOwnedEquipment(c.env.DB, id, customerId(c));
+  if (!deleted) return c.json({ error: "Equipment not found" }, 404);
   return c.json({ success: true });
 });
 
@@ -643,7 +704,7 @@ portalRoutes.post("/billing/stripe/checkout-session", async (c) => {
   const target = body.target_tier === "shop" ? "shop" : "pro";
   const customer = await getById<DbRow>(c.env.DB, "customers", cid);
   if (!customer) return c.json({ error: "Customer not found" }, 404);
-  const origin = c.req.header("origin") || "https://www.fixmyiron.com";
+  const origin = billingReturnOrigin(c);
   const result = await createCheckoutSession(c.env, {
     customer,
     targetTier: target,
@@ -651,7 +712,10 @@ portalRoutes.post("/billing/stripe/checkout-session", async (c) => {
     cancelUrl: `${origin}/portal?section=billing&checkout=cancel`,
   });
   if ("error" in result) {
-    return c.json({ error: result.error }, result.status as 502 | 503);
+    return c.json(
+      { error: result.error, ...(result.code ? { code: result.code } : {}) },
+      result.status as 409 | 502 | 503,
+    );
   }
   return c.json({ url: result.url, id: result.id, target_tier: target }, 201);
 });
@@ -666,7 +730,7 @@ portalRoutes.post("/billing/portal-session", async (c) => {
   if (!sub?.stripe_customer_id) {
     return c.json({ error: "No Stripe customer is linked to this account yet." }, 400);
   }
-  const origin = c.req.header("origin") || "https://www.fixmyiron.com";
+  const origin = billingReturnOrigin(c);
   const result = await createCustomerPortalSession(
     c.env,
     sub.stripe_customer_id,

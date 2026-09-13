@@ -107,7 +107,7 @@ export async function updateRowById(
 export async function getById<T = DbRow>(
   db: D1Database,
   table: string,
-  id: number,
+  id: number | string,
 ): Promise<T | null> {
   return selectOne<T>(db, `SELECT * FROM "${table}" WHERE id = ?1`, id);
 }
@@ -117,18 +117,30 @@ export async function tableColumns(db: D1Database, table: string): Promise<Set<s
   return new Set((info.results ?? []).map((column) => column.name));
 }
 
+async function authSessionStorageKey(token: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`auth-session:${token}`),
+  );
+  return Array.from(
+    new Uint8Array(digest),
+    (byte) => byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
 export async function createAuthSession(
   db: D1Database,
   customerId: number,
   ttlMs = 30 * 24 * 60 * 60 * 1000,
 ): Promise<string> {
   const token = randomHex(32);
+  const storageKey = await authSessionStorageKey(token);
   const expiresAt = new Date(Date.now() + ttlMs).toISOString();
   await db
     .prepare(
       "INSERT INTO auth_sessions (token, customer_id, expires_at) VALUES (?1, ?2, ?3)",
     )
-    .bind(token, customerId, expiresAt)
+    .bind(storageKey, customerId, expiresAt)
     .run();
   return token;
 }
@@ -138,24 +150,50 @@ export async function getCustomerByAuthToken(
   token: string | null | undefined,
 ): Promise<DbRow | null> {
   if (!token) return null;
-  const row = await selectOne<DbRow>(
-    db,
-    `SELECT c.*
-       FROM auth_sessions s
-       JOIN customers c ON c.id = s.customer_id
-      WHERE s.token = ?1
-      LIMIT 1`,
-    token,
-  );
-  if (!row) return null;
-  const session = await selectOne<{ expires_at: string }>(
-    db,
-    "SELECT expires_at FROM auth_sessions WHERE token = ?1",
-    token,
-  );
-  if (!session || new Date(session.expires_at).getTime() <= Date.now()) {
-    await db.prepare("DELETE FROM auth_sessions WHERE token = ?1").bind(token).run();
+  const hashed = await authSessionStorageKey(token);
+  for (const candidate of hashed === token ? [token] : [hashed, token]) {
+    const row = await selectOne<DbRow>(
+      db,
+      `SELECT c.*
+         FROM auth_sessions s
+         JOIN customers c ON c.id = s.customer_id
+        WHERE s.token = ?1
+          AND c.status = 'active'
+        LIMIT 1`,
+      candidate,
+    );
+    if (!row) continue;
+    const session = await selectOne<{ expires_at: string }>(
+      db,
+      "SELECT expires_at FROM auth_sessions WHERE token = ?1",
+      candidate,
+    );
+    if (
+      session &&
+      new Date(session.expires_at).getTime() > Date.now()
+    ) {
+      return row;
+    }
+    await db
+      .prepare("DELETE FROM auth_sessions WHERE token = ?1")
+      .bind(candidate)
+      .run();
     return null;
   }
-  return row;
+  await db
+    .prepare("DELETE FROM auth_sessions WHERE token = ?1 OR token = ?2")
+    .bind(hashed, token)
+    .run();
+  return null;
+}
+
+export async function deleteAuthSession(
+  db: D1Database,
+  token: string,
+): Promise<void> {
+  const hashed = await authSessionStorageKey(token);
+  await db
+    .prepare("DELETE FROM auth_sessions WHERE token = ?1 OR token = ?2")
+    .bind(hashed, token)
+    .run();
 }
