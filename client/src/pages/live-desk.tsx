@@ -11,6 +11,7 @@ import { useAuth } from "@/lib/auth";
 import {
   assertAvatarSessionPayload,
   avatarHttpStatus,
+  avatarPlaceholderCopy,
   avatarStartFailureToast,
 } from "@/lib/avatar-session";
 import DOMPurify from "dompurify";
@@ -103,6 +104,7 @@ export default function LiveDesk() {
   const [selectedLanguage, setSelectedLanguage] = useState<"en" | "ar">("en");
   const [isConnecting, setIsConnecting] = useState(false);
   const [avatarReady, setAvatarReady] = useState(false);
+  const [textOnlyMode, setTextOnlyMode] = useState(false);
   const [isTalking, setIsTalking] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [inputText, setInputText] = useState("");
@@ -765,6 +767,7 @@ export default function LiveDesk() {
     }
 
     setIsConnecting(true);
+    setTextOnlyMode(false);
     micMutedRef.current = false;
     setMicMuted(false);
     voiceCaptureActiveRef.current = false;
@@ -852,6 +855,7 @@ export default function LiveDesk() {
 
         const { title, description } = avatarStartFailureToast(status);
         toast({ title, description, variant: "default" });
+        setTextOnlyMode(true);
 
         setIntroPlaying(false);
         introPlayingRef.current = false;
@@ -1074,6 +1078,7 @@ export default function LiveDesk() {
       const rawMessage = String(err instanceof Error ? err.message : err);
       console.error("[Avatar] handoff reconnect failed", { status, detail: rawMessage });
       setHandoffInProgress(false);
+      setTextOnlyMode(true);
       const { title, description } = avatarStartFailureToast(status);
       toast({
         title: status ? title : "Transfer failed",
@@ -2221,18 +2226,29 @@ export default function LiveDesk() {
               )}
             </div>
             <div>
-              <p className="text-white text-lg font-medium">
-                {handoffInProgress
-                  ? `Connecting to ${currentMechanic?.name || "Specialist"}...`
-                  : "Connecting to Front Desk..."}
-              </p>
-              <p className="text-gray-400 text-sm mt-1">
-                {handoffInProgress
-                  ? currentMechanic?.title || "Diagnostic Specialist"
-                  : "Registration Admin"}
-              </p>
+              {(() => {
+                const copy = avatarPlaceholderCopy({
+                  isConnecting,
+                  handoffInProgress,
+                  textOnlyMode,
+                  mechanicName: currentMechanic?.name,
+                  mechanicTitle: currentMechanic?.title,
+                });
+                return (
+                  <>
+                    <p className="text-white text-lg font-medium" data-testid="avatar-placeholder-title">
+                      {copy.title}
+                    </p>
+                    <p className="text-gray-400 text-sm mt-1" data-testid="avatar-placeholder-subtitle">
+                      {copy.subtitle}
+                    </p>
+                    {copy.spinning ? (
+                      <Loader2 className="w-6 h-6 animate-spin text-[#FFCD11] mx-auto mt-4" />
+                    ) : null}
+                  </>
+                );
+              })()}
             </div>
-            <Loader2 className="w-6 h-6 animate-spin text-[#FFCD11] mx-auto" />
           </div>
         </div>
       )}
@@ -2252,7 +2268,7 @@ export default function LiveDesk() {
                     : (currentMechanic?.name || "Specialist")}
                 </p>
                 <p className="text-[#FFCD11]/80 text-[10px] uppercase tracking-wider" data-testid="text-avatar-state">
-                  {isConnecting ? "connecting" : isTalking ? "speaking" : isProcessing ? "thinking" : isListening || avatarReady ? "listening" : "idle"}
+                  {isConnecting ? "connecting" : isTalking ? "speaking" : isProcessing ? "thinking" : isListening || avatarReady ? "listening" : textOnlyMode ? "text" : "idle"}
                 </p>
               </div>
             </div>
@@ -2414,6 +2430,7 @@ export default function LiveDesk() {
                   setSessionData(null);
                   sessionDataRef.current = null;
                   setAvatarReady(false);
+                  setTextOnlyMode(false);
                   setIsListening(false);
                   setShowTextInput(false);
                   setCurrentAgent("admin");

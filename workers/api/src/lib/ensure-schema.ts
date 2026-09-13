@@ -1,3 +1,4 @@
+import { BACKEND_REPAIR_DDL } from "./backend-repair-ddl";
 import { log } from "./log";
 import { OPERATIONAL_DDL } from "./operational-ddl";
 
@@ -59,6 +60,11 @@ const COLUMNS: ColumnSpec[] = [
   { table: "sessions", column: "status", ddl: "TEXT" },
   { table: "sessions", column: "customer_name", ddl: "TEXT" },
   { table: "sessions", column: "customer_email", ddl: "TEXT" },
+  { table: "processed_webhooks", column: "status", ddl: "TEXT NOT NULL DEFAULT 'processed'" },
+  { table: "processed_webhooks", column: "claimed_at", ddl: "TEXT" },
+  { table: "processed_webhooks", column: "claim_token", ddl: "TEXT" },
+  { table: "processed_webhooks", column: "processed_at", ddl: "TEXT" },
+  { table: "processed_webhooks", column: "attempt_count", ddl: "INTEGER NOT NULL DEFAULT 1" },
 ];
 
 export function splitSqlStatements(sql: string): string[] {
@@ -92,7 +98,7 @@ export async function ensureOperationalSchema(db: D1Database): Promise<void> {
   if (ensured) return;
   if (ensuring) return ensuring;
   ensuring = (async () => {
-    for (const statement of splitSqlStatements(OPERATIONAL_DDL)) {
+    for (const statement of splitSqlStatements(`${OPERATIONAL_DDL}\n${BACKEND_REPAIR_DDL}`)) {
       try {
         await db.prepare(statement).run();
       } catch (err) {

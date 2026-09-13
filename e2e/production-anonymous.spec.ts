@@ -58,6 +58,10 @@ test.describe("production anonymous SPA", () => {
     await page.getByTestId("button-start-text-diagnosis").click();
     await expect(page.getByTestId("live-desk-active")).toBeVisible({ timeout: 45_000 });
     expect(page.url()).not.toContain("accounts.fixmyiron.com");
+    await expect(page.getByTestId("avatar-placeholder-title")).toHaveText(/Text session/i, {
+      timeout: 20_000,
+    });
+    await expect(page.getByTestId("text-avatar-state")).toHaveText(/text/i);
   });
 });
 

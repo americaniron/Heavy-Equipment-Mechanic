@@ -50,3 +50,38 @@ export function assertAvatarSessionPayload(data: AvatarSessionPayload): void {
     throw new Error("LiveAvatar did not return LiveKit connection details");
   }
 }
+
+export function avatarPlaceholderCopy(opts: {
+  isConnecting: boolean;
+  handoffInProgress: boolean;
+  textOnlyMode: boolean;
+  mechanicName?: string;
+  mechanicTitle?: string;
+}): { title: string; subtitle: string; spinning: boolean } {
+  if (opts.handoffInProgress) {
+    return {
+      title: `Connecting to ${opts.mechanicName || "Specialist"}...`,
+      subtitle: opts.mechanicTitle || "Diagnostic Specialist",
+      spinning: true,
+    };
+  }
+  if (opts.isConnecting) {
+    return {
+      title: "Connecting to Front Desk...",
+      subtitle: "Registration Admin",
+      spinning: true,
+    };
+  }
+  if (opts.textOnlyMode) {
+    return {
+      title: "Text session",
+      subtitle: "Live avatar video is available on Pro. Continue by typing.",
+      spinning: false,
+    };
+  }
+  return {
+    title: "Connecting to Front Desk...",
+    subtitle: "Registration Admin",
+    spinning: true,
+  };
+}
