@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { avatarPlaceholderCopy } from "../../../client/src/lib/avatar-session";
 
 // Mirrors client/src/lib/avatar-session.ts so the toast/status mapping stays regression-tested.
 function avatarHttpStatus(err: unknown): number {
@@ -47,5 +48,21 @@ describe("avatar start failure mapping (repair)", () => {
 
   it("maps 403 to Pro plan required", () => {
     expect(avatarStartFailureToast(403).title).toBe("Pro plan required");
+  });
+});
+
+describe("avatar placeholder copy", () => {
+  it("stops spinning and labels text mode after a failed avatar start", () => {
+    expect(
+      avatarPlaceholderCopy({
+        isConnecting: false,
+        handoffInProgress: false,
+        textOnlyMode: true,
+      }),
+    ).toEqual({
+      title: "Text session",
+      subtitle: "Live avatar video is available on Pro. Continue by typing.",
+      spinning: false,
+    });
   });
 });
