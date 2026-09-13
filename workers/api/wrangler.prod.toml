@@ -69,11 +69,6 @@ bucket_name = "fixmyiron-assets-prod"
 binding = "PORTAL_ASSETS"
 bucket_name = "fixmyiron-assets-prod"
 
-# Queue — async jobs (enrichment, email, fault-code refresh)
-[[queues.producers]]
-binding = "JOBS"
-queue = "fixmyiron-jobs-prod"
-
 # Durable Object — per-customer diagnostic sessions
 [[durable_objects.bindings]]
 name = "DIAGNOSTIC_SESSION"
@@ -87,10 +82,5 @@ new_sqlite_classes = ["DiagnosticSession"]
 [observability]
 enabled = true
 
-# Cron triggers — DISABLED in prod by deliberate decision (account is at
-# the 5-cron-trigger cap and we chose not to bump). fault_code_refresh
-# runs as a manual job until the quota is freed; re-enable by
-# uncommenting once a cron slot opens up. Source of truth: top of
-# PRODUCTION_CUTOVER.md "Cutover decisions".
-# [triggers]
-# crons = ["0 6 * * SUN"]
+# Cron triggers are disabled on this account (5-cron cap). Re-enable only
+# after freeing a slot and restoring a scheduled handler in src/index.ts.

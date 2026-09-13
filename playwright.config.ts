@@ -12,7 +12,24 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   projects: [
-    { name: "desktop", use: { ...devices["Desktop Chrome"] } },
-    { name: "mobile", use: { ...devices["Pixel 7"] } },
+    {
+      name: "desktop",
+      use: {
+        ...devices["Desktop Chrome"],
+      },
+    },
+    {
+      name: "tablet",
+      use: {
+        ...devices["iPad (gen 7) landscape"],
+        browserName: "chromium",
+      },
+    },
+    {
+      name: "mobile",
+      use: {
+        ...devices["Pixel 7"],
+      },
+    },
   ],
 });

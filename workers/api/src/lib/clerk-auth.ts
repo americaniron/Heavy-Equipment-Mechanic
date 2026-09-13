@@ -12,7 +12,7 @@ import { log } from "./log";
 export async function verifyClerkJwt(
   authHeader: string | null,
   env: Env,
-): Promise<{ userId: string } | null> {
+): Promise<{ userId: string; sessionId?: string } | null> {
   if (!authHeader) return null;
   const m = authHeader.match(/^Bearer\s+(.+)$/i);
   if (!m || !m[1]) return null;
@@ -28,7 +28,14 @@ export async function verifyClerkJwt(
       secretKey: env.CLERK_SECRET_KEY,
     });
     if (!payload.sub) return null;
-    return { userId: payload.sub };
+    const extended = payload as { sid?: string; session_id?: string };
+    const sessionId =
+      typeof extended.sid === "string"
+        ? extended.sid
+        : typeof extended.session_id === "string"
+          ? extended.session_id
+          : undefined;
+    return { userId: payload.sub, sessionId };
   } catch (e) {
     log.warn("clerk_jwt_invalid", {
       err: e instanceof Error ? e.message : String(e),
