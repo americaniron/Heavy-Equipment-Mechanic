@@ -35,6 +35,14 @@ const CUSTOMERS_LIMIT = 500;
 type AppContext = Context<{ Bindings: Env; Variables: Variables }>;
 
 /**
+ * `echo 'secret' | wrangler secret put` stores a trailing newline. The admin
+ * form does not. Strip CR/LF so the typed password still matches.
+ */
+export function unwrapAdminSecret(value: string | undefined): string {
+  return (value ?? "").replace(/[\r\n]+$/g, "");
+}
+
+/**
  * Length-independent constant-time string comparison. Both inputs are hashed to
  * a fixed 32-byte SHA-256 digest first, so no branch (and no timing) depends on
  * the candidate's length, and the byte compare never early-returns.
@@ -195,7 +203,7 @@ adminRoutes.post("/login", async (c) => {
     return jsonError(c, 429, ErrorCode.RateLimited, "Too many login attempts. Try again shortly.");
   }
 
-  const secret = c.env.ADMIN_PASSWORD;
+  const secret = unwrapAdminSecret(c.env.ADMIN_PASSWORD);
   if (!secret) {
     log.error("admin_login_misconfigured", { reason: "ADMIN_PASSWORD unset" });
     return jsonError(
@@ -208,7 +216,9 @@ adminRoutes.post("/login", async (c) => {
   }
 
   const body = (await c.req.json().catch(() => ({}))) as { password?: unknown };
-  const password = typeof body.password === "string" ? body.password : "";
+  const password = unwrapAdminSecret(
+    typeof body.password === "string" ? body.password : "",
+  );
 
   const ok = await constantTimeEquals(password, secret);
   if (!ok) {

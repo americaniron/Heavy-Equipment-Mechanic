@@ -263,6 +263,20 @@ describe("POST /api/admin/login", () => {
     expect(res.status).toBe(401);
   });
 
+  it("accepts the typed password when wrangler stored a trailing newline", async () => {
+    const env = makeEnv({ ADMIN_PASSWORD: `${ADMIN_PASSWORD}\n` });
+    const res = await worker.fetch(
+      req("/api/admin/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password: ADMIN_PASSWORD }),
+      }),
+      env,
+      ctx,
+    );
+    expect(res.status).toBe(200);
+  });
+
   it("fails closed with 503 when ADMIN_PASSWORD is unset", async () => {
     const res = await worker.fetch(
       req("/api/admin/login", {
