@@ -10,6 +10,13 @@ import {
 import { getClerkClient } from "./clerk-auth";
 import { hashPassword, verifyPassword } from "./password";
 
+export class AccountAssociationConflict extends Error {
+  constructor() {
+    super("clerk_customer_account_conflict");
+    this.name = "AccountAssociationConflict";
+  }
+}
+
 export async function findCustomerByEmail(db: D1Database, email: string) {
   return selectOne<DbRow>(
     db,
@@ -34,10 +41,15 @@ export async function syncClerkUserToCustomer(
     firstName?: string;
     lastName?: string;
     passwordHash?: string;
+    emailVerified?: boolean;
   },
 ): Promise<DbRow> {
   const byClerk = await findCustomerByClerkId(env.DB, args.clerkUserId);
   if (byClerk) {
+    const emailOwner = await findCustomerByEmail(env.DB, args.email);
+    if (emailOwner && Number(emailOwner.id) !== Number(byClerk.id)) {
+      throw new AccountAssociationConflict();
+    }
     await env.DB.prepare(
       `UPDATE customers
           SET email = ?2,
@@ -53,6 +65,17 @@ export async function syncClerkUserToCustomer(
 
   const byEmail = await findCustomerByEmail(env.DB, args.email);
   if (byEmail) {
+    if (String(byEmail.status ?? "active") === "deleted") {
+      throw new AccountAssociationConflict();
+    }
+    const existingClerkId =
+      typeof byEmail.clerk_user_id === "string" ? byEmail.clerk_user_id : "";
+    if (existingClerkId && existingClerkId !== args.clerkUserId) {
+      throw new AccountAssociationConflict();
+    }
+    if (!args.emailVerified) {
+      throw new AccountAssociationConflict();
+    }
     await env.DB.prepare(
       `UPDATE customers
           SET clerk_user_id = ?2, updated_at = datetime('now')
