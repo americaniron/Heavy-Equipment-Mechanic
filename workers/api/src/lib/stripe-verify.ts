@@ -95,12 +95,14 @@ export async function verifyStripeWebhook(
 export function parseStripeEvent(rawBody: string): {
   id: string;
   type: string;
+  created?: number;
   data: { object: Record<string, unknown> };
 } | null {
   try {
     const parsed = JSON.parse(rawBody) as {
       id?: unknown;
       type?: unknown;
+      created?: unknown;
       data?: { object?: Record<string, unknown> };
     };
     if (typeof parsed.id !== "string" || typeof parsed.type !== "string") return null;
@@ -108,6 +110,7 @@ export function parseStripeEvent(rawBody: string): {
     return {
       id: parsed.id,
       type: parsed.type,
+      created: typeof parsed.created === "number" ? parsed.created : undefined,
       data: { object: parsed.data.object },
     };
   } catch {
